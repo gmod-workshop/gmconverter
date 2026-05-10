@@ -71,6 +71,25 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 </details>
 
+The GUI auto-loads the first `gmconverter.ini` it finds in the current directory.
+
+<details>
+<summary>Example Config</summary>
+
+```ini
+# gmconverter.ini
+output-format = mdl
+game-dir = E:\Games\Steam\steamapps\common\GarrysMod\garrysmod
+material-dir = E:\Tools\umodel\UmodelExport
+model-path = gmconverter/bactadispenserras.mdl
+axis-mode = auto
+no-materials = false
+physics-mode = bounds
+physics-mass = 100
+```
+
+</details>
+
 ## Format Details
 
 ### OPT

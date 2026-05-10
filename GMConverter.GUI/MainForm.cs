@@ -16,6 +16,7 @@ internal sealed class MainForm : Form
 
     private readonly ComboBox _inputFormatBox = new();
     private readonly ComboBox _outputFormatBox = new();
+    private readonly TextBox _configPathBox = new();
     private readonly TextBox _inputPathBox = new();
     private readonly TextBox _outputPathBox = new();
     private readonly TextBox _nameBox = new();
@@ -34,6 +35,7 @@ internal sealed class MainForm : Form
     private readonly NumericUpDown _maxConvexPiecesBox = new();
     private readonly NumericUpDown _maxHullVerticesBox = new();
     private readonly Button _runButton = new();
+    private readonly Button _loadConfigButton = new();
     private readonly Button _previewButton = new();
     private readonly CheckBox _previewPhysicsBox = new();
     private readonly PreviewViewport _previewViewport = new();
@@ -48,6 +50,7 @@ internal sealed class MainForm : Form
 
         ConfigureControls();
         Controls.Add(BuildLayout());
+        TryLoadDefaultConfig();
         UpdateControlState();
     }
 
@@ -105,6 +108,10 @@ internal sealed class MainForm : Form
 
         _modelPathBox.Text = "gmconverter/model.mdl";
 
+        _loadConfigButton.Text = "Load Config";
+        _loadConfigButton.Height = 32;
+        _loadConfigButton.Click += (_, _) => LoadConfigFromPath(_configPathBox.Text);
+
         _runButton.Text = "Run Conversion";
         _runButton.Height = 36;
         _runButton.Click += async (_, _) => await RunConversionAsync();
@@ -137,6 +144,7 @@ internal sealed class MainForm : Form
 
         EnablePathDrop(_inputPathBox, DirectoryDropBehavior.FileOrDirectory);
         EnablePathDrop(_outputPathBox, DirectoryDropBehavior.Directory);
+        EnablePathDrop(_configPathBox, DirectoryDropBehavior.FileOrDirectory);
         EnablePathDrop(_gameDirectoryBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_engineDirectoryBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_materialDirectoryBox, DirectoryDropBehavior.Directory);
@@ -186,6 +194,7 @@ internal sealed class MainForm : Form
         AddRow(fileSection, "Name", _nameBox);
 
         var toolSection = CreateSection("Tool Paths");
+        AddPathRow(toolSection, "Config file", _configPathBox, BrowseConfigFile);
         AddRow(toolSection, "Model path", _modelPathBox);
         AddPathRow(toolSection, "Game directory", _gameDirectoryBox, BrowseFolder);
         AddPathRow(toolSection, "Engine directory", _engineDirectoryBox, BrowseFolder);
@@ -205,6 +214,12 @@ internal sealed class MainForm : Form
         AddRow(physicsSection, "Max hull vertices", _maxHullVerticesBox);
 
         var actionSection = CreateSection("Run");
+        _loadConfigButton.Dock = DockStyle.Fill;
+        _loadConfigButton.Margin = new Padding(0, 4, 0, 0);
+        actionSection.Controls.Add(_loadConfigButton, 0, actionSection.RowCount);
+        actionSection.SetColumnSpan(_loadConfigButton, 3);
+        actionSection.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        actionSection.RowCount++;
         _runButton.Dock = DockStyle.Fill;
         _runButton.Margin = new Padding(0, 4, 0, 0);
         actionSection.Controls.Add(_runButton, 0, actionSection.RowCount);
@@ -386,6 +401,79 @@ internal sealed class MainForm : Form
         _maxConvexPiecesBox.Enabled = coacdEnabled;
         _maxHullVerticesBox.Enabled = coacdEnabled;
         _previewPhysicsBox.Enabled = sourceOutput && (_physicsBox.Checked || SelectedText(_physicsModeBox) is "coacd");
+    }
+
+    private void TryLoadDefaultConfig()
+    {
+        var defaultPath = Config.FindDefaultPath();
+        if (defaultPath is null)
+        {
+            return;
+        }
+
+        _configPathBox.Text = defaultPath;
+        LoadConfigFromPath(defaultPath);
+    }
+
+    private void LoadConfigFromPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            AppendLog("Config path is empty.");
+            return;
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+            ApplyConfig(Config.Load(fullPath));
+            _configPathBox.Text = fullPath;
+            AppendLog($"Loaded config: {fullPath}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Config load failed. {ex.Message}");
+        }
+    }
+
+    private void ApplyConfig(Config config)
+    {
+        SetComboValue(_inputFormatBox, config.InputFormat, "input-format");
+        SetComboValue(_outputFormatBox, config.OutputFormat, "output-format");
+        SetComboValue(_axisModeBox, config.AxisMode, "axis-mode");
+        SetComboValue(_physicsModeBox, config.PhysicsMode, "physics-mode");
+
+        SetText(_inputPathBox, config.InputPath);
+        SetText(_outputPathBox, config.OutputPath);
+        SetText(_nameBox, config.BaseName);
+        SetText(_modelPathBox, config.ModelPath);
+        SetText(_gameDirectoryBox, config.GameDirectory);
+        SetText(_engineDirectoryBox, config.EngineDirectory);
+        SetText(_materialDirectoryBox, config.MaterialDirectory);
+        SetText(_animationPathBox, config.AnimationPath);
+
+        SetNumericValue(_scaleBox, config.Scale);
+        SetNumericValue(_physicsMassBox, config.PhysicsMass);
+        SetNumericValue(_coacdThresholdBox, config.CoacdThreshold);
+        SetNumericValue(_maxConvexPiecesBox, config.MaxConvexPieces);
+        SetNumericValue(_maxHullVerticesBox, config.MaxHullVertices);
+
+        if (config.NoScale is true)
+        {
+            _scaleBox.Value = 1m;
+        }
+
+        if (config.NoMaterials.HasValue)
+        {
+            _noMaterialsBox.Checked = config.NoMaterials.Value;
+        }
+
+        if (config.Physics.HasValue)
+        {
+            _physicsBox.Checked = config.Physics.Value;
+        }
+
+        UpdateControlState();
     }
 
     private async Task RunConversionAsync()
@@ -599,6 +687,60 @@ internal sealed class MainForm : Form
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
+    private static void SetText(TextBox textBox, string? value)
+    {
+        if (value is not null)
+        {
+            textBox.Text = value;
+        }
+    }
+
+    private static void SetComboValue(ComboBox comboBox, string? value, string key)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        foreach (var item in comboBox.Items)
+        {
+            if (string.Equals(item.ToString(), value, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = item;
+                return;
+            }
+        }
+
+        throw new GMConverterException($"Unsupported configured {key}: {value}");
+    }
+
+    private static void SetNumericValue(NumericUpDown control, float? value)
+    {
+        if (value.HasValue)
+        {
+            SetNumericValue(control, (decimal)value.Value);
+        }
+    }
+
+    private static void SetNumericValue(NumericUpDown control, int? value)
+    {
+        if (value.HasValue)
+        {
+            SetNumericValue(control, (decimal)value.Value);
+        }
+    }
+
+    private static void SetNumericValue(NumericUpDown control, decimal value)
+    {
+        if (value < control.Minimum || value > control.Maximum)
+        {
+            throw new GMConverterException(
+                $"Configured numeric value {value} is outside the allowed range {control.Minimum} to {control.Maximum}.");
+        }
+
+        control.Value = value;
+    }
+
     private static ModelAxisMode NormalizeAxisMode(string value)
     {
         return value.Trim().ToLowerInvariant() switch
@@ -743,6 +885,17 @@ internal sealed class MainForm : Form
         using var dialog = new OpenFileDialog
         {
             Filter = "PSA animation files (*.psa)|*.psa|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        return dialog.ShowDialog() == DialogResult.OK ? dialog.FileName : null;
+    }
+
+    private static string? BrowseConfigFile()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "GMConverter config (*.ini)|*.ini|All files (*.*)|*.*",
             CheckFileExists = true
         };
 

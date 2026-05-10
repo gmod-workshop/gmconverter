@@ -1,0 +1,105 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach artifacts to.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish release assets
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve release tag
+        id: release
+        shell: pwsh
+        run: |
+          $tag = '${{ github.event.release.tag_name }}'
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = '${{ inputs.tag }}'
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw 'Release tag could not be resolved.'
+          }
+
+          $safeTag = $tag -replace '[^A-Za-z0-9_.-]', '-'
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "safe_tag=$safeTag" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore GMConverter.slnx
+
+      - name: Publish library
+        run: >
+          dotnet publish GMConverter/GMConverter.csproj
+          --configuration Release
+          --no-restore
+          --output artifacts/publish/GMConverter.Library
+
+      - name: Publish CLI
+        run: >
+          dotnet publish GMConverter.CLI/GMConverter.CLI.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output artifacts/publish/GMConverter.CLI-win-x64
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+
+      - name: Publish GUI
+        run: >
+          dotnet publish GMConverter.GUI/GMConverter.GUI.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output artifacts/publish/GMConverter.GUI-win-x64
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+
+      - name: Create release archives
+        shell: pwsh
+        run: |
+          $releaseDir = 'artifacts/release'
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+          $safeTag = '${{ steps.release.outputs.safe_tag }}'
+
+          Compress-Archive `
+            -Path 'artifacts/publish/GMConverter.Library/*' `
+            -DestinationPath "$releaseDir/GMConverter.Library-$safeTag.zip" `
+            -Force
+
+          Compress-Archive `
+            -Path 'artifacts/publish/GMConverter.CLI-win-x64/*' `
+            -DestinationPath "$releaseDir/GMConverter.CLI-win-x64-$safeTag.zip" `
+            -Force
+
+          Compress-Archive `
+            -Path 'artifacts/publish/GMConverter.GUI-win-x64/*' `
+            -DestinationPath "$releaseDir/GMConverter.GUI-win-x64-$safeTag.zip" `
+            -Force
+
+      - name: Attach archives to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.release.outputs.tag }}'
+          $assets = Get-ChildItem -Path 'artifacts/release' -Filter '*.zip' | ForEach-Object FullName
+          gh release upload $tag $assets --clobber

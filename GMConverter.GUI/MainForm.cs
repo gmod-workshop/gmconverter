@@ -22,6 +22,8 @@ internal sealed class MainForm : Form
     private readonly TextBox _modelPathBox = new();
     private readonly TextBox _gameDirectoryBox = new();
     private readonly TextBox _engineDirectoryBox = new();
+    private readonly TextBox _materialDirectoryBox = new();
+    private readonly TextBox _animationPathBox = new();
     private readonly NumericUpDown _scaleBox = new();
     private readonly ComboBox _axisModeBox = new();
     private readonly CheckBox _noMaterialsBox = new();
@@ -52,11 +54,12 @@ internal sealed class MainForm : Form
     private void ConfigureControls()
     {
         _inputFormatBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        _inputFormatBox.Items.AddRange(["opt", "mdl"]);
+        _inputFormatBox.Items.AddRange(["opt", "mdl", "psk"]);
         _inputFormatBox.SelectedIndex = 0;
+        _inputFormatBox.SelectedIndexChanged += (_, _) => UpdateControlState();
 
         _outputFormatBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        _outputFormatBox.Items.AddRange(["info", "obj", "source", "mdl"]);
+        _outputFormatBox.Items.AddRange(["info", "obj", "glb", "gltf", "source", "mdl"]);
         _outputFormatBox.SelectedItem = "mdl";
         _outputFormatBox.SelectedIndexChanged += (_, _) => UpdateControlState();
 
@@ -136,6 +139,8 @@ internal sealed class MainForm : Form
         EnablePathDrop(_outputPathBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_gameDirectoryBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_engineDirectoryBox, DirectoryDropBehavior.Directory);
+        EnablePathDrop(_materialDirectoryBox, DirectoryDropBehavior.Directory);
+        EnablePathDrop(_animationPathBox, DirectoryDropBehavior.FileOrDirectory);
     }
 
     private Control BuildLayout()
@@ -176,6 +181,7 @@ internal sealed class MainForm : Form
 
         var fileSection = CreateSection("File Paths");
         AddPathRow(fileSection, "Input path", _inputPathBox, BrowseInputFile);
+        AddPathRow(fileSection, "Animation path", _animationPathBox, BrowseAnimationFile);
         AddPathRow(fileSection, "Output path", _outputPathBox, BrowseOutputFolder);
         AddRow(fileSection, "Name", _nameBox);
 
@@ -183,6 +189,7 @@ internal sealed class MainForm : Form
         AddRow(toolSection, "Model path", _modelPathBox);
         AddPathRow(toolSection, "Game directory", _gameDirectoryBox, BrowseFolder);
         AddPathRow(toolSection, "Engine directory", _engineDirectoryBox, BrowseFolder);
+        AddPathRow(toolSection, "Material directory", _materialDirectoryBox, BrowseFolder);
 
         var geometrySection = CreateSection("Geometry");
         AddRow(geometrySection, "Scale", _scaleBox);
@@ -358,11 +365,14 @@ internal sealed class MainForm : Form
     private void UpdateControlState()
     {
         var outputFormat = SelectedText(_outputFormatBox);
+        var inputFormat = SelectedText(_inputFormatBox);
         var writesFiles = outputFormat is not "info";
         var sourceOutput = outputFormat is "source" or "mdl";
+        var pskInput = inputFormat is "psk";
         var physicsEnabled = sourceOutput && (_physicsBox.Checked || SelectedText(_physicsModeBox) is "coacd");
         var coacdEnabled = sourceOutput && SelectedText(_physicsModeBox) is "coacd";
 
+        _animationPathBox.Enabled = pskInput;
         _outputPathBox.Enabled = writesFiles;
         _nameBox.Enabled = writesFiles;
         _modelPathBox.Enabled = sourceOutput;
@@ -416,6 +426,8 @@ internal sealed class MainForm : Form
             _modelPathBox.Enabled ? EmptyToNull(_modelPathBox.Text) : null,
             _gameDirectoryBox.Enabled ? EmptyToNull(_gameDirectoryBox.Text) : null,
             _engineDirectoryBox.Enabled ? EmptyToNull(_engineDirectoryBox.Text) : null,
+            EmptyToNull(_materialDirectoryBox.Text),
+            _animationPathBox.Enabled ? EmptyToNull(_animationPathBox.Text) : null,
             (float)_scaleBox.Value,
             NormalizeAxisMode(SelectedText(_axisModeBox)),
             !(_noMaterialsBox.Enabled && _noMaterialsBox.Checked),
@@ -443,7 +455,11 @@ internal sealed class MainForm : Form
         var baseName = string.IsNullOrWhiteSpace(settings.BaseName)
             ? Path.GetFileNameWithoutExtension(inputPath)
             : settings.BaseName;
-        var model = importer.Parse(inputPath, new ModelParseOptions(settings.ScaleFactor, settings.AxisMode));
+        var model = importer.Parse(inputPath, new ModelParseOptions(
+            settings.ScaleFactor,
+            settings.AxisMode,
+            CreateMaterialResolveOptions(settings.MaterialDirectory),
+            CreateAnimationPath(settings.AnimationPath)));
 
         switch (settings.OutputFormat)
         {
@@ -451,6 +467,16 @@ internal sealed class MainForm : Form
                 Directory.CreateDirectory(outputPath);
                 new OBJExporter().Export(model, outputPath, baseName, new OBJExportOptions());
                 return $"Wrote OBJ output to {outputPath}";
+
+            case "glb":
+            case "gltf":
+                Directory.CreateDirectory(outputPath);
+                new GLTFExporter().Export(
+                    model,
+                    outputPath,
+                    baseName,
+                    new GLTFExportOptions(settings.OutputFormat is "glb"));
+                return $"Wrote {(settings.OutputFormat is "glb" ? "GLB" : "glTF")} output to {outputPath}";
 
             case "source":
             case "mdl":
@@ -475,16 +501,17 @@ internal sealed class MainForm : Form
     private static string RequireInputFile(string path, string inputFormat)
     {
         var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
-        var extension = $".{inputFormat}";
+        var extension = Path.GetExtension(fullPath);
+        var allowedExtensions = inputFormat is "psk" ? [".psk", ".pskx"] : new[] { $".{inputFormat}" };
 
         if (!File.Exists(fullPath))
         {
             throw new GMConverterException($"File not found: {fullPath}");
         }
 
-        if (!string.Equals(Path.GetExtension(fullPath), extension, StringComparison.OrdinalIgnoreCase))
+        if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
-            throw new GMConverterException($"Expected a {extension} file: {fullPath}");
+            throw new GMConverterException($"Expected a {string.Join(" or ", allowedExtensions)} file: {fullPath}");
         }
 
         return fullPath;
@@ -525,6 +552,43 @@ internal sealed class MainForm : Form
             new CoacdOptions(settings.CoacdThreshold, settings.MaxConvexPieces, settings.MaxHullVertices));
     }
 
+    private static MaterialResolveOptions? CreateMaterialResolveOptions(string? materialDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(materialDirectory))
+        {
+            return null;
+        }
+
+        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(materialDirectory));
+        if (!Directory.Exists(fullPath))
+        {
+            throw new GMConverterException($"Material directory not found: {fullPath}");
+        }
+
+        return new MaterialResolveOptions(fullPath);
+    }
+
+    private static string? CreateAnimationPath(string? animationPath)
+    {
+        if (string.IsNullOrWhiteSpace(animationPath))
+        {
+            return null;
+        }
+
+        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(animationPath));
+        if (!File.Exists(fullPath))
+        {
+            throw new GMConverterException($"Animation file not found: {fullPath}");
+        }
+
+        if (!string.Equals(Path.GetExtension(fullPath), ".psa", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new GMConverterException($"Expected a .psa animation file: {fullPath}");
+        }
+
+        return fullPath;
+    }
+
     private static string SanitizePathToken(string value)
     {
         return string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? char.ToLowerInvariant(c) : '_')).Trim('_');
@@ -562,6 +626,7 @@ internal sealed class MainForm : Form
             var inputFormat = SelectedText(_inputFormatBox);
             var scale = (float)_scaleBox.Value;
             var axisMode = NormalizeAxisMode(SelectedText(_axisModeBox));
+            var materialOptions = CreateMaterialResolveOptions(EmptyToNull(_materialDirectoryBox.Text));
             var showPhysics = _previewPhysicsBox.Enabled && _previewPhysicsBox.Checked;
             var physicsOptions = showPhysics
                 ? new PreviewPhysicsOptions(
@@ -575,7 +640,7 @@ internal sealed class MainForm : Form
             var result = await Task.Run(() =>
             {
                 var importer = CreateImporter(inputFormat);
-                var model = importer.Parse(inputPath, new ModelParseOptions(scale, axisMode));
+                var model = importer.Parse(inputPath, new ModelParseOptions(scale, axisMode, materialOptions));
                 var physicsMeshes = physicsOptions is null ? [] : BuildPhysicsPreviewMeshes(model, physicsOptions);
                 return new PreviewLoadResult(model, physicsMeshes);
             });
@@ -657,6 +722,7 @@ internal sealed class MainForm : Form
         {
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
+            "psk" => new PSKImporter(),
             _ => throw new InvalidOperationException($"Unsupported input format: {inputFormat}")
         };
     }
@@ -665,7 +731,18 @@ internal sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Supported model files (*.opt;*.mdl)|*.opt;*.mdl|OPT files (*.opt)|*.opt|MDL files (*.mdl)|*.mdl|All files (*.*)|*.*",
+            Filter = "Supported model files (*.opt;*.mdl;*.psk;*.pskx)|*.opt;*.mdl;*.psk;*.pskx|OPT files (*.opt)|*.opt|MDL files (*.mdl)|*.mdl|PSK files (*.psk;*.pskx)|*.psk;*.pskx|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        return dialog.ShowDialog() == DialogResult.OK ? dialog.FileName : null;
+    }
+
+    private static string? BrowseAnimationFile()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "PSA animation files (*.psa)|*.psa|All files (*.*)|*.*",
             CheckFileExists = true
         };
 
@@ -814,6 +891,8 @@ internal sealed class MainForm : Form
         string? ModelPath,
         string? GameDirectory,
         string? EngineDirectory,
+        string? MaterialDirectory,
+        string? AnimationPath,
         float ScaleFactor,
         ModelAxisMode AxisMode,
         bool BuildMaterials,

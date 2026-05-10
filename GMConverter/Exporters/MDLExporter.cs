@@ -28,6 +28,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         var smdPath = Path.Combine(outputDirectory, $"{safeBaseName}.smd");
         var physicsSmdPath =
             physicsOptions is null ? null : Path.Combine(outputDirectory, $"{safeBaseName}_phys.smd");
+        var animationSmdPaths = GetAnimationSmdPaths(model, outputDirectory, safeBaseName);
         var qcPath = Path.Combine(outputDirectory, $"{safeBaseName}.qc");
         var materialRoot = Path.Combine(outputDirectory, "materials");
         var materialRelativeDirectories = GetMaterialDirectories(model, modelPath);
@@ -43,7 +44,12 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             WritePhysicsSmd(model, physicsSmdPath, physicsOptions!);
         }
 
-        WriteQc(qcPath, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions);
+        foreach (var (clip, animationSmdPath) in animationSmdPaths)
+        {
+            WriteAnimationSmd(model, clip, animationSmdPath);
+        }
+
+        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths);
         ExportSourceMaterials(model, materialDirectory, materialRelativeDirectory);
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
@@ -98,13 +104,8 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
     {
         using var writer = new StreamWriter(smdPath, false, Utf8NoBom);
         writer.WriteLine("version 1");
-        writer.WriteLine("nodes");
-        writer.WriteLine("0 \"root\" -1");
-        writer.WriteLine("end");
-        writer.WriteLine("skeleton");
-        writer.WriteLine("time 0");
-        writer.WriteLine("0 0 0 0 0 0 0");
-        writer.WriteLine("end");
+        WriteSmdNodes(writer, model.Skeleton);
+        WriteReferenceSkeleton(writer, model.Skeleton);
         writer.WriteLine("triangles");
 
         foreach (var mesh in model.Meshes)
@@ -131,9 +132,40 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         var position = vertex.Position;
         var normal = vertex.Normal;
         var uv = vertex.TextureCoordinate;
+        var weights = NormalizeSmdWeights(vertex.BoneWeights);
+        var parentBoneIndex = weights.Length == 0 ? 0 : weights[0].BoneIndex;
+        var weightText = weights.Length == 0
+            ? string.Empty
+            : " " + weights.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+              string.Concat(weights.Select(weight => FormattableString.Invariant($" {weight.BoneIndex} {weight.Weight:0.######}")));
 
         writer.WriteLine(FormattableString.Invariant(
-            $"0 {position.X:0.######} {position.Y:0.######} {position.Z:0.######} {normal.X:0.######} {normal.Y:0.######} {normal.Z:0.######} {uv.X:0.######} {uv.Y:0.######}"));
+            $"{parentBoneIndex} {position.X:0.######} {position.Y:0.######} {position.Z:0.######} {normal.X:0.######} {normal.Y:0.######} {normal.Z:0.######} {uv.X:0.######} {uv.Y:0.######}{weightText}"));
+    }
+
+    private static VertexBoneWeight[] NormalizeSmdWeights(IReadOnlyList<VertexBoneWeight>? weights)
+    {
+        var validWeights = weights?
+            .Where(weight => weight.BoneIndex >= 0 && weight.Weight > 0.0f)
+            .GroupBy(weight => weight.BoneIndex)
+            .Select(group => new VertexBoneWeight(group.Key, group.Sum(weight => weight.Weight)))
+            .OrderByDescending(weight => weight.Weight)
+            .ToArray();
+
+        if (validWeights is not { Length: > 0 })
+        {
+            return [];
+        }
+
+        var totalWeight = validWeights.Sum(weight => weight.Weight);
+        if (totalWeight <= 0.000001f)
+        {
+            return [];
+        }
+
+        return validWeights
+            .Select(weight => new VertexBoneWeight(weight.BoneIndex, weight.Weight / totalWeight))
+            .ToArray();
     }
 
     private void WritePhysicsSmd(Model model, string physicsSmdPath, PhysicsOptions physicsOptions)
@@ -231,13 +263,8 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
     {
         var writer = new StreamWriter(physicsSmdPath, false, Utf8NoBom);
         writer.WriteLine("version 1");
-        writer.WriteLine("nodes");
-        writer.WriteLine("0 \"root\" -1");
-        writer.WriteLine("end");
-        writer.WriteLine("skeleton");
-        writer.WriteLine("time 0");
-        writer.WriteLine("0 0 0 0 0 0 0");
-        writer.WriteLine("end");
+        WriteSmdNodes(writer, null);
+        WriteReferenceSkeleton(writer, null);
         writer.WriteLine("triangles");
         return writer;
     }
@@ -287,11 +314,13 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
     private static void WriteQc(
         string qcPath,
+        Model model,
         string modelPath,
         string safeBaseName,
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
-        PhysicsOptions? physicsOptions)
+        PhysicsOptions? physicsOptions,
+        IReadOnlyList<(AnimationClip Clip, string SmdPath)> animationSmdPaths)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, Utf8NoBom);
@@ -302,9 +331,24 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         {
             writer.WriteLine(FormattableString.Invariant($"$cdmaterials \"{materialRelativeDirectory.Replace('\\', '/')}\""));
         }
-        writer.WriteLine("$staticprop");
+
+        if (model.Skeleton is null && animationSmdPaths.Count == 0)
+        {
+            writer.WriteLine("$staticprop");
+        }
+
         writer.WriteLine("$surfaceprop \"metal\"");
+
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
+
+        if (animationSmdPaths.Count > 0)
+        {
+            foreach (var (clip, animationSmdPath) in animationSmdPaths)
+            {
+                writer.WriteLine(FormattableString.Invariant(
+                    $"$sequence \"{EscapeQcString(clip.Name)}\" \"{Path.GetFileName(animationSmdPath)}\" fps {clip.FrameRate:0.######}"));
+            }
+        }
 
         if (physicsSmdPath is not null)
         {
@@ -321,6 +365,148 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
     }
 
+    private static IReadOnlyList<(AnimationClip Clip, string SmdPath)> GetAnimationSmdPaths(
+        Model model,
+        string outputDirectory,
+        string safeBaseName)
+    {
+        if (model.Skeleton is null || model.Animations is not { Count: > 0 })
+        {
+            return [];
+        }
+
+        return model.Animations
+            .Where(clip => clip.Tracks.OfType<BoneTransformTrack>().Any())
+            .Select((clip, index) => (
+                clip,
+                Path.Combine(outputDirectory, $"{safeBaseName}_{index}_{NameHelpers.SanitizeFileName(clip.Name)}.smd")))
+            .ToArray();
+    }
+
+    private static void WriteAnimationSmd(Model model, AnimationClip clip, string smdPath)
+    {
+        if (model.Skeleton is null)
+        {
+            return;
+        }
+
+        using var writer = new StreamWriter(smdPath, false, Utf8NoBom);
+        writer.WriteLine("version 1");
+        WriteSmdNodes(writer, model.Skeleton);
+        writer.WriteLine("skeleton");
+
+        var tracksByBone = clip.Tracks
+            .OfType<BoneTransformTrack>()
+            .GroupBy(track => track.BoneIndex)
+            .ToDictionary(group => group.Key, group => group.First());
+        var frameCount = Math.Max(1, tracksByBone.Values.Select(track => track.Keyframes.Count).DefaultIfEmpty(1).Max());
+
+        for (var frameIndex = 0; frameIndex < frameCount; frameIndex++)
+        {
+            writer.WriteLine(FormattableString.Invariant($"time {frameIndex}"));
+            foreach (var bone in model.Skeleton.Bones.OrderBy(bone => bone.Index))
+            {
+                var transform = GetFrameTransform(bone, tracksByBone.GetValueOrDefault(bone.Index), frameIndex);
+                WriteSmdBoneTransform(writer, bone.Index, transform);
+            }
+        }
+
+        writer.WriteLine("end");
+    }
+
+    private static Transform GetFrameTransform(Bone bone, BoneTransformTrack? track, int frameIndex)
+    {
+        if (track is null || track.Keyframes.Count == 0)
+        {
+            return bone.LocalBindPose;
+        }
+
+        return track.Keyframes[Math.Min(frameIndex, track.Keyframes.Count - 1)].Transform;
+    }
+
+    private static void WriteSmdNodes(StreamWriter writer, Skeleton? skeleton)
+    {
+        writer.WriteLine("nodes");
+
+        if (skeleton is null || skeleton.Bones.Count == 0)
+        {
+            writer.WriteLine("0 \"root\" -1");
+        }
+        else
+        {
+            foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))
+            {
+                writer.WriteLine(FormattableString.Invariant(
+                    $"{bone.Index} \"{EscapeSmdString(bone.Name)}\" {bone.ParentIndex}"));
+            }
+        }
+
+        writer.WriteLine("end");
+    }
+
+    private static void WriteReferenceSkeleton(StreamWriter writer, Skeleton? skeleton)
+    {
+        writer.WriteLine("skeleton");
+        writer.WriteLine("time 0");
+
+        if (skeleton is null || skeleton.Bones.Count == 0)
+        {
+            writer.WriteLine("0 0 0 0 0 0 0");
+        }
+        else
+        {
+            foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))
+            {
+                WriteSmdBoneTransform(writer, bone.Index, bone.LocalBindPose);
+            }
+        }
+
+        writer.WriteLine("end");
+    }
+
+    private static void WriteSmdBoneTransform(StreamWriter writer, int boneIndex, Transform transform)
+    {
+        var rotation = ToEulerRadians(transform.Rotation);
+        var translation = transform.Translation;
+        writer.WriteLine(FormattableString.Invariant(
+            $"{boneIndex} {translation.X:0.######} {translation.Y:0.######} {translation.Z:0.######} {rotation.X:0.######} {rotation.Y:0.######} {rotation.Z:0.######}"));
+    }
+
+    private static Vector3 ToEulerRadians(Quaternion rotation)
+    {
+        rotation = NormalizeQuaternion(rotation);
+
+        var sinrCosp = 2.0 * (rotation.W * rotation.X + rotation.Y * rotation.Z);
+        var cosrCosp = 1.0 - 2.0 * (rotation.X * rotation.X + rotation.Y * rotation.Y);
+        var x = Math.Atan2(sinrCosp, cosrCosp);
+
+        var sinp = 2.0 * (rotation.W * rotation.Y - rotation.Z * rotation.X);
+        var y = Math.Abs(sinp) >= 1.0
+            ? Math.CopySign(Math.PI / 2.0, sinp)
+            : Math.Asin(sinp);
+
+        var sinyCosp = 2.0 * (rotation.W * rotation.Z + rotation.X * rotation.Y);
+        var cosyCosp = 1.0 - 2.0 * (rotation.Y * rotation.Y + rotation.Z * rotation.Z);
+        var z = Math.Atan2(sinyCosp, cosyCosp);
+
+        return new Vector3((float)x, (float)y, (float)z);
+    }
+
+    private static Quaternion NormalizeQuaternion(Quaternion rotation)
+    {
+        return rotation.LengthSquared() <= 0.000001f ? Quaternion.Identity : Quaternion.Normalize(rotation);
+    }
+
+    private static string EscapeSmdString(string value)
+    {
+        return value.Replace("\"", "'", StringComparison.Ordinal);
+    }
+
+    private static string EscapeQcString(string value)
+    {
+        return value.Replace("\"", "'", StringComparison.Ordinal);
+    }
+
     private void ExportSourceMaterials(Model model, string materialDirectory, string materialRelativeDirectory)
     {
         foreach (var material in model.Materials)
@@ -335,11 +521,17 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             var sourceTexturePath = $"{materialRelativeDirectory}/{material.Name}".Replace('\\', '/');
 
             material.DiffuseTexture.WritePng(pngPath);
+            material.NormalTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
 
             using var writer = new StreamWriter(vmtPath, false, Utf8NoBom);
             writer.WriteLine("\"VertexLitGeneric\"");
             writer.WriteLine("{");
             writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{sourceTexturePath}\""));
+
+            if (material.NormalTexture is not null)
+            {
+                writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{sourceTexturePath}_normal\""));
+            }
 
             if (material.HasAlpha)
             {

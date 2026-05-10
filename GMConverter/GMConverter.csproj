@@ -39,6 +39,7 @@
       <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="14.13.0" />
       <PackageReference Include="MdlCrowbar" Version="0.74.1" />
       <PackageReference Include="ObjParser" Version="0.1.0" />
+      <PackageReference Include="SharpGLTF.Toolkit" Version="1.0.6" />
     </ItemGroup>
 
     <ItemGroup>

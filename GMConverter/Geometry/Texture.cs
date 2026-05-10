@@ -10,6 +10,13 @@ internal sealed class Texture(string name, MagickImage image, bool hasAlpha = fa
 
     public bool HasAlpha { get; } = hasAlpha;
 
+    public byte[] ToPngBytes()
+    {
+        using var output = (MagickImage)image.Clone();
+        output.Format = MagickFormat.Png;
+        return output.ToByteArray();
+    }
+
     public void WritePng(string path)
     {
         Write(path, MagickFormat.Png);

@@ -8,6 +8,4 @@ internal sealed record Mesh(IReadOnlyList<Vertex> Vertices, IReadOnlyList<Submes
     public IEnumerable<Vector3> Positions => Vertices.Select(vertex => vertex.Position);
 }
 
-internal sealed record Vertex(Vector3 Position, Vector3 Normal, Vector2 TextureCoordinate);
-
 internal sealed record Submesh(string? MaterialName, IReadOnlyList<Triangle> Triangles);

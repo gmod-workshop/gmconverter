@@ -1,5 +1,7 @@
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using GMConverter.Geometry;
 using Bounds = GMConverter.Geometry.Bounds;
 
@@ -153,8 +155,16 @@ internal sealed class PreviewViewport : Control
 
         foreach (var triangle in projected)
         {
-            using var fill = new SolidBrush(triangle.Color);
-            graphics.FillPolygon(fill, triangle.Points);
+            if (triangle.Texture is null)
+            {
+                using var fill = new SolidBrush(triangle.Color);
+                graphics.FillPolygon(fill, triangle.Points);
+            }
+            else
+            {
+                DrawTexturedTriangle(graphics, triangle);
+            }
+
             graphics.DrawPolygon(edgePen, triangle.Points);
         }
     }
@@ -358,7 +368,12 @@ internal sealed class PreviewViewport : Control
                 ToScreen(c, fit)
             ],
             depth,
-            Shade(triangle.Color, light));
+            Shade(triangle.Color, light),
+            triangle.UvA,
+            triangle.UvB,
+            triangle.UvC,
+            triangle.Texture,
+            light);
     }
 
     private PointF ProjectPoint(Vector3 point, Matrix4x4 transform, ViewFit fit)
@@ -509,6 +524,98 @@ internal sealed class PreviewViewport : Control
             Math.Clamp((int)(color.B * light), 0, 255));
     }
 
+    private static void DrawTexturedTriangle(Graphics graphics, ProjectedTriangle triangle)
+    {
+        var bounds = Rectangle.Ceiling(GetBounds(triangle.Points));
+        bounds.Intersect(Rectangle.Ceiling(graphics.VisibleClipBounds));
+
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return;
+        }
+
+        using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+        var pixels = new int[bounds.Width * bounds.Height];
+        var p0 = triangle.Points[0];
+        var p1 = triangle.Points[1];
+        var p2 = triangle.Points[2];
+        var denominator =
+            (p1.Y - p2.Y) * (p0.X - p2.X) +
+            (p2.X - p1.X) * (p0.Y - p2.Y);
+
+        if (Math.Abs(denominator) <= 0.000001f)
+        {
+            return;
+        }
+
+        var texture = triangle.Texture!;
+
+        for (var localY = 0; localY < bounds.Height; localY++)
+        {
+            var y = bounds.Top + localY + 0.5f;
+
+            for (var localX = 0; localX < bounds.Width; localX++)
+            {
+                var x = bounds.Left + localX + 0.5f;
+                var w0 = ((p1.Y - p2.Y) * (x - p2.X) + (p2.X - p1.X) * (y - p2.Y)) / denominator;
+                var w1 = ((p2.Y - p0.Y) * (x - p2.X) + (p0.X - p2.X) * (y - p2.Y)) / denominator;
+                var w2 = 1.0f - w0 - w1;
+
+                if (w0 < -0.0001f || w1 < -0.0001f || w2 < -0.0001f)
+                {
+                    continue;
+                }
+
+                var uv = triangle.UvA * w0 + triangle.UvB * w1 + triangle.UvC * w2;
+                var sample = texture.Sample(uv.X, uv.Y);
+                pixels[localY * bounds.Width + localX] = ShadeSample(sample, triangle.Light).ToArgb();
+            }
+        }
+
+        var data = bitmap.LockBits(
+            new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+            ImageLockMode.WriteOnly,
+            PixelFormat.Format32bppArgb);
+
+        try
+        {
+            Marshal.Copy(pixels, 0, data.Scan0, pixels.Length);
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+
+        graphics.DrawImageUnscaled(bitmap, bounds.Location);
+    }
+
+    private static RectangleF GetBounds(IReadOnlyList<PointF> points)
+    {
+        var minX = points[0].X;
+        var minY = points[0].Y;
+        var maxX = points[0].X;
+        var maxY = points[0].Y;
+
+        foreach (var point in points.Skip(1))
+        {
+            minX = Math.Min(minX, point.X);
+            minY = Math.Min(minY, point.Y);
+            maxX = Math.Max(maxX, point.X);
+            maxY = Math.Max(maxY, point.Y);
+        }
+
+        return RectangleF.FromLTRB(minX, minY, maxX, maxY);
+    }
+
+    private static Color ShadeSample(Color color, float light)
+    {
+        return Color.FromArgb(
+            color.A,
+            Math.Clamp((int)(color.R * light), 0, 255),
+            Math.Clamp((int)(color.G * light), 0, 255),
+            Math.Clamp((int)(color.B * light), 0, 255));
+    }
+
     private void DrawCenteredText(Graphics graphics, string text)
     {
         using var brush = new SolidBrush(ForeColor);
@@ -532,7 +639,13 @@ internal sealed class PreviewViewport : Control
         {
             var modelBounds = model.Bounds();
             var referenceRuler = ReferenceRuler.Create(modelBounds);
-            var triangles = BuildTriangles(model.Meshes, materialColors: true);
+            var textures = model.Materials
+                .Where(material => material.DiffuseTexture is not null)
+                .ToDictionary(
+                    material => material.Name,
+                    material => PreviewTexture.From(material.DiffuseTexture!),
+                    StringComparer.OrdinalIgnoreCase);
+            var triangles = BuildTriangles(model.Meshes, materialColors: true, textures);
             var physicsTriangles = BuildTriangles(physicsMeshes, materialColors: false);
             var fitPoints = model.Meshes
                 .SelectMany(mesh => mesh.Positions)
@@ -547,7 +660,10 @@ internal sealed class PreviewViewport : Control
                 (modelBounds.Min + modelBounds.Max) / 2.0f);
         }
 
-        private static PreviewTriangle[] BuildTriangles(IEnumerable<Mesh> meshes, bool materialColors)
+        private static PreviewTriangle[] BuildTriangles(
+            IEnumerable<Mesh> meshes,
+            bool materialColors,
+            IReadOnlyDictionary<string, PreviewTexture>? textures = null)
         {
             return meshes
                 .SelectMany((mesh, meshIndex) => mesh.Submeshes.SelectMany(submesh =>
@@ -555,10 +671,17 @@ internal sealed class PreviewViewport : Control
                     var color = materialColors
                         ? MaterialColor(submesh.MaterialName)
                         : PhysicsColor(meshIndex);
+                    var texture = submesh.MaterialName is not null && textures?.TryGetValue(submesh.MaterialName, out var resolvedTexture) == true
+                        ? resolvedTexture
+                        : null;
                     return submesh.Triangles.Select(triangle => new PreviewTriangle(
                         mesh.Vertices[triangle.A].Position,
                         mesh.Vertices[triangle.B].Position,
                         mesh.Vertices[triangle.C].Position,
+                        mesh.Vertices[triangle.A].TextureCoordinate,
+                        mesh.Vertices[triangle.B].TextureCoordinate,
+                        mesh.Vertices[triangle.C].TextureCoordinate,
+                        texture,
                         color));
                 }))
                 .ToArray();
@@ -627,7 +750,79 @@ internal sealed class PreviewViewport : Control
 
     private sealed record ViewFit(Rectangle Viewport, float Scale, PointF Offset);
 
-    private sealed record PreviewTriangle(Vector3 A, Vector3 B, Vector3 C, Color Color);
+    private sealed record PreviewTriangle(
+        Vector3 A,
+        Vector3 B,
+        Vector3 C,
+        Vector2 UvA,
+        Vector2 UvB,
+        Vector2 UvC,
+        PreviewTexture? Texture,
+        Color Color);
 
-    private sealed record ProjectedTriangle(PointF[] Points, float Depth, Color Color);
+    private sealed record ProjectedTriangle(
+        PointF[] Points,
+        float Depth,
+        Color Color,
+        Vector2 UvA,
+        Vector2 UvB,
+        Vector2 UvC,
+        PreviewTexture? Texture,
+        float Light);
+
+    private sealed class PreviewTexture
+    {
+        private readonly int[] _pixels;
+
+        private PreviewTexture(int width, int height, int[] pixels)
+        {
+            Width = width;
+            Height = height;
+            _pixels = pixels;
+        }
+
+        public int Width { get; }
+
+        public int Height { get; }
+
+        public static PreviewTexture From(Texture texture)
+        {
+            using var stream = new MemoryStream(texture.ToPngBytes());
+            using var source = new Bitmap(stream);
+            using var bitmap = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.DrawImageUnscaled(source, 0, 0);
+            }
+
+            var data = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format32bppArgb);
+            var pixels = new int[bitmap.Width * bitmap.Height];
+
+            try
+            {
+                Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
+            }
+            finally
+            {
+                bitmap.UnlockBits(data);
+            }
+
+            return new PreviewTexture(bitmap.Width, bitmap.Height, pixels);
+        }
+
+        public Color Sample(float u, float v)
+        {
+            var x = Math.Clamp((int)(Wrap(u) * (Width - 1)), 0, Width - 1);
+            var y = Math.Clamp((int)(Wrap(v) * (Height - 1)), 0, Height - 1);
+            return Color.FromArgb(_pixels[y * Width + x]);
+        }
+
+        private static float Wrap(float value)
+        {
+            return value - MathF.Floor(value);
+        }
+    }
 }

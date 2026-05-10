@@ -37,8 +37,8 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: opt, mdl.");
-        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: info, obj, source, mdl.");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: opt, mdl, psk.");
+        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: info, obj, glb, gltf, source, mdl.");
         var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
         var outputPathOption = new Option<string>("--output-path")
         {
@@ -59,6 +59,14 @@ internal static class Program
         var engineDirectoryOption = new Option<string>("--engine-dir")
         {
             Description = "Optional Source engine root override."
+        };
+        var materialDirectoryOption = new Option<string>("--material-dir")
+        {
+            Description = "Optional directory to search recursively for sidecar materials and textures."
+        };
+        var animationPathOption = new Option<string>("--animation-path")
+        {
+            Description = "Optional PSA animation file to import alongside a PSK/PSKX mesh."
         };
         var scaleOption = new Option<float>("--scale")
         {
@@ -117,6 +125,8 @@ internal static class Program
             modelPathOption,
             gameDirectoryOption,
             engineDirectoryOption,
+            materialDirectoryOption,
+            animationPathOption,
             scaleOption,
             noScaleOption,
             axisModeOption,
@@ -138,6 +148,8 @@ internal static class Program
             modelPath: parseResult.GetValue(modelPathOption),
             gameDirectory: parseResult.GetValue(gameDirectoryOption),
             engineDirectory: parseResult.GetValue(engineDirectoryOption),
+            materialDirectory: parseResult.GetValue(materialDirectoryOption),
+            animationPath: parseResult.GetValue(animationPathOption),
             scaleFactor: parseResult.GetValue(scaleOption),
             noScale: parseResult.GetValue(noScaleOption),
             axisModeText: parseResult.GetValue(axisModeOption),
@@ -161,6 +173,8 @@ internal static class Program
         string? modelPath,
         string? gameDirectory,
         string? engineDirectory,
+        string? materialDirectory,
+        string? animationPath,
         float scaleFactor,
         bool noScale,
         string? axisModeText,
@@ -176,9 +190,13 @@ internal static class Program
         outputFormat = NormalizeFormat(outputFormat, "output-format");
 
         var importer = GetImporter(inputFormat);
-        var fullInputPath = RequireFile(inputPath, $".{inputFormat}");
+        var fullInputPath = RequireInputFile(inputPath, inputFormat);
         baseName ??= Path.GetFileNameWithoutExtension(fullInputPath);
-        var parseOptions = new ModelParseOptions(GetScaleFactor(scaleFactor, noScale), NormalizeAxisMode(axisModeText));
+        var parseOptions = new ModelParseOptions(
+            GetScaleFactor(scaleFactor, noScale),
+            NormalizeAxisMode(axisModeText),
+            CreateMaterialResolveOptions(materialDirectory),
+            CreateAnimationPath(animationPath));
 
         switch (outputFormat)
         {
@@ -188,6 +206,15 @@ internal static class Program
 
             case "obj":
                 RunObj(importer.Parse(fullInputPath, parseOptions), RequireOutputPath(outputPath, outputFormat), baseName);
+                return 0;
+
+            case "glb":
+            case "gltf":
+                RunGltf(
+                    importer.Parse(fullInputPath, parseOptions),
+                    RequireOutputPath(outputPath, outputFormat),
+                    baseName,
+                    outputFormat is "glb");
                 return 0;
 
             case "source":
@@ -204,7 +231,7 @@ internal static class Program
                 return 0;
 
             default:
-                throw new ArgumentException("Option --output-format must be 'info', 'obj', 'source', or 'mdl'.");
+                throw new ArgumentException("Option --output-format must be 'info', 'obj', 'glb', 'gltf', 'source', or 'mdl'.");
         }
     }
 
@@ -214,6 +241,14 @@ internal static class Program
 
         Console.WriteLine($"Writing OBJ output to {outputDirectory}");
         new OBJExporter().Export(model, outputDirectory, baseName, new OBJExportOptions());
+    }
+
+    private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary)
+    {
+        Directory.CreateDirectory(outputDirectory);
+
+        Console.WriteLine($"Writing {(binary ? "GLB" : "glTF")} output to {outputDirectory}");
+        new GLTFExporter().Export(model, outputDirectory, baseName, new GLTFExportOptions(binary));
     }
 
     private static void RunMdl(
@@ -242,7 +277,8 @@ internal static class Program
         {
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
-            _ => throw new ArgumentException("Option --input-format must be 'opt' or 'mdl'.")
+            "psk" => new PSKImporter(),
+            _ => throw new ArgumentException("Option --input-format must be 'opt', 'mdl', or 'psk'.")
         };
     }
 
@@ -265,7 +301,7 @@ internal static class Program
         return value.Trim().ToLowerInvariant();
     }
 
-    private static string RequireFile(string path, string extension)
+    private static string RequireInputFile(string path, string inputFormat)
     {
         var fullPath = FullPath(path);
 
@@ -274,9 +310,12 @@ internal static class Program
             throw new ArgumentException($"File not found: {fullPath}");
         }
 
-        if (!string.Equals(Path.GetExtension(fullPath), extension, StringComparison.OrdinalIgnoreCase))
+        var extension = Path.GetExtension(fullPath);
+        var allowedExtensions = inputFormat is "psk" ? [".psk", ".pskx"] : new[] { $".{inputFormat}" };
+
+        if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
-            throw new ArgumentException($"Expected a {extension} file: {fullPath}");
+            throw new ArgumentException($"Expected a {string.Join(" or ", allowedExtensions)} file: {fullPath}");
         }
 
         return fullPath;
@@ -343,6 +382,43 @@ internal static class Program
         }
 
         return new PhysicsOptions(mode, mass, new CoacdOptions(threshold, maxConvexPieces, maxHullVertices));
+    }
+
+    private static MaterialResolveOptions? CreateMaterialResolveOptions(string? materialDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(materialDirectory))
+        {
+            return null;
+        }
+
+        var fullPath = FullPath(materialDirectory);
+        if (!Directory.Exists(fullPath))
+        {
+            throw new ArgumentException($"Material directory not found: {fullPath}");
+        }
+
+        return new MaterialResolveOptions(fullPath);
+    }
+
+    private static string? CreateAnimationPath(string? animationPath)
+    {
+        if (string.IsNullOrWhiteSpace(animationPath))
+        {
+            return null;
+        }
+
+        var fullPath = FullPath(animationPath);
+        if (!File.Exists(fullPath))
+        {
+            throw new ArgumentException($"Animation file not found: {fullPath}");
+        }
+
+        if (!string.Equals(Path.GetExtension(fullPath), ".psa", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Expected a .psa animation file: {fullPath}");
+        }
+
+        return fullPath;
     }
 
     private static PhysicsMode NormalizePhysicsMode(string? physicsModeText)

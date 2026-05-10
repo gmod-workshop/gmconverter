@@ -42,6 +42,16 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
 
             material.DiffuseTexture.WriteTga(tgaPath);
             RunVtex(tgaPath);
+
+            if (material.NormalTexture is not null)
+            {
+                var normalName = $"{material.Name}_normal";
+                var normalPath = Path.Combine(materialSourceDirectory, $"{normalName}.tga");
+
+                material.NormalTexture.WriteTga(normalPath);
+                RunVtex(normalPath);
+            }
+
             WriteVmt(vmtPath, baseTexturePath, material);
 
             if (material.EmissiveTexture is not null)
@@ -66,6 +76,11 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
         writer.WriteLine("\"VertexLitGeneric\"");
         writer.WriteLine("{");
         writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{baseTexturePath}\""));
+
+        if (material.NormalTexture is not null)
+        {
+            writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{baseTexturePath}_normal\""));
+        }
 
         if (material.HasAlpha)
         {

@@ -5,7 +5,9 @@ namespace GMConverter.Geometry;
 internal sealed record Model(
     string Name,
     IReadOnlyList<Mesh> Meshes,
-    IReadOnlyList<Material> Materials)
+    IReadOnlyList<Material> Materials,
+    Skeleton? Skeleton = null,
+    IReadOnlyList<AnimationClip>? Animations = null)
 {
     public IReadOnlyList<Texture> Textures => Materials
         .SelectMany(material => material.Textures)

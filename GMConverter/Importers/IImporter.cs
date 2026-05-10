@@ -12,7 +12,13 @@ internal interface IImporter
     Model Parse(string inputPath, ModelParseOptions options);
 }
 
-internal sealed record ModelParseOptions(float ScaleFactor, ModelAxisMode AxisMode = ModelAxisMode.Auto);
+internal sealed record ModelParseOptions(
+    float ScaleFactor,
+    ModelAxisMode AxisMode = ModelAxisMode.Auto,
+    MaterialResolveOptions? Materials = null,
+    string? AnimationPath = null);
+
+internal sealed record MaterialResolveOptions(string SearchDirectory);
 
 internal enum ModelAxisMode
 {
@@ -40,6 +46,16 @@ internal static class ModelAxisTransforms
             ResolvedModelAxisMode.ZUp => normal,
             ResolvedModelAxisMode.YUp => new Vector3(normal.X, normal.Z, normal.Y),
             _ => normal
+        };
+    }
+
+    public static Vector3 TransformScale(Vector3 scale, ModelAxisMode axisMode, string inputFormat)
+    {
+        return Resolve(axisMode, inputFormat) switch
+        {
+            ResolvedModelAxisMode.ZUp => scale,
+            ResolvedModelAxisMode.YUp => new Vector3(scale.X, scale.Z, scale.Y),
+            _ => scale
         };
     }
 

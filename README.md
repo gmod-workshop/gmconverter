@@ -28,6 +28,9 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
   --model-path "gmconverter/bactadispenserras.mdl"
 ```
 
+<details>
+<summary>CLI Options</summary>
+
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
 | `--input-format <format>` | Input format: `opt`, `mdl`, or `psk`. | `--input-format psk` | Required |
@@ -51,6 +54,8 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `--max-convex-pieces <count>` | Maximum CoACD convex hull count. Use `-1` for no limit. | `--max-convex-pieces 16` | `32` |
 | `--coacd-max-hull-vertices <count>` | Maximum vertices per CoACD hull. | `--coacd-max-hull-vertices 32` | `32` |
 
+</details>
+
 ## GUI
 
 `GMConverter.GUI` provides a simple Windows frontend for the same conversion library. Build the solution and run:
@@ -59,7 +64,12 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 ./GMConverter.GUI
 ```
 
-The GUI calls the converter library directly and streams library logs into the output panel.
+<details>
+<summary>GUI Preview</summary>
+
+![GUI Preview](https://i.imgur.com/X0HBj7g.png)
+
+</details>
 
 ## Format Details
 

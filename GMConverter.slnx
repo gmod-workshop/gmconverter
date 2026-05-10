@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="GMConverter/GMConverter.csproj" />
+  <Project Path="GMConverter.CLI/GMConverter.CLI.csproj" />
+  <Project Path="GMConverter.GUI/GMConverter.GUI.csproj" />
+</Solution>

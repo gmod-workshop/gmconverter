@@ -9,11 +9,14 @@ All notable changes to this project will be documented in this file.
 - Added importer logging support through `ILoggerFactory`, with CLI console logging and GUI log-box routing.
 - Added Men of War warnings for missing materials, textures, and animation files.
 - Added support for recursive MOW texture lookup through `--material-dir`.
+- Added Source Engine Phong mask output from imported specular textures such as MOW `_sp` maps.
 
 ### Changed
 
 - Hardened MOW bone name handling for joint-typed bone declarations such as `revolute`.
 - Improved MOW texture resolution for shared texture references by matching indexed texture basenames.
+- Use MOW `metal`, `wood`, and `concrete` props to emit Source Engine material surface props.
+- Use MOW `metal` props to choose a stronger Source Engine Phong material profile.
 
 ### Fixed
 

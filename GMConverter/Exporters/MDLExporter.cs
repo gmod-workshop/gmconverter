@@ -601,7 +601,15 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             var vmtPath = Path.Combine(materialDirectory, $"{material.Name}.vmt");
             var sourceTexturePath = $"{materialRelativeDirectory}/{material.Name}".Replace('\\', '/');
 
-            material.DiffuseTexture.WritePng(pngPath);
+            if (UseSourcePhong(material))
+            {
+                material.DiffuseTexture.WritePng(pngPath, material.SpecularTexture!);
+            }
+            else
+            {
+                material.DiffuseTexture.WritePng(pngPath);
+            }
+
             material.NormalTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
             material.SpecularTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
 
@@ -610,6 +618,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             writer.WriteLine("{");
             writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{sourceTexturePath}\""));
             writer.WriteLine("    \"$nocull\" \"1\"");
+            WriteSurfaceProp(writer, material);
 
             if (material.NormalTexture is not null)
             {
@@ -618,7 +627,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
             if (UseSourcePhong(material))
             {
-                WritePhongParameters(writer, $"{sourceTexturePath}_spec");
+                WritePhongParameters(writer, $"{sourceTexturePath}_spec", material);
             }
             else if (material.HasAlpha)
             {
@@ -637,6 +646,15 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
     }
 
+    private static void WriteSurfaceProp(StreamWriter writer, Material material)
+    {
+        var surfaceProp = SourceMaterialSurfaceProps.For(material);
+        if (surfaceProp is not null)
+        {
+            writer.WriteLine(FormattableString.Invariant($"    \"$surfaceprop\" \"{surfaceProp}\""));
+        }
+    }
+
     private static bool UseSourcePhong(Material material)
     {
         return material.DiffuseTexture is not null &&
@@ -644,13 +662,16 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             !material.HasAlpha;
     }
 
-    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath)
+    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
     {
+        var settings = SourcePhongSettings.For(material);
+
         writer.WriteLine("    \"$phong\" \"1\"");
+        writer.WriteLine("    \"$basemapalphaphongmask\" \"1\"");
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
-        writer.WriteLine("    \"$phongboost\" \"1\"");
-        writer.WriteLine("    \"$phongexponent\" \"25\"");
-        writer.WriteLine("    \"$phongfresnelranges\" \"[0 0.5 1]\"");
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
     }
 
     private static IReadOnlyList<string> GetMaterialDirectories(Model model, string modelPath)

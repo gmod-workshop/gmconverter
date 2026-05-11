@@ -40,7 +40,15 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
             var tgaPath = Path.Combine(materialSourceDirectory, $"{material.Name}.tga");
             var vmtPath = Path.Combine(materialOutputDirectory, $"{material.Name}.vmt");
 
-            material.DiffuseTexture.WriteTga(tgaPath);
+            if (UseSourcePhong(material))
+            {
+                material.DiffuseTexture.WriteTga(tgaPath, material.SpecularTexture!);
+            }
+            else
+            {
+                material.DiffuseTexture.WriteTga(tgaPath);
+            }
+
             RunVtex(tgaPath);
 
             if (material.NormalTexture is not null)
@@ -86,6 +94,7 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
         writer.WriteLine("{");
         writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{baseTexturePath}\""));
         writer.WriteLine("    \"$nocull\" \"1\"");
+        WriteSurfaceProp(writer, material);
 
         if (material.NormalTexture is not null)
         {
@@ -94,7 +103,7 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
 
         if (UseSourcePhong(material))
         {
-            WritePhongParameters(writer, $"{baseTexturePath}_spec");
+            WritePhongParameters(writer, $"{baseTexturePath}_spec", material);
         }
         else if (material.HasAlpha)
         {
@@ -110,6 +119,15 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
         writer.WriteLine("}");
     }
 
+    private static void WriteSurfaceProp(StreamWriter writer, Material material)
+    {
+        var surfaceProp = SourceMaterialSurfaceProps.For(material);
+        if (surfaceProp is not null)
+        {
+            writer.WriteLine(FormattableString.Invariant($"    \"$surfaceprop\" \"{surfaceProp}\""));
+        }
+    }
+
     private static bool UseSourcePhong(Material material)
     {
         return material.DiffuseTexture is not null &&
@@ -117,13 +135,16 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
             !material.HasAlpha;
     }
 
-    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath)
+    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
     {
+        var settings = SourcePhongSettings.For(material);
+
         writer.WriteLine("    \"$phong\" \"1\"");
+        writer.WriteLine("    \"$basemapalphaphongmask\" \"1\"");
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
-        writer.WriteLine("    \"$phongboost\" \"1\"");
-        writer.WriteLine("    \"$phongexponent\" \"25\"");
-        writer.WriteLine("    \"$phongfresnelranges\" \"[0 0.5 1]\"");
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
     }
 
     private static string NormalizeMaterialDirectory(string materialRelativeDirectory)

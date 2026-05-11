@@ -27,13 +27,14 @@ internal sealed class MOWImporter : IImporter
 
     public object Summarize(string inputPath)
     {
-        var modelPath = ResolveModelPath(inputPath);
+        var modelPath = ResolveInput(inputPath).ModelPath;
         return MOWSummary.From(inputPath, modelPath, MOWModelFile.Read(modelPath));
     }
 
     public Model Parse(string inputPath, ModelParseOptions options)
     {
-        var modelPath = ResolveModelPath(inputPath);
+        var input = ResolveInput(inputPath);
+        var modelPath = input.ModelPath;
         var modelFile = MOWModelFile.Read(modelPath);
         var modelDirectory = Path.GetDirectoryName(modelPath) ?? ".";
         List<Mesh> meshes = [];
@@ -59,7 +60,8 @@ internal sealed class MOWImporter : IImporter
                 usedBoneNames,
                 meshes,
                 materials,
-                textureResolver);
+                textureResolver,
+                input.SurfaceKind);
         }
 
         if (meshes.Count == 0)
@@ -77,25 +79,26 @@ internal sealed class MOWImporter : IImporter
             animations.Count == 0 ? null : animations);
     }
 
-    private static string ResolveModelPath(string inputPath)
+    private static MOWInput ResolveInput(string inputPath)
     {
         var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(inputPath));
         var extension = Path.GetExtension(fullPath);
 
         if (string.Equals(extension, ".def", StringComparison.OrdinalIgnoreCase))
         {
-            var modelPath = MOWDefinitionFile.Read(fullPath).ResolveModelPath();
+            var definitionFile = MOWDefinitionFile.Read(fullPath);
+            var modelPath = definitionFile.ResolveModelPath();
             if (!File.Exists(modelPath))
             {
                 throw new GMConverterException($"Men of War DEF references a missing MDL file: {modelPath}");
             }
 
-            return modelPath;
+            return new MOWInput(modelPath, GetSurfaceKind(definitionFile.Root));
         }
 
         if (string.Equals(extension, ".mdl", StringComparison.OrdinalIgnoreCase))
         {
-            return fullPath;
+            return new MOWInput(fullPath, MaterialSurfaceKind.Unspecified);
         }
 
         throw new GMConverterException($"Expected a Men of War .def or .mdl file: {fullPath}");
@@ -112,7 +115,8 @@ internal sealed class MOWImporter : IImporter
         HashSet<string> usedBoneNames,
         List<Mesh> meshes,
         Dictionary<string, Material> materials,
-        MOWTextureResolver textureResolver)
+        MOWTextureResolver textureResolver,
+        MaterialSurfaceKind surfaceKind)
     {
         var localTransform = GetLocalTransform(bone);
         var worldTransform = localTransform * parentTransform;
@@ -138,7 +142,15 @@ internal sealed class MOWImporter : IImporter
                 throw new GMConverterException($"Men of War mesh file not found for bone '{mowBoneName}': {meshPath}");
             }
 
-            meshes.Add(ConvertMesh(MOWPlyFile.Read(meshPath), worldTransform, boneIndex, options, modelDirectory, materials, textureResolver));
+            meshes.Add(ConvertMesh(
+                MOWPlyFile.Read(meshPath),
+                worldTransform,
+                boneIndex,
+                options,
+                modelDirectory,
+                materials,
+                textureResolver,
+                surfaceKind));
         }
 
         foreach (var childBone in bone.Children.Where(IsBoneNode))
@@ -154,7 +166,8 @@ internal sealed class MOWImporter : IImporter
                 usedBoneNames,
                 meshes,
                 materials,
-                textureResolver);
+                textureResolver,
+                surfaceKind);
         }
     }
 
@@ -165,14 +178,15 @@ internal sealed class MOWImporter : IImporter
         ModelParseOptions options,
         string modelDirectory,
         Dictionary<string, Material> materials,
-        MOWTextureResolver textureResolver)
+        MOWTextureResolver textureResolver,
+        MaterialSurfaceKind surfaceKind)
     {
         var vertices = ply.Vertices
             .Select(vertex => ConvertVertex(vertex, transform, boneIndex, options))
             .ToArray();
         var submeshes = ply.Submeshes
             .Select(submesh => new Submesh(
-                LoadMaterial(submesh.MaterialFile, modelDirectory, materials, textureResolver),
+                LoadMaterial(submesh.MaterialFile, modelDirectory, materials, textureResolver, surfaceKind),
                 submesh.Triangles))
             .ToArray();
 
@@ -313,7 +327,8 @@ internal sealed class MOWImporter : IImporter
         string plyMaterialFile,
         string modelDirectory,
         Dictionary<string, Material> materials,
-        MOWTextureResolver textureResolver)
+        MOWTextureResolver textureResolver,
+        MaterialSurfaceKind surfaceKind)
     {
         var materialFileName = string.IsNullOrWhiteSpace(plyMaterialFile) ? "default.mtl" : plyMaterialFile;
         var materialPath = Path.GetFullPath(Path.Combine(modelDirectory, materialFileName));
@@ -327,7 +342,7 @@ internal sealed class MOWImporter : IImporter
         if (!File.Exists(materialPath))
         {
             textureResolver.Logger.MissingMaterialFile(materialPath);
-            materials[materialName] = new Material(materialName);
+            materials[materialName] = new Material(materialName, surfaceKind: surfaceKind);
             return materialName;
         }
 
@@ -336,8 +351,30 @@ internal sealed class MOWImporter : IImporter
             materialName,
             diffuseTexture: textureResolver.LoadTexture(materialFile.DiffuseTexture, hasAlpha: materialFile.UsesAlpha),
             specularTexture: textureResolver.LoadTexture(materialFile.SpecularTexture, hasAlpha: false),
-            normalTexture: textureResolver.LoadTexture(materialFile.NormalTexture, hasAlpha: false));
+            normalTexture: textureResolver.LoadTexture(materialFile.NormalTexture, hasAlpha: false),
+            surfaceKind: surfaceKind);
         return materialName;
+    }
+
+    private static MaterialSurfaceKind GetSurfaceKind(MOWNode root)
+    {
+        foreach (var prop in root.Descendants("props").SelectMany(node => node.Values))
+        {
+            var surfaceKind = prop.ToLowerInvariant() switch
+            {
+                "metal" => MaterialSurfaceKind.Metal,
+                "wood" => MaterialSurfaceKind.Wood,
+                "concrete" => MaterialSurfaceKind.Concrete,
+                _ => MaterialSurfaceKind.Unspecified
+            };
+
+            if (surfaceKind is not MaterialSurfaceKind.Unspecified)
+            {
+                return surfaceKind;
+            }
+        }
+
+        return MaterialSurfaceKind.Unspecified;
     }
 
     private static IReadOnlyList<string> GetMeshFileNames(MOWNode bone)
@@ -640,4 +677,6 @@ internal sealed class MOWImporter : IImporter
             return index < 0 ? ImageExtensions.Length : index;
         }
     }
+
+    private sealed record MOWInput(string ModelPath, MaterialSurfaceKind SurfaceKind);
 }

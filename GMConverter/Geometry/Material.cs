@@ -6,7 +6,8 @@ internal sealed class Material(
     Texture? diffuseTexture = null,
     Texture? specularTexture = null,
     Texture? normalTexture = null,
-    Texture? emissiveTexture = null)
+    Texture? emissiveTexture = null,
+    MaterialSurfaceKind surfaceKind = MaterialSurfaceKind.Unspecified)
 {
     public string Name { get; } = name;
 
@@ -19,6 +20,8 @@ internal sealed class Material(
     public Texture? NormalTexture { get; } = normalTexture;
 
     public Texture? EmissiveTexture { get; } = emissiveTexture;
+
+    public MaterialSurfaceKind SurfaceKind { get; } = surfaceKind;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

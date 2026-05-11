@@ -4,12 +4,22 @@ using GMConverter.Common;
 using GMConverter.Formats.MOW;
 using GMConverter.Geometry;
 using ImageMagick;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GMConverter.Importers;
 
 internal sealed class MOWImporter : IImporter
 {
     private const float AnimationFrameRate = 30.0f;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<MOWImporter> _logger;
+
+    public MOWImporter(ILoggerFactory? loggerFactory = null)
+    {
+        _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        _logger = _loggerFactory.CreateLogger<MOWImporter>();
+    }
 
     public string InputFormat => "mow";
 
@@ -29,13 +39,27 @@ internal sealed class MOWImporter : IImporter
         List<Mesh> meshes = [];
         Dictionary<string, Material> materials = new(StringComparer.OrdinalIgnoreCase);
         List<Bone> bones = [];
+        Dictionary<string, List<int>> boneIndicesByMOWName = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> usedBoneNames = new(StringComparer.OrdinalIgnoreCase);
+        var textureResolver = MOWTextureResolver.Create(modelDirectory, options.Materials, _loggerFactory);
 
         var skeleton = modelFile.Root.FirstChild("Skeleton")
             ?? throw new GMConverterException($"Men of War MDL does not contain a Skeleton node: {modelPath}");
 
         foreach (var bone in skeleton.Children.Where(IsBoneNode))
         {
-            AddBoneMeshes(bone, parentIndex: -1, Matrix4x4.Identity, modelDirectory, options, bones, meshes, materials);
+            AddBoneMeshes(
+                bone,
+                parentIndex: -1,
+                Matrix4x4.Identity,
+                modelDirectory,
+                options,
+                bones,
+                boneIndicesByMOWName,
+                usedBoneNames,
+                meshes,
+                materials,
+                textureResolver);
         }
 
         if (meshes.Count == 0)
@@ -43,7 +67,7 @@ internal sealed class MOWImporter : IImporter
             throw new GMConverterException($"Men of War model contains no VolumeView meshes: {modelPath}");
         }
 
-        var animations = LoadAnimations(modelFile.Root, modelDirectory, bones, options);
+        var animations = LoadAnimations(modelFile.Root, modelDirectory, bones, boneIndicesByMOWName, options, _logger);
 
         return new Model(
             Path.GetFileNameWithoutExtension(modelPath),
@@ -84,33 +108,53 @@ internal sealed class MOWImporter : IImporter
         string modelDirectory,
         ModelParseOptions options,
         List<Bone> bones,
+        Dictionary<string, List<int>> boneIndicesByMOWName,
+        HashSet<string> usedBoneNames,
         List<Mesh> meshes,
-        Dictionary<string, Material> materials)
+        Dictionary<string, Material> materials,
+        MOWTextureResolver textureResolver)
     {
         var localTransform = GetLocalTransform(bone);
         var worldTransform = localTransform * parentTransform;
         var boneIndex = bones.Count;
+        var mowBoneName = GetMOWBoneName(bone, boneIndex);
+        var boneName = MakeUniqueBoneName(mowBoneName, usedBoneNames);
         bones.Add(new Bone(
             boneIndex,
-            GetBoneName(bone, boneIndex),
+            boneName,
             parentIndex,
             ConvertBoneTransform(localTransform, options)));
-        var meshNode = GetMeshNode(bone);
-
-        if (meshNode is not null && meshNode.Values.Count > 0)
+        AddBoneNameLookup(boneIndicesByMOWName, mowBoneName, boneIndex);
+        if (!string.Equals(mowBoneName, boneName, StringComparison.OrdinalIgnoreCase))
         {
-            var meshPath = Path.GetFullPath(Path.Combine(modelDirectory, meshNode.Values[0]));
+            AddBoneNameLookup(boneIndicesByMOWName, boneName, boneIndex);
+        }
+
+        foreach (var meshFileName in GetMeshFileNames(bone).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var meshPath = Path.GetFullPath(Path.Combine(modelDirectory, meshFileName));
             if (!File.Exists(meshPath))
             {
-                throw new GMConverterException($"Men of War mesh file not found: {meshPath}");
+                throw new GMConverterException($"Men of War mesh file not found for bone '{mowBoneName}': {meshPath}");
             }
 
-            meshes.Add(ConvertMesh(MOWPlyFile.Read(meshPath), worldTransform, boneIndex, options, modelDirectory, materials));
+            meshes.Add(ConvertMesh(MOWPlyFile.Read(meshPath), worldTransform, boneIndex, options, modelDirectory, materials, textureResolver));
         }
 
         foreach (var childBone in bone.Children.Where(IsBoneNode))
         {
-            AddBoneMeshes(childBone, boneIndex, worldTransform, modelDirectory, options, bones, meshes, materials);
+            AddBoneMeshes(
+                childBone,
+                boneIndex,
+                worldTransform,
+                modelDirectory,
+                options,
+                bones,
+                boneIndicesByMOWName,
+                usedBoneNames,
+                meshes,
+                materials,
+                textureResolver);
         }
     }
 
@@ -120,28 +164,34 @@ internal sealed class MOWImporter : IImporter
         int boneIndex,
         ModelParseOptions options,
         string modelDirectory,
-        Dictionary<string, Material> materials)
+        Dictionary<string, Material> materials,
+        MOWTextureResolver textureResolver)
     {
-        var materialName = LoadMaterial(ply, modelDirectory, materials);
         var vertices = ply.Vertices
             .Select(vertex => ConvertVertex(vertex, transform, boneIndex, options))
             .ToArray();
+        var submeshes = ply.Submeshes
+            .Select(submesh => new Submesh(
+                LoadMaterial(submesh.MaterialFile, modelDirectory, materials, textureResolver),
+                submesh.Triangles))
+            .ToArray();
 
-        return new Mesh(vertices, [new Submesh(materialName, ply.Triangles)]);
+        return new Mesh(vertices, submeshes);
     }
 
     private static IReadOnlyList<AnimationClip> LoadAnimations(
         MOWNode root,
         string modelDirectory,
         IReadOnlyList<Bone> bones,
-        ModelParseOptions options)
+        IReadOnlyDictionary<string, List<int>> boneIndicesByMOWName,
+        ModelParseOptions options,
+        ILogger logger)
     {
         if (bones.Count == 0)
         {
             return [];
         }
 
-        var boneByName = bones.ToDictionary(bone => bone.Name, bone => bone.Index, StringComparer.OrdinalIgnoreCase);
         List<AnimationClip> clips = [];
 
         foreach (var sequence in root.Descendants("sequence"))
@@ -155,11 +205,12 @@ internal sealed class MOWImporter : IImporter
             var animationPath = ResolveAnimationPath(sequence, sequenceName, modelDirectory);
             if (!File.Exists(animationPath))
             {
+                logger.MissingAnimationFile(sequenceName, animationPath);
                 continue;
             }
 
             var animation = MOWAnimationFile.Read(animationPath);
-            var clip = BuildAnimationClip(sequenceName, animation, bones, boneByName, options);
+            var clip = BuildAnimationClip(sequenceName, animation, bones, boneIndicesByMOWName, options);
             if (clip.Tracks.Count > 0)
             {
                 clips.Add(clip);
@@ -173,7 +224,7 @@ internal sealed class MOWImporter : IImporter
         string name,
         MOWAnimationFile animation,
         IReadOnlyList<Bone> bones,
-        IReadOnlyDictionary<string, int> boneByName,
+        IReadOnlyDictionary<string, List<int>> boneIndicesByMOWName,
         ModelParseOptions options)
     {
         Dictionary<int, Transform> currentTransforms = bones.ToDictionary(bone => bone.Index, bone => bone.LocalBindPose);
@@ -189,29 +240,32 @@ internal sealed class MOWImporter : IImporter
                 }
 
                 var entityName = animation.Entities[frameEvent.EntityIndex];
-                if (!boneByName.TryGetValue(entityName, out var boneIndex))
+                if (!boneIndicesByMOWName.TryGetValue(entityName, out var boneIndices))
                 {
                     continue;
                 }
 
-                var current = currentTransforms[boneIndex];
-                var transform = new Transform(
-                    frameEvent.Position.HasValue
-                        ? TransformAnimationPosition(frameEvent.Position.Value, options)
-                        : current.Translation,
-                    frameEvent.Rotation.HasValue
-                        ? TransformRotation(frameEvent.Rotation.Value, options)
-                        : current.Rotation,
-                    current.Scale);
-                currentTransforms[boneIndex] = transform;
-
-                if (!keyframesByBone.TryGetValue(boneIndex, out var keyframes))
+                foreach (var boneIndex in boneIndices)
                 {
-                    keyframes = [];
-                    keyframesByBone[boneIndex] = keyframes;
-                }
+                    var current = currentTransforms[boneIndex];
+                    var transform = new Transform(
+                        frameEvent.Position.HasValue
+                            ? TransformAnimationPosition(frameEvent.Position.Value, options)
+                            : current.Translation,
+                        frameEvent.Rotation.HasValue
+                            ? TransformRotation(frameEvent.Rotation.Value, options)
+                            : current.Rotation,
+                        current.Scale);
+                    currentTransforms[boneIndex] = transform;
 
-                keyframes[frame.Time] = new TransformKeyframe(frame.Time / AnimationFrameRate, transform);
+                    if (!keyframesByBone.TryGetValue(boneIndex, out var keyframes))
+                    {
+                        keyframes = [];
+                        keyframesByBone[boneIndex] = keyframes;
+                    }
+
+                    keyframes[frame.Time] = new TransformKeyframe(frame.Time / AnimationFrameRate, transform);
+                }
             }
         }
 
@@ -256,11 +310,12 @@ internal sealed class MOWImporter : IImporter
     }
 
     private static string LoadMaterial(
-        MOWPlyFile ply,
+        string plyMaterialFile,
         string modelDirectory,
-        Dictionary<string, Material> materials)
+        Dictionary<string, Material> materials,
+        MOWTextureResolver textureResolver)
     {
-        var materialFileName = string.IsNullOrWhiteSpace(ply.MaterialFile) ? "default.mtl" : ply.MaterialFile;
+        var materialFileName = string.IsNullOrWhiteSpace(plyMaterialFile) ? "default.mtl" : plyMaterialFile;
         var materialPath = Path.GetFullPath(Path.Combine(modelDirectory, materialFileName));
         var materialName = NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(materialFileName));
 
@@ -271,6 +326,7 @@ internal sealed class MOWImporter : IImporter
 
         if (!File.Exists(materialPath))
         {
+            textureResolver.Logger.MissingMaterialFile(materialPath);
             materials[materialName] = new Material(materialName);
             return materialName;
         }
@@ -278,44 +334,34 @@ internal sealed class MOWImporter : IImporter
         var materialFile = MOWMaterialFile.Read(materialPath);
         materials[materialName] = new Material(
             materialName,
-            diffuseTexture: LoadTexture(modelDirectory, materialFile.DiffuseTexture, hasAlpha: materialFile.UsesAlpha),
-            specularTexture: LoadTexture(modelDirectory, materialFile.SpecularTexture, hasAlpha: false),
-            normalTexture: LoadTexture(modelDirectory, materialFile.NormalTexture, hasAlpha: false));
+            diffuseTexture: textureResolver.LoadTexture(materialFile.DiffuseTexture, hasAlpha: materialFile.UsesAlpha),
+            specularTexture: textureResolver.LoadTexture(materialFile.SpecularTexture, hasAlpha: false),
+            normalTexture: textureResolver.LoadTexture(materialFile.NormalTexture, hasAlpha: false));
         return materialName;
     }
 
-    private static Texture? LoadTexture(string modelDirectory, string? textureName, bool hasAlpha)
+    private static IReadOnlyList<string> GetMeshFileNames(MOWNode bone)
     {
-        if (string.IsNullOrWhiteSpace(textureName))
+        var directVolumeViews = bone.Children
+            .Where(IsVolumeViewNode)
+            .Where(node => node.Values.Count > 0)
+            .ToArray();
+        if (directVolumeViews.Length > 0)
         {
-            return null;
+            return directVolumeViews.Select(node => node.Values[0]).ToArray();
         }
 
-        var fileName = Path.HasExtension(textureName) ? textureName : $"{textureName}.dds";
-        var texturePath = Path.GetFullPath(Path.Combine(modelDirectory, fileName));
-        if (!File.Exists(texturePath))
+        var lodView = bone.FirstChild("LodView");
+        if (lodView is null)
         {
-            return null;
+            return [];
         }
 
-        var image = new MagickImage(texturePath);
-        if (!hasAlpha && image.HasAlpha)
-        {
-            image.Alpha(AlphaOption.Opaque);
-        }
-
-        return new Texture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(fileName)), image, hasAlpha);
-    }
-
-    private static MOWNode? GetMeshNode(MOWNode bone)
-    {
-        var volumeView = bone.FirstChild("VolumeView");
-        if (volumeView is not null)
-        {
-            return volumeView;
-        }
-
-        return bone.FirstChild("LodView")?.FirstChild("VolumeView");
+        return lodView.Children
+            .Where(IsVolumeViewNode)
+            .Where(node => node.Values.Count > 0)
+            .Select(node => node.Values[0])
+            .ToArray();
     }
 
     private static Matrix4x4 GetLocalTransform(MOWNode bone)
@@ -333,11 +379,37 @@ internal sealed class MOWImporter : IImporter
         return rotation * translation;
     }
 
-    private static string GetBoneName(MOWNode bone, int index)
+    private static string GetMOWBoneName(MOWNode bone, int index)
     {
-        return bone.Values.Count > 0 && !string.IsNullOrWhiteSpace(bone.Values[0])
-            ? bone.Values[0]
+        var name = bone.Values.LastOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return !string.IsNullOrWhiteSpace(name)
+            ? name
             : FormattableString.Invariant($"bone_{index}");
+    }
+
+    private static string MakeUniqueBoneName(string boneName, HashSet<string> usedBoneNames)
+    {
+        var baseName = string.IsNullOrWhiteSpace(boneName) ? "bone" : boneName.Trim();
+        var candidate = baseName;
+        var suffix = 2;
+        while (!usedBoneNames.Add(candidate))
+        {
+            candidate = FormattableString.Invariant($"{baseName}_{suffix}");
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    private static void AddBoneNameLookup(Dictionary<string, List<int>> lookup, string boneName, int boneIndex)
+    {
+        if (!lookup.TryGetValue(boneName, out var indices))
+        {
+            indices = [];
+            lookup[boneName] = indices;
+        }
+
+        indices.Add(boneIndex);
     }
 
     private static Transform ConvertBoneTransform(Matrix4x4 localTransform, ModelParseOptions options)
@@ -446,5 +518,126 @@ internal sealed class MOWImporter : IImporter
     private static bool IsBoneNode(MOWNode node)
     {
         return string.Equals(node.Name, "bone", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVolumeViewNode(MOWNode node)
+    {
+        return string.Equals(node.Name, "VolumeView", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class MOWTextureResolver
+    {
+        private static readonly string[] ImageExtensions = [".dds", ".png", ".tga", ".bmp", ".jpg", ".jpeg"];
+        private readonly string modelDirectory;
+        private readonly Dictionary<string, string> searchIndex;
+
+        private MOWTextureResolver(string modelDirectory, Dictionary<string, string> searchIndex, ILogger logger)
+        {
+            this.modelDirectory = modelDirectory;
+            this.searchIndex = searchIndex;
+            Logger = logger;
+        }
+
+        public ILogger Logger { get; }
+
+        public static MOWTextureResolver Create(
+            string modelDirectory,
+            MaterialResolveOptions? options,
+            ILoggerFactory loggerFactory)
+        {
+            var searchIndex = options is null ||
+                string.IsNullOrWhiteSpace(options.SearchDirectory) ||
+                !Directory.Exists(options.SearchDirectory)
+                    ? []
+                    : IndexFiles(options.SearchDirectory);
+
+            return new MOWTextureResolver(
+                modelDirectory,
+                searchIndex,
+                loggerFactory.CreateLogger<MOWTextureResolver>());
+        }
+
+        public Texture? LoadTexture(string? textureName, bool hasAlpha)
+        {
+            if (string.IsNullOrWhiteSpace(textureName))
+            {
+                return null;
+            }
+
+            var texturePath = ResolveTexturePath(textureName);
+            if (texturePath is null)
+            {
+                Logger.MissingTextureReference(textureName);
+                return null;
+            }
+
+            var image = new MagickImage(texturePath);
+            if (!hasAlpha && image.HasAlpha)
+            {
+                image.Alpha(AlphaOption.Opaque);
+            }
+
+            return new Texture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);
+        }
+
+        private string? ResolveTexturePath(string textureName)
+        {
+            foreach (var localCandidate in LocalCandidates(textureName))
+            {
+                if (File.Exists(localCandidate))
+                {
+                    return localCandidate;
+                }
+            }
+
+            return searchIndex.GetValueOrDefault(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(textureName)));
+        }
+
+        private IEnumerable<string> LocalCandidates(string textureName)
+        {
+            var normalized = textureName.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+            if (Path.IsPathRooted(normalized))
+            {
+                yield return normalized;
+            }
+            else
+            {
+                yield return Path.GetFullPath(Path.Combine(modelDirectory, normalized));
+            }
+
+            if (!Path.HasExtension(normalized))
+            {
+                foreach (var extension in ImageExtensions)
+                {
+                    yield return Path.GetFullPath(Path.Combine(modelDirectory, $"{normalized}{extension}"));
+                }
+            }
+        }
+
+        private static Dictionary<string, string> IndexFiles(string directory)
+        {
+            Dictionary<string, string> index = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                         .OrderBy(ImageExtensionPriority)
+                         .ThenBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!ImageExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                index.TryAdd(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(file)), file);
+            }
+
+            return index;
+        }
+
+        private static int ImageExtensionPriority(string path)
+        {
+            var extension = Path.GetExtension(path);
+            var index = Array.FindIndex(ImageExtensions, item => string.Equals(item, extension, StringComparison.OrdinalIgnoreCase));
+            return index < 0 ? ImageExtensions.Length : index;
+        }
     }
 }

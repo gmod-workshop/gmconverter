@@ -4,20 +4,25 @@ using GMConverter.Geometry;
 
 namespace GMConverter.Formats.MOW;
 
+internal sealed record MOWPlySubmesh(string MaterialFile, IReadOnlyList<Triangle> Triangles);
+
 internal sealed class MOWPlyFile
 {
     private static readonly byte[] Magic = "EPLYBNDS"u8.ToArray();
     private static readonly HashSet<uint> SupportedMaterialFormats =
     [
+        0x0004,
         0x0404, 0x0405, 0x0406, 0x0444,
         0x0504, 0x0544,
         0x0604, 0x0644,
         0x0704, 0x0705, 0x0744, 0x0745,
         0x0C14, 0x0C15, 0x0C54, 0x0C55,
+        0x0E54,
         0x0F14, 0x0F15, 0x0F54
     ];
     private static readonly HashSet<uint> MaterialFormatsWithoutColor =
     [
+        0x0004,
         0x0404, 0x0405, 0x0406, 0x0444,
         0x0504, 0x0544,
         0x0C14, 0x0C15, 0x0C54, 0x0C55
@@ -30,9 +35,12 @@ internal sealed class MOWPlyFile
     public string MaterialFile { get; private set; } = string.Empty;
     public IReadOnlyList<Vertex> Vertices => vertices;
     public IReadOnlyList<Triangle> Triangles => triangles;
+    public IReadOnlyList<MOWPlySubmesh> Submeshes => submeshes;
 
+    private readonly List<MOWPlyMeshSection> meshSections = [];
     private readonly List<Vertex> vertices = [];
     private readonly List<Triangle> triangles = [];
+    private readonly List<MOWPlySubmesh> submeshes = [];
 
     private MOWPlyFile(string path)
     {
@@ -51,7 +59,7 @@ internal sealed class MOWPlyFile
         using var stream = File.OpenRead(Path);
         using var reader = new BinaryReader(stream);
 
-        var magic = reader.ReadBytes(8);
+        var magic = ReadBytes(reader, 8, "PLY header");
         if (!magic.SequenceEqual(Magic))
         {
             throw new GMConverterException($"Unsupported Men of War PLY file: {Path}");
@@ -63,7 +71,8 @@ internal sealed class MOWPlyFile
 
         while (stream.Position < stream.Length)
         {
-            var entry = ReadAscii(reader, 4);
+            var entryOffset = stream.Position;
+            var entry = ReadAscii(reader, 4, "PLY entry id");
             switch (entry)
             {
                 case "SKIN":
@@ -79,7 +88,9 @@ internal sealed class MOWPlyFile
                     ReadIndexEntry(reader);
                     return;
                 default:
-                    throw new GMConverterException($"Unsupported Men of War PLY entry '{entry}' in {Path}.");
+                    throw new GMConverterException(
+                        $"Unsupported Men of War PLY entry '{entry}' at 0x{entryOffset:X} in {Path}. " +
+                        "Supported entries are SKIN, MESH, VERT, and INDX.");
             }
         }
     }
@@ -90,7 +101,7 @@ internal sealed class MOWPlyFile
         for (var index = 0; index < skinCount; index++)
         {
             var nameLength = reader.ReadByte();
-            reader.BaseStream.Seek(nameLength, SeekOrigin.Current);
+            _ = ReadAscii(reader, nameLength, "PLY skin name");
         }
     }
 
@@ -98,7 +109,7 @@ internal sealed class MOWPlyFile
     {
         MeshInfo = reader.ReadUInt32();
         reader.BaseStream.Seek(4, SeekOrigin.Current);
-        _ = reader.ReadUInt32(); // triangle count, repeated by INDX
+        var triangleCount = reader.ReadUInt32();
         MaterialInfo = reader.ReadUInt32();
 
         if (!SupportedMaterialFormats.Contains(MaterialInfo))
@@ -112,13 +123,15 @@ internal sealed class MOWPlyFile
         }
 
         var materialNameLength = reader.ReadByte();
-        MaterialFile = ReadAscii(reader, materialNameLength);
+        MaterialFile = ReadAscii(reader, materialNameLength, "PLY material file name");
 
         if (MeshInfo == 0x1118)
         {
             var count = reader.ReadByte();
-            reader.BaseStream.Seek(count, SeekOrigin.Current);
+            _ = ReadAscii(reader, count, "PLY mesh extension data");
         }
+
+        meshSections.Add(new MOWPlyMeshSection(MaterialInfo, triangleCount, MaterialFile));
     }
 
     private void ReadVertexEntry(BinaryReader reader)
@@ -135,11 +148,7 @@ internal sealed class MOWPlyFile
         var uvOffset = GetUvOffset(vertexDescription, stride);
         for (var index = 0; index < vertexCount; index++)
         {
-            var record = reader.ReadBytes(stride);
-            if (record.Length != stride)
-            {
-                throw new GMConverterException($"Unexpected end of Men of War PLY vertex data in {Path}.");
-            }
+            var record = ReadBytes(reader, stride, "PLY vertex data");
 
             vertices.Add(new Vertex(
                 new Vector3(ReadSingle(record, 0), ReadSingle(record, 4), ReadSingle(record, 8)),
@@ -156,25 +165,54 @@ internal sealed class MOWPlyFile
             throw new GMConverterException($"Men of War PLY index count is not divisible by 3 in {Path}.");
         }
 
-        for (var index = 0; index < indexCount / 3; index++)
+        var totalTriangleCount = checked((int)(indexCount / 3));
+        var sections = meshSections.Count == 0
+            ? [new MOWPlyMeshSection(MaterialInfo, (uint)totalTriangleCount, MaterialFile)]
+            : meshSections;
+        var readTriangleCount = 0;
+
+        foreach (var section in sections)
         {
-            var i0 = reader.ReadUInt16();
-            var i1 = reader.ReadUInt16();
-            var i2 = reader.ReadUInt16();
-            if (MaterialInfo is 0x0744 or 0x0C54)
+            var sectionTriangleCount = checked((int)section.TriangleCount);
+            List<Triangle> sectionTriangles = new(sectionTriangleCount);
+            for (var index = 0; index < sectionTriangleCount; index++)
             {
-                triangles.Add(new Triangle(i0, i1, i2));
+                var triangle = ReadTriangle(reader, section.MaterialInfo);
+                sectionTriangles.Add(triangle);
+                triangles.Add(triangle);
             }
-            else
-            {
-                triangles.Add(new Triangle(i2, i1, i0));
-            }
+
+            readTriangleCount += sectionTriangleCount;
+            submeshes.Add(new MOWPlySubmesh(section.MaterialFile, sectionTriangles));
         }
+
+        if (readTriangleCount != totalTriangleCount)
+        {
+            throw new GMConverterException(
+                $"Men of War PLY mesh sections describe {readTriangleCount} triangles but INDX contains {totalTriangleCount} in {Path}.");
+        }
+    }
+
+    private Triangle ReadTriangle(BinaryReader reader, uint materialInfo)
+    {
+        var i0 = reader.ReadUInt16();
+        var i1 = reader.ReadUInt16();
+        var i2 = reader.ReadUInt16();
+        if (i0 >= vertices.Count || i1 >= vertices.Count || i2 >= vertices.Count)
+        {
+            throw new GMConverterException(
+                $"Men of War PLY triangle references vertex outside the {vertices.Count} loaded vertices in {Path}.");
+        }
+
+        return materialInfo is 0x0744 or 0x0C54
+            ? new Triangle(i0, i1, i2)
+            : new Triangle(i2, i1, i0);
     }
 
     private static bool IsSupportedVertexDescription(uint vertexDescription)
     {
         return vertexDescription is
+            0x00000020 or 0x00000024 or 0x00000028 or 0x0000002C or 0x00000030 or 0x00000034 or 0x00000038 or
             0x00010020 or 0x00010024 or 0x00010028 or 0x0001002C or 0x00010030 or 0x00010034 or 0x00010038 or
             0x00070020 or 0x00070024 or 0x00070028 or 0x0007002C or 0x00070030 or 0x00070034 or 0x00070038;
     }
@@ -186,13 +224,26 @@ internal sealed class MOWPlyFile
             : stride - 8;
     }
 
-    private static string ReadAscii(BinaryReader reader, int count)
+    private static string ReadAscii(BinaryReader reader, int count, string description)
     {
-        return System.Text.Encoding.ASCII.GetString(reader.ReadBytes(count));
+        return System.Text.Encoding.ASCII.GetString(ReadBytes(reader, count, description));
+    }
+
+    private static byte[] ReadBytes(BinaryReader reader, int count, string description)
+    {
+        var bytes = reader.ReadBytes(count);
+        if (bytes.Length != count)
+        {
+            throw new GMConverterException($"Unexpected end of Men of War {description}.");
+        }
+
+        return bytes;
     }
 
     private static float ReadSingle(ReadOnlySpan<byte> record, int offset)
     {
         return BitConverter.ToSingle(record[offset..(offset + 4)]);
     }
+
+    private readonly record struct MOWPlyMeshSection(uint MaterialInfo, uint TriangleCount, string MaterialFile);
 }

@@ -5,6 +5,7 @@ using GMConverter.Exporters;
 using GMConverter.Geometry;
 using GMConverter.Importers;
 using GMConverter.Source;
+using Microsoft.Extensions.Logging;
 
 namespace GMConverter.CLI;
 
@@ -189,9 +190,10 @@ internal static class Program
         inputFormat = NormalizeFormat(inputFormat, "input-format");
         outputFormat = NormalizeFormat(outputFormat, "output-format");
 
-        var importer = GetImporter(inputFormat);
         var fullInputPath = RequireInputFile(inputPath, inputFormat);
         baseName ??= Path.GetFileNameWithoutExtension(fullInputPath);
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+        var importer = GetImporter(inputFormat, loggerFactory);
         var parseOptions = new ModelParseOptions(
             GetScaleFactor(scaleFactor, noScale),
             NormalizeAxisMode(axisModeText),
@@ -271,14 +273,14 @@ internal static class Program
             new MDLExportOptions(modelPath, engineDirectory, gameDirectory, buildMaterials, physicsOptions));
     }
 
-    private static IImporter GetImporter(string inputFormat)
+    private static IImporter GetImporter(string inputFormat, ILoggerFactory? loggerFactory = null)
     {
         return inputFormat switch
         {
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
-            "mow" => new MOWImporter(),
+            "mow" => new MOWImporter(loggerFactory),
             _ => throw new ArgumentException("Option --input-format must be 'opt', 'mdl', 'psk', or 'mow'.")
         };
     }

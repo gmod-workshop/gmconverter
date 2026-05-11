@@ -55,7 +55,7 @@ internal sealed class MOWAnimationFile
         using var stream = File.OpenRead(Path);
         using var reader = new BinaryReader(stream);
 
-        var magic = reader.ReadBytes(4);
+        var magic = ReadBytes(reader, 4, "ANM header");
         if (!magic.SequenceEqual(Magic))
         {
             throw new GMConverterException($"Unsupported Men of War ANM file: {Path}");
@@ -69,7 +69,8 @@ internal sealed class MOWAnimationFile
 
         while (stream.Position < stream.Length)
         {
-            var entry = ReadAscii(reader, 4);
+            var entryOffset = stream.Position;
+            var entry = ReadAscii(reader, 4, "ANM entry id");
             switch (entry)
             {
                 case "FRMS":
@@ -85,7 +86,9 @@ internal sealed class MOWAnimationFile
                     break;
 
                 default:
-                    throw new GMConverterException($"Unsupported Men of War ANM entry '{entry}' in {Path}.");
+                    throw new GMConverterException(
+                        $"Unsupported Men of War ANM entry '{entry}' at 0x{entryOffset:X} in {Path}. " +
+                        "Supported entries are FRMS, BMAP, and FRM2.");
             }
         }
     }
@@ -96,7 +99,7 @@ internal sealed class MOWAnimationFile
         for (var index = 0; index < count; index++)
         {
             var nameLength = checked((int)reader.ReadUInt32());
-            entities.Add(Encoding.UTF8.GetString(reader.ReadBytes(nameLength)));
+            entities.Add(Encoding.UTF8.GetString(ReadBytes(reader, nameLength, "ANM entity name")));
         }
     }
 
@@ -125,7 +128,7 @@ internal sealed class MOWAnimationFile
 
             if (type.HasFlag(MOWAnimationChunkType.Vertices))
             {
-                SkipVertexAnimation(reader, type.HasFlag(MOWAnimationChunkType.Position));
+                SkipVertexAnimation(reader);
             }
 
             events.Add(new MOWAnimationEvent(entityIndex, type, position, rotation));
@@ -147,17 +150,36 @@ internal sealed class MOWAnimationFile
             : new Quaternion(x, y, z, w);
     }
 
-    private static void SkipVertexAnimation(BinaryReader reader, bool hasPosition)
+    private static void SkipVertexAnimation(BinaryReader reader)
     {
         var byteCount = reader.ReadUInt32();
         reader.BaseStream.Seek(4, SeekOrigin.Current);
-        _ = reader.ReadUInt16();
-        reader.BaseStream.Seek(2 + byteCount, SeekOrigin.Current);
-        reader.BaseStream.Seek(hasPosition ? 32 : 8, SeekOrigin.Current);
+        var vertexCount = reader.ReadUInt16();
+        reader.BaseStream.Seek(2, SeekOrigin.Current);
+        var vertexDataLength = checked(vertexCount * 32);
+        var trailerLength = checked((long)byteCount - 8 - vertexDataLength);
+        if (trailerLength < 0)
+        {
+            throw new GMConverterException(
+                $"Invalid Men of War vertex animation chunk: {byteCount} bytes cannot contain {vertexCount} vertices.");
+        }
+
+        reader.BaseStream.Seek(vertexDataLength + trailerLength, SeekOrigin.Current);
     }
 
-    private static string ReadAscii(BinaryReader reader, int count)
+    private static string ReadAscii(BinaryReader reader, int count, string description)
     {
-        return Encoding.ASCII.GetString(reader.ReadBytes(count));
+        return Encoding.ASCII.GetString(ReadBytes(reader, count, description));
+    }
+
+    private static byte[] ReadBytes(BinaryReader reader, int count, string description)
+    {
+        var bytes = reader.ReadBytes(count);
+        if (bytes.Length != count)
+        {
+            throw new GMConverterException($"Unexpected end of Men of War {description}.");
+        }
+
+        return bytes;
     }
 }

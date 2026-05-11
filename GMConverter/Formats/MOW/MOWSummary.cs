@@ -27,7 +27,7 @@ internal sealed record MOWSummary(
         var materialFiles = meshFiles
             .Select(meshFile => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(model.Path) ?? ".", meshFile))
             .Where(File.Exists)
-            .Select(meshPath => MOWPlyFile.Read(meshPath).MaterialFile)
+            .SelectMany(meshPath => MOWPlyFile.Read(meshPath).Submeshes.Select(submesh => submesh.MaterialFile))
             .Where(materialFile => !string.IsNullOrWhiteSpace(materialFile))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Order(StringComparer.OrdinalIgnoreCase)

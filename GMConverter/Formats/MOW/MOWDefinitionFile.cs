@@ -11,16 +11,31 @@ internal sealed record MOWDefinitionFile(string Path, MOWNode Root)
 
     public string ResolveModelPath()
     {
-        var extension = Root
-            .Descendants("Extension")
-            .FirstOrDefault(node => node.Values.Count > 0);
-
-        if (extension is null)
+        var modelPaths = ResolveModelPaths();
+        if (modelPaths.Count == 0)
         {
             throw new GMConverterException($"Men of War DEF does not contain an Extension node: {Path}");
         }
 
-        var modelPath = extension.Values[0];
-        return System.IO.Path.GetFullPath(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path) ?? ".", modelPath));
+        if (modelPaths.Count > 1)
+        {
+            throw new GMConverterException(
+                $"Men of War DEF contains multiple Extension model references, which is not supported yet: " +
+                string.Join(", ", modelPaths));
+        }
+
+        return modelPaths[0];
+    }
+
+    public IReadOnlyList<string> ResolveModelPaths()
+    {
+        return Root
+            .Descendants("Extension")
+            .Where(node => node.Values.Count > 0)
+            .Select(node => node.Values[0])
+            .Where(modelPath => !string.IsNullOrWhiteSpace(modelPath))
+            .Select(modelPath => System.IO.Path.GetFullPath(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path) ?? ".", modelPath)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 }

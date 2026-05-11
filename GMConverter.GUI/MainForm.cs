@@ -4,6 +4,7 @@ using GMConverter.Exporters;
 using GMConverter.Geometry;
 using GMConverter.Importers;
 using GMConverter.Source;
+using Microsoft.Extensions.Logging;
 using GeometryBounds = GMConverter.Geometry.Bounds;
 
 namespace GMConverter.GUI;
@@ -547,10 +548,11 @@ internal sealed class MainForm : Form
             (int)_maxHullVerticesBox.Value);
     }
 
-    private static string? RunConversion(GuiConversionSettings settings)
+    private string? RunConversion(GuiConversionSettings settings)
     {
         var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
-        var importer = CreateImporter(settings.InputFormat);
+        using var loggerFactory = CreateLoggerFactory();
+        var importer = CreateImporter(settings.InputFormat, loggerFactory);
 
         if (settings.OutputFormat is "info")
         {
@@ -811,8 +813,12 @@ internal sealed class MainForm : Form
 
             var result = await Task.Run(() =>
             {
-                var importer = CreateImporter(inputFormat);
-                var model = importer.Parse(inputPath, new ModelParseOptions(scale, axisMode, materialOptions));
+                using var loggerFactory = CreateLoggerFactory();
+                var importer = CreateImporter(inputFormat, loggerFactory);
+                var model = importer.Parse(inputPath, new ModelParseOptions(
+                    scale,
+                    axisMode,
+                    materialOptions));
                 var physicsMeshes = physicsOptions is null ? [] : BuildPhysicsPreviewMeshes(model, physicsOptions);
                 return new PreviewLoadResult(model, physicsMeshes);
             });
@@ -888,14 +894,14 @@ internal sealed class MainForm : Form
         return new Mesh(vertices, [new Submesh("physics", triangles)]);
     }
 
-    private static IImporter CreateImporter(string inputFormat)
+    private static IImporter CreateImporter(string inputFormat, ILoggerFactory? loggerFactory = null)
     {
         return inputFormat switch
         {
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
-            "mow" => new MOWImporter(),
+            "mow" => new MOWImporter(loggerFactory),
             _ => throw new InvalidOperationException($"Unsupported input format: {inputFormat}")
         };
     }
@@ -1003,6 +1009,15 @@ internal sealed class MainForm : Form
         _logBox.AppendText(line + Environment.NewLine);
     }
 
+    private ILoggerFactory CreateLoggerFactory()
+    {
+        return LoggerFactory.Create(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Warning);
+            builder.AddProvider(new GuiLoggerProvider(AppendLog));
+        });
+    }
+
     private enum DirectoryDropBehavior
     {
         FileOrDirectory,
@@ -1096,4 +1111,55 @@ internal sealed class MainForm : Form
         float CoacdThreshold,
         int MaxConvexPieces,
         int MaxHullVertices);
+
+    private sealed class GuiLoggerProvider(Action<string?> appendLog) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName)
+        {
+            return new GuiLogger(categoryName, appendLog);
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class GuiLogger(string categoryName, Action<string?> appendLog) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull
+        {
+            return null;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return logLevel >= LogLevel.Warning;
+        }
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(logLevel))
+            {
+                return;
+            }
+
+            var message = formatter(state, exception);
+            if (string.IsNullOrWhiteSpace(message) && exception is null)
+            {
+                return;
+            }
+
+            appendLog($"{logLevel}: {categoryName}: {message}");
+            if (exception is not null)
+            {
+                appendLog(exception.Message);
+            }
+        }
+    }
 }

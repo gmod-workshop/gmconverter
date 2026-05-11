@@ -4,13 +4,14 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 ## Supported Formats
 
-| Format | Read | Write | Mesh       | Materials / Textures | Bones / Weights | Animations |
-| --- | --- | --- |------------|----------------------|-----------------| --- |
-| `OPT` | Yes | No | Read       | Read                 | -               | - |
-| `MDL` | Yes* | Yes* | Read/Write | Read*/Write          | Write           | Write |
-| `PSK` / `PSKX` | Yes* | No | Read       | Read*                | Read            | Read* |
-| `OBJ` / `MTL` | No | Yes | Write      | Write                | -               | - |
-| `glTF` / `GLB` | No | Yes | Write      | Write                | Write           | Write |
+| Format                | Read | Write | Mesh       | Materials / Textures | Bones / Weights | Animations |
+|-----------------------| --- | --- |------------|----------------------|-----------------| --- |
+| `OPT`                 | Yes | No | Read       | Read                 | -               | - |
+| `MDL`                 | Yes* | Yes* | Read/Write | Read*/Write          | Write           | Write |
+| `PSK` / `PSKX`        | Yes* | No | Read       | Read*                | Read            | Read* |
+| `MOW` (`DEF` / `MDL`) | Yes* | No | Read | Read* | Read* | Read* |
+| `OBJ` / `MTL`         | No | Yes | Write      | Write                | -               | - |
+| `glTF` / `GLB`        | No | Yes | Write      | Write                | Write           | Write |
 
 `*` See [Format Details](#format-details) for caveats.
 
@@ -33,7 +34,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
-| `--input-format <format>` | Input format: `opt`, `mdl`, or `psk`. | `--input-format psk` | Required |
+| `--input-format <format>` | Input format: `opt`, `mdl`, `psk`, or `mow`. | `--input-format psk` | Required |
 | `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `source`, or `mdl`. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input model path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
@@ -143,6 +144,18 @@ MDL write support generates SMD, QC, material files, optional animation SMDs, an
 ```
 
 `--game-dir` is required and must point to a Source game directory containing `gameinfo.txt`. The tool reads `gameinfo.txt` to identify the game and infer the engine root from `gamebin`.
+
+### Men of War (MOW)
+
+Men of War / Assault Squad 2 extracted assets are supported with `--input-format mow`. The importer accepts either the entity `.def` file or the referenced `.mdl` file. `.def` input resolves the first `Extension` node to find the model.
+
+The current importer reads the `.mdl` skeleton tree, loads each bone `VolumeView` binary `EPLYBNDS` `.ply`, parses the referenced `.mtl`, resolves local `.dds` diffuse/specular textures, and imports local `.anm` animation files. Meshes are rigidly weighted to their owning bones.
+
+```powershell
+./GMConverter.CLI --input-format mow --output-format glb `
+  --input-path "bddispenser\bddispenser.def" `
+  --output-path "out\bddispenser-glb"
+```
 
 ### OBJ / MTL
 

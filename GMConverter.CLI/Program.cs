@@ -37,7 +37,7 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: opt, mdl, psk.");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: opt, mdl, psk, mow.");
         var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: info, obj, glb, gltf, source, mdl.");
         var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
         var outputPathOption = new Option<string>("--output-path")
@@ -278,7 +278,8 @@ internal static class Program
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
-            _ => throw new ArgumentException("Option --input-format must be 'opt', 'mdl', or 'psk'.")
+            "mow" => new MOWImporter(),
+            _ => throw new ArgumentException("Option --input-format must be 'opt', 'mdl', 'psk', or 'mow'.")
         };
     }
 
@@ -311,7 +312,12 @@ internal static class Program
         }
 
         var extension = Path.GetExtension(fullPath);
-        var allowedExtensions = inputFormat is "psk" ? [".psk", ".pskx"] : new[] { $".{inputFormat}" };
+        var allowedExtensions = inputFormat switch
+        {
+            "psk" => [".psk", ".pskx"],
+            "mow" => [".def", ".mdl"],
+            _ => new[] { $".{inputFormat}" }
+        };
 
         if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {

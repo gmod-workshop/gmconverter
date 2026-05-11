@@ -17,6 +17,8 @@ internal sealed class OPTImporter : IImporter
 {
     public string InputFormat => "opt";
 
+    public string InputName => "X-Wing Alliance";
+
     public object Summarize(string inputPath)
     {
         return OptSummary.From(inputPath, OptFile.FromFile(inputPath));

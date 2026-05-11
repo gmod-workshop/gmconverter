@@ -13,6 +13,8 @@ internal sealed class MDLImporter : IImporter
 {
     public string InputFormat => "mdl";
 
+    public string InputName => "Source Engine";
+
     public object Summarize(string inputPath)
     {
         var sourceModel = LoadHeader(inputPath);

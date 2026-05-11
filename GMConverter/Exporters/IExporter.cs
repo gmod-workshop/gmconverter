@@ -8,5 +8,9 @@ namespace GMConverter.Exporters;
 /// <typeparam name="TOptions"></typeparam>
 internal interface IExporter<in TOptions>
 {
+    string OutputFormat { get; }
+
+    string OutputName { get; }
+
     void Export(Model model, string outputDirectory, string baseName, TOptions options);
 }

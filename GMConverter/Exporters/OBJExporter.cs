@@ -8,6 +8,10 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);
 
+    public string OutputFormat => "obj";
+
+    public string OutputName => "Wavefront OBJ";
+
     public void Export(Model model, string outputDirectory, string baseName, OBJExportOptions options)
     {
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);

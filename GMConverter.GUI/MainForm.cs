@@ -42,6 +42,24 @@ internal sealed class MainForm : Form
     private readonly Label _previewStatsLabel = new();
     private readonly TextBox _logBox = new();
 
+    private static readonly FormatDisplayItem[] InputFormats =
+    [
+        new("opt", "OPT", new OPTImporter().InputName),
+        new("mdl", "MDL", new MDLImporter().InputName),
+        new("psk", "PSK", new PSKImporter().InputName),
+        new("mow", "MOW", new MOWImporter().InputName)
+    ];
+
+    private static readonly FormatDisplayItem[] OutputFormats =
+    [
+        new("info", "Info", "Summary"),
+        new(new OBJExporter().OutputFormat, "OBJ", new OBJExporter().OutputName),
+        new("glb", "GLB", new GLTFExporter().OutputName),
+        new("gltf", "glTF", new GLTFExporter().OutputName),
+        new("source", "Source", new MDLExporter().OutputName),
+        new(new MDLExporter().OutputFormat, "MDL", new MDLExporter().OutputName)
+    ];
+
     public MainForm()
     {
         Text = "GMConverter";
@@ -57,13 +75,13 @@ internal sealed class MainForm : Form
     private void ConfigureControls()
     {
         _inputFormatBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        _inputFormatBox.Items.AddRange(["opt", "mdl", "psk"]);
+        _inputFormatBox.Items.AddRange(InputFormats.Cast<object>().ToArray());
         _inputFormatBox.SelectedIndex = 0;
         _inputFormatBox.SelectedIndexChanged += (_, _) => UpdateControlState();
 
         _outputFormatBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        _outputFormatBox.Items.AddRange(["info", "obj", "glb", "gltf", "source", "mdl"]);
-        _outputFormatBox.SelectedItem = "mdl";
+        _outputFormatBox.Items.AddRange(OutputFormats.Cast<object>().ToArray());
+        SetComboValue(_outputFormatBox, "mdl", "output-format");
         _outputFormatBox.SelectedIndexChanged += (_, _) => UpdateControlState();
 
         _scaleBox.DecimalPlaces = 4;
@@ -590,7 +608,12 @@ internal sealed class MainForm : Form
     {
         var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
         var extension = Path.GetExtension(fullPath);
-        var allowedExtensions = inputFormat is "psk" ? [".psk", ".pskx"] : new[] { $".{inputFormat}" };
+        var allowedExtensions = inputFormat switch
+        {
+            "psk" => [".psk", ".pskx"],
+            "mow" => [".def", ".mdl"],
+            _ => new[] { $".{inputFormat}" }
+        };
 
         if (!File.Exists(fullPath))
         {
@@ -704,6 +727,13 @@ internal sealed class MainForm : Form
 
         foreach (var item in comboBox.Items)
         {
+            if (item is FormatDisplayItem displayItem &&
+                string.Equals(displayItem.Value, value, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = item;
+                return;
+            }
+
             if (string.Equals(item.ToString(), value, StringComparison.OrdinalIgnoreCase))
             {
                 comboBox.SelectedItem = item;
@@ -865,6 +895,7 @@ internal sealed class MainForm : Form
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
+            "mow" => new MOWImporter(),
             _ => throw new InvalidOperationException($"Unsupported input format: {inputFormat}")
         };
     }
@@ -873,7 +904,7 @@ internal sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Supported model files (*.opt;*.mdl;*.psk;*.pskx)|*.opt;*.mdl;*.psk;*.pskx|OPT files (*.opt)|*.opt|MDL files (*.mdl)|*.mdl|PSK files (*.psk;*.pskx)|*.psk;*.pskx|All files (*.*)|*.*",
+            Filter = "Supported model files (*.opt;*.mdl;*.psk;*.pskx;*.def)|*.opt;*.mdl;*.psk;*.pskx;*.def|OPT files (*.opt)|*.opt|MDL files (*.mdl)|*.mdl|PSK files (*.psk;*.pskx)|*.psk;*.pskx|Men of War files (*.def;*.mdl)|*.def;*.mdl|All files (*.*)|*.*",
             CheckFileExists = true
         };
 
@@ -915,7 +946,9 @@ internal sealed class MainForm : Form
 
     private static string SelectedText(ComboBox comboBox)
     {
-        return comboBox.SelectedItem?.ToString() ?? string.Empty;
+        return comboBox.SelectedItem is FormatDisplayItem item
+            ? item.Value
+            : comboBox.SelectedItem?.ToString() ?? string.Empty;
     }
 
     private static void EnablePathDrop(TextBox textBox, DirectoryDropBehavior directoryBehavior)
@@ -1034,6 +1067,14 @@ internal sealed class MainForm : Form
         double CoacdThreshold,
         int MaxConvexPieces,
         int MaxHullVertices);
+
+    private sealed record FormatDisplayItem(string Value, string Label, string Name)
+    {
+        public override string ToString()
+        {
+            return string.IsNullOrWhiteSpace(Name) ? Label : $"{Label} ({Name})";
+        }
+    }
 
     private sealed record GuiConversionSettings(
         string InputFormat,

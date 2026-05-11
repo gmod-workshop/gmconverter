@@ -15,6 +15,10 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private const int SourceMaxConvexPieces = 1024;
 
+    public string OutputFormat => "mdl";
+
+    public string OutputName => "Source Engine";
+
     public void Export(
         Model model,
         string outputDirectory,
@@ -118,8 +122,8 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
                 {
                     writer.WriteLine(materialName);
                     WriteSmdVertex(writer, mesh.Vertices[triangle.A]);
-                    WriteSmdVertex(writer, mesh.Vertices[triangle.B]);
                     WriteSmdVertex(writer, mesh.Vertices[triangle.C]);
+                    WriteSmdVertex(writer, mesh.Vertices[triangle.B]);
                 }
             }
         }
@@ -399,29 +403,61 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             .OfType<BoneTransformTrack>()
             .GroupBy(track => track.BoneIndex)
             .ToDictionary(group => group.Key, group => group.First());
-        var frameCount = Math.Max(1, tracksByBone.Values.Select(track => track.Keyframes.Count).DefaultIfEmpty(1).Max());
+        var lastFrame = GetLastAnimationFrame(clip, tracksByBone.Values);
 
-        for (var frameIndex = 0; frameIndex < frameCount; frameIndex++)
+        for (var frameIndex = 0; frameIndex <= lastFrame; frameIndex++)
         {
             writer.WriteLine(FormattableString.Invariant($"time {frameIndex}"));
+            var frameTransforms = model.Skeleton.Bones.ToDictionary(
+                bone => bone.Index,
+                bone => GetFrameTransform(bone, tracksByBone.GetValueOrDefault(bone.Index), frameIndex, clip.FrameRate));
+            var sourceTransforms = BuildSourceLocalTransforms(model.Skeleton, frameTransforms);
+
             foreach (var bone in model.Skeleton.Bones.OrderBy(bone => bone.Index))
             {
-                var transform = GetFrameTransform(bone, tracksByBone.GetValueOrDefault(bone.Index), frameIndex);
-                WriteSmdBoneTransform(writer, bone.Index, transform);
+                WriteSmdBoneTransform(writer, bone.Index, sourceTransforms[bone.Index]);
             }
         }
 
         writer.WriteLine("end");
     }
 
-    private static Transform GetFrameTransform(Bone bone, BoneTransformTrack? track, int frameIndex)
+    private static int GetLastAnimationFrame(AnimationClip clip, IEnumerable<BoneTransformTrack> tracks)
+    {
+        var maxFrame = tracks
+            .SelectMany(track => track.Keyframes)
+            .Select(keyframe => ToAnimationFrame(keyframe.TimeSeconds, clip.FrameRate))
+            .DefaultIfEmpty(0)
+            .Max();
+        var durationFrame = ToAnimationFrame(clip.DurationSeconds, clip.FrameRate);
+
+        return Math.Max(0, Math.Max(maxFrame, durationFrame));
+    }
+
+    private static Transform GetFrameTransform(Bone bone, BoneTransformTrack? track, int frameIndex, float frameRate)
     {
         if (track is null || track.Keyframes.Count == 0)
         {
             return bone.LocalBindPose;
         }
 
-        return track.Keyframes[Math.Min(frameIndex, track.Keyframes.Count - 1)].Transform;
+        Transform transform = bone.LocalBindPose;
+        foreach (var keyframe in track.Keyframes.OrderBy(keyframe => keyframe.TimeSeconds))
+        {
+            if (ToAnimationFrame(keyframe.TimeSeconds, frameRate) > frameIndex)
+            {
+                break;
+            }
+
+            transform = keyframe.Transform;
+        }
+
+        return transform;
+    }
+
+    private static int ToAnimationFrame(float timeSeconds, float frameRate)
+    {
+        return (int)MathF.Round(timeSeconds * frameRate);
     }
 
     private static void WriteSmdNodes(StreamWriter writer, Skeleton? skeleton)
@@ -455,13 +491,58 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
         else
         {
+            var sourceTransforms = BuildSourceLocalTransforms(skeleton);
             foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))
             {
-                WriteSmdBoneTransform(writer, bone.Index, bone.LocalBindPose);
+                WriteSmdBoneTransform(writer, bone.Index, sourceTransforms[bone.Index]);
             }
         }
 
         writer.WriteLine("end");
+    }
+
+    private static IReadOnlyDictionary<int, Transform> BuildSourceLocalTransforms(
+        Skeleton skeleton,
+        IReadOnlyDictionary<int, Transform>? localTransforms = null)
+    {
+        Dictionary<int, Matrix4x4> originalWorldTransforms = [];
+        Dictionary<int, Matrix4x4> sourceWorldTransforms = [];
+        Dictionary<int, Transform> sourceLocalTransforms = [];
+
+        foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))
+        {
+            var localTransform = localTransforms is not null && localTransforms.TryGetValue(bone.Index, out var overrideTransform)
+                ? overrideTransform
+                : bone.LocalBindPose;
+            var parentOriginalWorld = bone.ParentIndex >= 0 && originalWorldTransforms.TryGetValue(bone.ParentIndex, out var originalParent)
+                ? originalParent
+                : Matrix4x4.Identity;
+            var parentSourceWorld = bone.ParentIndex >= 0 && sourceWorldTransforms.TryGetValue(bone.ParentIndex, out var sourceParent)
+                ? sourceParent
+                : Matrix4x4.Identity;
+            var originalWorld = ToTransformMatrix(localTransform, includeScale: true) * parentOriginalWorld;
+
+            Matrix4x4.Invert(parentSourceWorld, out var inverseParentSourceWorld);
+            var sourceTranslation = Vector3.Transform(originalWorld.Translation, inverseParentSourceWorld);
+            var sourceLocalTransform = new Transform(sourceTranslation, localTransform.Rotation, Vector3.One);
+            var sourceWorld = ToTransformMatrix(sourceLocalTransform, includeScale: false) * parentSourceWorld;
+
+            originalWorldTransforms[bone.Index] = originalWorld;
+            sourceLocalTransforms[bone.Index] = sourceLocalTransform;
+            sourceWorldTransforms[bone.Index] = sourceWorld;
+        }
+
+        return sourceLocalTransforms;
+    }
+
+    private static Matrix4x4 ToTransformMatrix(Transform transform, bool includeScale)
+    {
+        var matrix = Matrix4x4.CreateFromQuaternion(NormalizeQuaternion(transform.Rotation)) *
+            Matrix4x4.CreateTranslation(transform.Translation);
+
+        return includeScale
+            ? Matrix4x4.CreateScale(transform.Scale) * matrix
+            : matrix;
     }
 
     private static void WriteSmdBoneTransform(StreamWriter writer, int boneIndex, Transform transform)
@@ -522,18 +603,24 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
             material.DiffuseTexture.WritePng(pngPath);
             material.NormalTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
+            material.SpecularTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
 
             using var writer = new StreamWriter(vmtPath, false, Utf8NoBom);
             writer.WriteLine("\"VertexLitGeneric\"");
             writer.WriteLine("{");
             writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{sourceTexturePath}\""));
+            writer.WriteLine("    \"$nocull\" \"1\"");
 
             if (material.NormalTexture is not null)
             {
                 writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{sourceTexturePath}_normal\""));
             }
 
-            if (material.HasAlpha)
+            if (UseSourcePhong(material))
+            {
+                WritePhongParameters(writer, $"{sourceTexturePath}_spec");
+            }
+            else if (material.HasAlpha)
             {
                 writer.WriteLine("    \"$translucent\" \"1\"");
             }
@@ -548,6 +635,22 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
             material.EmissiveTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_illum.png"));
         }
+    }
+
+    private static bool UseSourcePhong(Material material)
+    {
+        return material.DiffuseTexture is not null &&
+            material.SpecularTexture is not null &&
+            !material.HasAlpha;
+    }
+
+    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath)
+    {
+        writer.WriteLine("    \"$phong\" \"1\"");
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
+        writer.WriteLine("    \"$phongboost\" \"1\"");
+        writer.WriteLine("    \"$phongexponent\" \"25\"");
+        writer.WriteLine("    \"$phongfresnelranges\" \"[0 0.5 1]\"");
     }
 
     private static IReadOnlyList<string> GetMaterialDirectories(Model model, string modelPath)

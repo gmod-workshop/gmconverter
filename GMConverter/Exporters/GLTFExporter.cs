@@ -17,6 +17,10 @@ namespace GMConverter.Exporters;
 
 internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 {
+    public string OutputFormat => "glb";
+
+    public string OutputName => "glTF";
+
     public void Export(Model model, string outputDirectory, string baseName, GLTFExportOptions options)
     {
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);
@@ -150,7 +154,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         }
 
         var geometry = new VertexPositionNormal(vertex.Position.X, vertex.Position.Y, vertex.Position.Z, normal.X, normal.Y, normal.Z);
-        var material = new VertexTexture1(vertex.TextureCoordinate);
+        var material = new VertexTexture1(new Vector2(vertex.TextureCoordinate.X, 1.0f - vertex.TextureCoordinate.Y));
         return (geometry, material);
     }
 

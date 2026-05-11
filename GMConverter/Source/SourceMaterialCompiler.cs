@@ -52,6 +52,15 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
                 RunVtex(normalPath);
             }
 
+            if (UseSourcePhong(material))
+            {
+                var specularName = $"{material.Name}_spec";
+                var specularPath = Path.Combine(materialSourceDirectory, $"{specularName}.tga");
+
+                material.SpecularTexture!.WriteTga(specularPath);
+                RunVtex(specularPath);
+            }
+
             WriteVmt(vmtPath, baseTexturePath, material);
 
             if (material.EmissiveTexture is not null)
@@ -76,13 +85,18 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
         writer.WriteLine("\"VertexLitGeneric\"");
         writer.WriteLine("{");
         writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{baseTexturePath}\""));
+        writer.WriteLine("    \"$nocull\" \"1\"");
 
         if (material.NormalTexture is not null)
         {
             writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{baseTexturePath}_normal\""));
         }
 
-        if (material.HasAlpha)
+        if (UseSourcePhong(material))
+        {
+            WritePhongParameters(writer, $"{baseTexturePath}_spec");
+        }
+        else if (material.HasAlpha)
         {
             writer.WriteLine("    \"$translucent\" \"1\"");
         }
@@ -94,6 +108,22 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
         }
 
         writer.WriteLine("}");
+    }
+
+    private static bool UseSourcePhong(Material material)
+    {
+        return material.DiffuseTexture is not null &&
+            material.SpecularTexture is not null &&
+            !material.HasAlpha;
+    }
+
+    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath)
+    {
+        writer.WriteLine("    \"$phong\" \"1\"");
+        writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
+        writer.WriteLine("    \"$phongboost\" \"1\"");
+        writer.WriteLine("    \"$phongexponent\" \"25\"");
+        writer.WriteLine("    \"$phongfresnelranges\" \"[0 0.5 1]\"");
     }
 
     private static string NormalizeMaterialDirectory(string materialRelativeDirectory)

@@ -816,7 +816,7 @@ internal sealed class PreviewViewport : Control
         public Color Sample(float u, float v)
         {
             var x = Math.Clamp((int)(Wrap(u) * (Width - 1)), 0, Width - 1);
-            var y = Math.Clamp((int)(Wrap(v) * (Height - 1)), 0, Height - 1);
+            var y = Math.Clamp((int)((1.0f - Wrap(v)) * (Height - 1)), 0, Height - 1);
             return Color.FromArgb(_pixels[y * Width + x]);
         }
 

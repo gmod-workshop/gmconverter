@@ -1,6 +1,7 @@
 using System.Numerics;
 using GMConverter.Common;
 using GMConverter.Exporters;
+using GMConverter.GameExplorer;
 using GMConverter.Geometry;
 using GMConverter.Importers;
 using GMConverter.Source;
@@ -42,6 +43,14 @@ internal sealed class MainForm : Form
     private readonly PreviewViewport _previewViewport = new();
     private readonly Label _previewStatsLabel = new();
     private readonly TextBox _logBox = new();
+    private readonly GameExplorerService _gameExplorerService = new();
+    private readonly TextBox _explorerGameDirectoryBox = new();
+    private readonly ComboBox _explorerGameBox = new();
+    private readonly Button _explorerScanButton = new();
+    private readonly Button _explorerPreviewButton = new();
+    private readonly Button _explorerExportButton = new();
+    private readonly TreeView _explorerTree = new();
+    private readonly Label _explorerStatusLabel = new();
 
     private static readonly FormatDisplayItem[] InputFormats =
     [
@@ -161,6 +170,44 @@ internal sealed class MainForm : Form
         _logBox.MinimumSize = new Size(0, 180);
         _logBox.Font = new Font(FontFamily.GenericMonospace, 9f);
 
+        _explorerGameBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _explorerGameBox.Items.Add(new GameProfileDisplayItem(GameExplorerService.AutoProfileId, "Auto-detect"));
+        _explorerGameBox.Items.AddRange(_gameExplorerService.Profiles
+            .Select(profile => new GameProfileDisplayItem(profile.Id, profile.DisplayName))
+            .Cast<object>()
+            .ToArray());
+        _explorerGameBox.SelectedIndex = 0;
+
+        _explorerScanButton.Text = "Scan";
+        _explorerScanButton.Height = 32;
+        _explorerScanButton.Click += async (_, _) => await ScanGameExplorerAsync();
+
+        _explorerPreviewButton.Text = "Preview Selected";
+        _explorerPreviewButton.Height = 32;
+        _explorerPreviewButton.Enabled = false;
+        _explorerPreviewButton.Click += async (_, _) => await PreviewSelectedExplorerEntryAsync();
+
+        _explorerExportButton.Text = "Export Selected";
+        _explorerExportButton.Height = 32;
+        _explorerExportButton.Enabled = false;
+        _explorerExportButton.Click += async (_, _) => await ExportSelectedExplorerEntryAsync();
+
+        _explorerTree.Dock = DockStyle.Fill;
+        _explorerTree.HideSelection = false;
+        _explorerTree.AfterSelect += async (_, args) =>
+        {
+            UpdateExplorerSelectionState();
+            if (args.Node?.Tag is GameExplorerEntry)
+            {
+                await PreviewSelectedExplorerEntryAsync();
+            }
+        };
+
+        _explorerStatusLabel.AutoSize = false;
+        _explorerStatusLabel.Dock = DockStyle.Fill;
+        _explorerStatusLabel.Padding = new Padding(6);
+        _explorerStatusLabel.Text = "Select a game directory and scan for supported models.";
+
         EnablePathDrop(_inputPathBox, DirectoryDropBehavior.FileOrDirectory);
         EnablePathDrop(_outputPathBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_configPathBox, DirectoryDropBehavior.FileOrDirectory);
@@ -168,6 +215,7 @@ internal sealed class MainForm : Form
         EnablePathDrop(_engineDirectoryBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_materialDirectoryBox, DirectoryDropBehavior.Directory);
         EnablePathDrop(_animationPathBox, DirectoryDropBehavior.FileOrDirectory);
+        EnablePathDrop(_explorerGameDirectoryBox, DirectoryDropBehavior.Directory);
     }
 
     private Control BuildLayout()
@@ -181,6 +229,14 @@ internal sealed class MainForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+
+        var tabs = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            MinimumSize = new Size(InputPaneMinimumWidth, 0)
+        };
+        var convertTab = new TabPage("Convert");
+        var explorerTab = new TabPage("Game Explorer");
 
         var left = new TableLayoutPanel
         {
@@ -265,10 +321,62 @@ internal sealed class MainForm : Form
 
         left.Controls.Add(sections, 0, 0);
         left.Controls.Add(outputSection, 0, 1);
-        root.Controls.Add(left, 0, 0);
+        convertTab.Controls.Add(left);
+        explorerTab.Controls.Add(BuildGameExplorerPanel());
+        tabs.TabPages.Add(convertTab);
+        tabs.TabPages.Add(explorerTab);
+
+        root.Controls.Add(tabs, 0, 0);
         root.Controls.Add(previewSection, 1, 0);
 
         return root;
+    }
+
+    private Control BuildGameExplorerPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 4,
+            Padding = new Padding(10)
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+
+        var explorerSection = CreateSection("Game Explorer");
+        AddPathRow(explorerSection, "Game directory", _explorerGameDirectoryBox, BrowseFolder);
+        AddRow(explorerSection, "Game", _explorerGameBox);
+        _explorerScanButton.Dock = DockStyle.Fill;
+        _explorerScanButton.Margin = new Padding(0, 8, 0, 0);
+        explorerSection.Controls.Add(_explorerScanButton, 0, explorerSection.RowCount);
+        explorerSection.SetColumnSpan(_explorerScanButton, 3);
+        explorerSection.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        explorerSection.RowCount++;
+
+        var actions = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1
+        };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        _explorerPreviewButton.Dock = DockStyle.Fill;
+        _explorerExportButton.Dock = DockStyle.Fill;
+        _explorerPreviewButton.Margin = new Padding(0, 0, 6, 0);
+        _explorerExportButton.Margin = new Padding(6, 0, 0, 0);
+        actions.Controls.Add(_explorerPreviewButton, 0, 0);
+        actions.Controls.Add(_explorerExportButton, 1, 0);
+
+        panel.Controls.Add((Control)explorerSection.Tag!, 0, 0);
+        panel.Controls.Add(_explorerStatusLabel, 0, 1);
+        panel.Controls.Add(_explorerTree, 0, 2);
+        panel.Controls.Add(actions, 0, 3);
+
+        return panel;
     }
 
     private static TableLayoutPanel CreateSection(string title)
@@ -894,6 +1002,152 @@ internal sealed class MainForm : Form
         return new Mesh(vertices, [new Submesh("physics", triangles)]);
     }
 
+    private async Task ScanGameExplorerAsync()
+    {
+        _explorerScanButton.Enabled = false;
+        _explorerPreviewButton.Enabled = false;
+        _explorerExportButton.Enabled = false;
+        _explorerTree.Nodes.Clear();
+
+        try
+        {
+            var gameDirectory = Path.GetFullPath(Environment.ExpandEnvironmentVariables(_explorerGameDirectoryBox.Text));
+            AppendLog($"Scanning game directory: {gameDirectory}");
+
+            var profileId = SelectedGameProfileId();
+            var result = await Task.Run(() => _gameExplorerService.Scan(gameDirectory, profileId));
+
+            PopulateExplorerTree(result.Entries);
+            _explorerStatusLabel.Text = $"{result.Profile.DisplayName}: {result.Entries.Count} supported model file(s).";
+            AppendLog($"Game Explorer found {result.Entries.Count} supported model file(s) using {result.Profile.DisplayName}.");
+        }
+        catch (Exception ex)
+        {
+            _explorerStatusLabel.Text = "Scan failed.";
+            AppendLog($"Game Explorer scan failed. {ex.Message}");
+        }
+        finally
+        {
+            _explorerScanButton.Enabled = true;
+            UpdateExplorerSelectionState();
+        }
+    }
+
+    private async Task PreviewSelectedExplorerEntryAsync()
+    {
+        if (SelectedExplorerEntry() is not { } entry)
+        {
+            return;
+        }
+
+        ApplyExplorerEntry(entry);
+        await LoadPreviewAsync();
+    }
+
+    private async Task ExportSelectedExplorerEntryAsync()
+    {
+        if (SelectedExplorerEntry() is not { } entry)
+        {
+            return;
+        }
+
+        ApplyExplorerEntry(entry);
+        await RunConversionAsync();
+    }
+
+    private void ApplyExplorerEntry(GameExplorerEntry entry)
+    {
+        var resolvedEntry = _gameExplorerService.ResolveEntry(entry);
+        SetComboValue(_inputFormatBox, entry.InputFormat, "input-format");
+        _inputPathBox.Text = resolvedEntry.InputPath;
+        _materialDirectoryBox.Text = resolvedEntry.MaterialDirectory;
+
+        var baseName = Path.GetFileNameWithoutExtension(resolvedEntry.InputPath);
+        _nameBox.Text = baseName;
+        if (_modelPathBox.Enabled || SelectedText(_outputFormatBox) is "source" or "mdl")
+        {
+            _modelPathBox.Text = $"gmconverter/{SanitizePathToken(baseName)}.mdl";
+        }
+
+        UpdateControlState();
+    }
+
+    private void PopulateExplorerTree(IEnumerable<GameExplorerEntry> entries)
+    {
+        _explorerTree.BeginUpdate();
+        _explorerTree.Nodes.Clear();
+
+        foreach (var entry in entries)
+        {
+            AddExplorerEntry(entry);
+        }
+
+        _explorerTree.EndUpdate();
+        foreach (TreeNode node in _explorerTree.Nodes)
+        {
+            node.Expand();
+        }
+    }
+
+    private void AddExplorerEntry(GameExplorerEntry entry)
+    {
+        var segments = entry.DisplayPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var nodes = _explorerTree.Nodes;
+        TreeNode? current = null;
+
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var segment = segments[index];
+            var node = FindTreeNode(nodes, segment);
+            if (node is null)
+            {
+                node = new TreeNode(segment);
+                nodes.Add(node);
+            }
+
+            current = node;
+            nodes = node.Nodes;
+        }
+
+        if (current is not null)
+        {
+            current.Tag = entry;
+            current.ToolTipText = entry.FilePath;
+        }
+    }
+
+    private static TreeNode? FindTreeNode(TreeNodeCollection nodes, string text)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            if (string.Equals(node.Text, text, StringComparison.OrdinalIgnoreCase))
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    private GameExplorerEntry? SelectedExplorerEntry()
+    {
+        return _explorerTree.SelectedNode?.Tag as GameExplorerEntry;
+    }
+
+    private void UpdateExplorerSelectionState()
+    {
+        var hasEntry = SelectedExplorerEntry() is not null;
+        _explorerPreviewButton.Enabled = hasEntry;
+        _explorerExportButton.Enabled = hasEntry;
+    }
+
+    private string SelectedGameProfileId()
+    {
+        return _explorerGameBox.SelectedItem is GameProfileDisplayItem item
+            ? item.Id
+            : GameExplorerService.AutoProfileId;
+    }
+
     private static IImporter CreateImporter(string inputFormat, ILoggerFactory? loggerFactory = null)
     {
         return inputFormat switch
@@ -1088,6 +1342,14 @@ internal sealed class MainForm : Form
         public override string ToString()
         {
             return string.IsNullOrWhiteSpace(Name) ? Label : $"{Label} ({Name})";
+        }
+    }
+
+    private sealed record GameProfileDisplayItem(string Id, string DisplayName)
+    {
+        public override string ToString()
+        {
+            return DisplayName;
         }
     }
 

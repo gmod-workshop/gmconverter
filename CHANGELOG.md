@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 - Added Men of War warnings for missing materials, textures, and animation files.
 - Added support for recursive MOW texture lookup through `--material-dir`.
 - Added Source Engine Phong mask output from imported specular textures such as MOW `_sp` maps.
+- Added a GUI Game Explorer tab for scanning loose game folders and previewing/exporting supported model files.
+- Added Game Explorer support for zip-backed Men of War `.pak` archives.
 
 ### Changed
 

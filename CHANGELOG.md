@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added importer logging support through `ILoggerFactory`, with CLI console logging and GUI log-box routing.
+- Added Men of War warnings for missing materials, textures, and animation files.
+- Added support for recursive MOW texture lookup through `--material-dir`.
+
+### Changed
+
+- Hardened MOW bone name handling for joint-typed bone declarations such as `revolute`.
+- Improved MOW texture resolution for shared texture references by matching indexed texture basenames.
+
+### Fixed
+
+- Fixed MOW imports for models with duplicate original bone names.
+- Fixed MOW PLY parsing for multi-material mesh sections.
+- Fixed additional MOW PLY material and vertex format variants found in real assets.
+- Fixed MOW ANM vertex-animation chunk skipping for animations with variable trailer sizes.
+- Improved MOW parser errors for truncated or unsupported PLY and ANM data.
+
 ## [1.1.0] - 2026-05-11
 
 ### Added
@@ -33,5 +54,6 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.1.0...HEAD
 [1.1.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/gmod-workshop/gmconverter/releases/tag/v1.0.0

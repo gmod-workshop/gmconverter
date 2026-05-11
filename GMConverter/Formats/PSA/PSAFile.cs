@@ -3,23 +3,26 @@ using System.Numerics;
 using System.Text;
 using GMConverter.Common;
 
-namespace GMConverter.Importers;
+namespace GMConverter.Formats.PSA;
 
-internal sealed class PsaFile
+/// <summary>
+/// Unreal ActorX PSA files.
+/// </summary>
+internal sealed class PSAFile
 {
     private static readonly Encoding SectionNameEncoding = Encoding.ASCII;
     private static readonly Encoding TextEncoding = Encoding.Latin1;
 
-    public List<PsaBone> Bones { get; } = [];
-    public List<PsaSequence> Sequences { get; } = [];
-    public List<PsaKey> Keys { get; } = [];
-    public List<PsaScaleKey> ScaleKeys { get; } = [];
+    public List<PSABone> Bones { get; } = [];
+    public List<PSASequence> Sequences { get; } = [];
+    public List<PSAKey> Keys { get; } = [];
+    public List<PSAScaleKey> ScaleKeys { get; } = [];
 
-    public static PsaFile Read(string path)
+    public static PSAFile Read(string path)
     {
         using var stream = File.OpenRead(path);
         using var reader = new BinaryReader(stream);
-        var psa = new PsaFile();
+        var psa = new PSAFile();
 
         while (stream.Position < stream.Length)
         {
@@ -58,7 +61,7 @@ internal sealed class PsaFile
         return psa;
     }
 
-    public IReadOnlyList<PsaKey> GetSequenceKeys(PsaSequence sequence)
+    public IReadOnlyList<PSAKey> GetSequenceKeys(PSASequence sequence)
     {
         if (Bones.Count == 0 || sequence.FrameCount <= 0)
         {
@@ -75,7 +78,7 @@ internal sealed class PsaFile
         return Keys.GetRange(start, count);
     }
 
-    public IReadOnlyList<PsaScaleKey> GetSequenceScaleKeys(PsaSequence sequence)
+    public IReadOnlyList<PSAScaleKey> GetSequenceScaleKeys(PSASequence sequence)
     {
         if (ScaleKeys.Count == 0 || Bones.Count == 0 || sequence.FrameCount <= 0)
         {
@@ -92,7 +95,7 @@ internal sealed class PsaFile
         return ScaleKeys.GetRange(start, count);
     }
 
-    private static PsaSection ReadSection(BinaryReader reader)
+    private static PSASection ReadSection(BinaryReader reader)
     {
         var nameBytes = reader.ReadBytes(20);
         if (nameBytes.Length != 20)
@@ -100,14 +103,14 @@ internal sealed class PsaFile
             throw new GMConverterException("Unexpected end of PSA while reading section header.");
         }
 
-        return new PsaSection(
+        return new PSASection(
             DecodeFixedString(nameBytes, SectionNameEncoding),
             reader.ReadInt32(),
             reader.ReadInt32(),
             reader.ReadInt32());
     }
 
-    private static void ReadRecords(BinaryReader reader, PsaSection section, Action<byte[]> readRecord)
+    private static void ReadRecords(BinaryReader reader, PSASection section, Action<byte[]> readRecord)
     {
         if (section.DataSize <= 0 || section.DataCount < 0)
         {
@@ -126,15 +129,15 @@ internal sealed class PsaFile
         }
     }
 
-    private static void SkipSection(BinaryReader reader, PsaSection section)
+    private static void SkipSection(BinaryReader reader, PSASection section)
     {
         reader.BaseStream.Seek(checked(section.DataSize * section.DataCount), SeekOrigin.Current);
     }
 
-    private static PsaBone ReadBone(ReadOnlySpan<byte> record)
+    private static PSABone ReadBone(ReadOnlySpan<byte> record)
     {
         RequireRecordSize(record, 120, "BONENAMES");
-        return new PsaBone(
+        return new PSABone(
             DecodeFixedString(record[..64], TextEncoding),
             ReadInt32(record, 64),
             ReadInt32(record, 68),
@@ -145,10 +148,10 @@ internal sealed class PsaFile
             ReadVector3(record, 108));
     }
 
-    private static PsaSequence ReadSequence(ReadOnlySpan<byte> record)
+    private static PSASequence ReadSequence(ReadOnlySpan<byte> record)
     {
         RequireRecordSize(record, 168, "ANIMINFO");
-        return new PsaSequence(
+        return new PSASequence(
             DecodeFixedString(record[..64], TextEncoding),
             DecodeFixedString(record.Slice(64, 64), TextEncoding),
             ReadInt32(record, 128),
@@ -163,22 +166,22 @@ internal sealed class PsaFile
             ReadInt32(record, 164));
     }
 
-    private static PsaKey ReadKey(ReadOnlySpan<byte> record)
+    private static PSAKey ReadKey(ReadOnlySpan<byte> record)
     {
         RequireRecordSize(record, 32, "ANIMKEYS");
-        return new PsaKey(
+        return new PSAKey(
             ReadVector3(record, 0),
             ReadQuaternion(record, 12),
             ReadSingle(record, 28));
     }
 
-    private static PsaScaleKey ReadScaleKey(ReadOnlySpan<byte> record)
+    private static PSAScaleKey ReadScaleKey(ReadOnlySpan<byte> record)
     {
         RequireRecordSize(record, 16, "SCALEKEYS");
-        return new PsaScaleKey(ReadVector3(record, 0), ReadSingle(record, 12));
+        return new PSAScaleKey(ReadVector3(record, 0), ReadSingle(record, 12));
     }
 
-    private static void FixCue4ParseFrameStartIndices(List<PsaSequence> sequences)
+    private static void FixCue4ParseFrameStartIndices(List<PSASequence> sequences)
     {
         if (sequences.Count == 0 || sequences[0].FrameStartIndex != sequences[0].FrameCount)
         {
@@ -203,10 +206,10 @@ internal sealed class PsaFile
             ReadSingle(record, offset + 8));
     }
 
-    private static System.Numerics.Quaternion ReadQuaternion(ReadOnlySpan<byte> record, int offset)
+    private static Quaternion ReadQuaternion(ReadOnlySpan<byte> record, int offset)
     {
         RequireRecordSize(record[offset..], 16, "Quaternion");
-        return new System.Numerics.Quaternion(
+        return new Quaternion(
             ReadSingle(record, offset),
             ReadSingle(record, offset + 4),
             ReadSingle(record, offset + 8),
@@ -242,34 +245,4 @@ internal sealed class PsaFile
     {
         return BitConverter.Int32BitsToSingle(ReadInt32(value, offset));
     }
-
-    private sealed record PsaSection(string Name, int TypeFlags, int DataSize, int DataCount);
 }
-
-internal readonly record struct PsaBone(
-    string Name,
-    int Flags,
-    int ChildrenCount,
-    int ParentIndex,
-    System.Numerics.Quaternion Rotation,
-    Vector3 Location,
-    float Length,
-    Vector3 Size);
-
-internal sealed record PsaSequence(
-    string Name,
-    string Group,
-    int BoneCount,
-    int RootInclude,
-    int CompressionStyle,
-    int KeyQuota,
-    float KeyReduction,
-    float TrackTime,
-    float Fps,
-    int StartBone,
-    int FrameStartIndex,
-    int FrameCount);
-
-internal readonly record struct PsaKey(Vector3 Location, System.Numerics.Quaternion Rotation, float Time);
-
-internal readonly record struct PsaScaleKey(Vector3 Scale, float Time);

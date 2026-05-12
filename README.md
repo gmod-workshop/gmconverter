@@ -213,5 +213,6 @@ Generate a [CoACD](https://colin97.github.io/CoACD/) based collision mesh:
 
 ## Credits
 
+- [Ab4d.SharpEngine](https://www.ab4d.com/SharpEngine.aspx) - Avalonia 3D preview rendering
 - [DarklightGames/io_scene_psk_psa](https://github.com/DarklightGames/io_scene_psk_psa) - PSK/PSA support
 - [colin97/CoACD](https://github.com/colin97/CoACD) - Convex decomposition

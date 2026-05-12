@@ -7,6 +7,9 @@ using SharpGLTF.Memory;
 using SharpGLTF.Scenes;
 using SharpGLTF.Transforms;
 using ResourceWriteMode = SharpGLTF.Schema2.ResourceWriteMode;
+using TextureInterpolationFilter = SharpGLTF.Schema2.TextureInterpolationFilter;
+using TextureMipMapFilter = SharpGLTF.Schema2.TextureMipMapFilter;
+using TextureWrapMode = SharpGLTF.Schema2.TextureWrapMode;
 using WriteSettings = SharpGLTF.Schema2.WriteSettings;
 using GltfMeshBuilder = SharpGLTF.Geometry.MeshBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexEmpty>;
 using GltfSkinnedMeshBuilder = SharpGLTF.Geometry.MeshBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexJoints4>;
@@ -55,6 +58,8 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         }
 
         var gltf = scene.ToGltf2();
+        ApplyTextureSamplerDefaults(gltf);
+
         var settings = new WriteSettings
         {
             ImageWriting = options.Binary ? ResourceWriteMode.BufferView : ResourceWriteMode.SatelliteFile,
@@ -68,6 +73,25 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         else
         {
             gltf.SaveGLTF(outputPath, settings);
+        }
+    }
+
+    private static void ApplyTextureSamplerDefaults(SharpGLTF.Schema2.ModelRoot gltf)
+    {
+        if (gltf.LogicalTextures.Count == 0)
+        {
+            return;
+        }
+
+        var sampler = gltf.UseTextureSampler(
+            TextureWrapMode.REPEAT,
+            TextureWrapMode.REPEAT,
+            TextureMipMapFilter.LINEAR_MIPMAP_LINEAR,
+            TextureInterpolationFilter.LINEAR);
+
+        foreach (var texture in gltf.LogicalTextures)
+        {
+            texture.Sampler = sampler;
         }
     }
 

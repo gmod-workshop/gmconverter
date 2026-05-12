@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-05-12
+
+### Fixed
+
+- Fixed glTF/GLB texture sampler defaults so UI preview texture wrapping matches exported models in viewers such as Blender.
+
 ## [1.3.0] - 2026-05-12
 
 ### Changed
@@ -79,7 +85,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.0.0...v1.1.0

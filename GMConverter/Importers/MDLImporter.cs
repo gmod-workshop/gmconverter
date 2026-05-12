@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using MdlCrowbar;
 using GMConverter.Common;
 using GMConverter.Geometry;
-using Mesh = GMConverter.Geometry.Mesh;
+using MdlCrowbar;
 using static MdlCrowbar.Enums;
+using Mesh = GMConverter.Geometry.Mesh;
 
 namespace GMConverter.Importers;
 
@@ -164,12 +164,7 @@ internal sealed class MDLImporter : IImporter
         ModelAxisMode axisMode,
         List<Vertex> vertices)
     {
-        var line = reader.ReadLine();
-        if (line is null)
-        {
-            throw new GMConverterException($"Unexpected end of SMD while reading triangle vertices: {smdPath}");
-        }
-
+        var line = reader.ReadLine() ?? throw new GMConverterException($"Unexpected end of SMD while reading triangle vertices: {smdPath}");
         var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 9)
         {
@@ -258,7 +253,7 @@ internal sealed class MDLImporter : IImporter
 
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return new MaterialReference("default", materialPaths?.FirstOrDefault());
+            return new MaterialReference("default", materialPaths is { Count: > 0 } ? materialPaths[0] : null);
         }
 
         var materialDirectory = Path.GetDirectoryName(normalized)?.Replace('\\', '/');
@@ -269,7 +264,7 @@ internal sealed class MDLImporter : IImporter
             return new MaterialReference(materialName, materialDirectory);
         }
 
-        return new MaterialReference(materialName, materialPaths?.FirstOrDefault());
+        return new MaterialReference(materialName, materialPaths is { Count: > 0 } ? materialPaths[0] : null);
     }
 
     private static float ParseFloat(string value)
@@ -325,14 +320,14 @@ internal sealed record MdlSummary(
     public override string ToString()
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"File: {FilePath}");
-        builder.AppendLine($"Name: {Name}");
-        builder.AppendLine($"ID: {Id}");
-        builder.AppendLine($"Version: {Version}");
-        builder.AppendLine($"Mesh data: {HasMeshData}");
-        builder.AppendLine($"Physics mesh data: {HasPhysicsMeshData}");
-        builder.AppendLine($"Bone animation data: {HasBoneAnimationData}");
-        builder.AppendLine($"Vertex animation data: {HasVertexAnimationData}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"File: {FilePath}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Name: {Name}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"ID: {Id}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Version: {Version}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Mesh data: {HasMeshData}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Physics mesh data: {HasPhysicsMeshData}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Bone animation data: {HasBoneAnimationData}");
+        builder.AppendLine(CultureInfo.InvariantCulture, $"Vertex animation data: {HasVertexAnimationData}");
 
         if (TextureFolders.Count > 0)
         {

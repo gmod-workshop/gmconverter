@@ -25,5 +25,8 @@ jobs:
       - name: Restore
         run: dotnet restore GMConverter.slnx
 
+      - name: Format check
+        run: dotnet format GMConverter.slnx --verify-no-changes --severity warn --no-restore
+
       - name: Build
         run: dotnet build GMConverter.slnx --configuration Release --no-restore

@@ -19,19 +19,19 @@ internal enum PreviewGizmoView
 
 internal sealed class PreviewCameraGizmo : Control
 {
-    private const double GizmoRadius = 34.0;
-    private const double EndpointRadius = 9.0;
+    private const double _gizmoRadius = 34.0;
+    private const double _endpointRadius = 9.0;
 
-    private static readonly Cursor HandCursor = new(StandardCursorType.Hand);
-    private static readonly IBrush BackgroundBrush = new SolidColorBrush(Color.FromArgb(120, 15, 17, 20));
-    private static readonly Pen BackgroundPen = new(new SolidColorBrush(Color.FromArgb(85, 255, 255, 255)), 1.0);
-    private static readonly IBrush CenterBrush = new SolidColorBrush(Color.FromArgb(220, 230, 232, 236));
-    private static readonly Pen EndpointFrontPen = new(Brushes.White, 1.3);
-    private static readonly Pen EndpointBackPen = new(new SolidColorBrush(Color.FromArgb(210, 246, 248, 252)), 1.0);
+    private static readonly Cursor _handCursor = new(StandardCursorType.Hand);
+    private static readonly IBrush _backgroundBrush = new SolidColorBrush(Color.FromArgb(120, 15, 17, 20));
+    private static readonly Pen _backgroundPen = new(new SolidColorBrush(Color.FromArgb(85, 255, 255, 255)), 1.0);
+    private static readonly IBrush _centerBrush = new SolidColorBrush(Color.FromArgb(220, 230, 232, 236));
+    private static readonly Pen _endpointFrontPen = new(Brushes.White, 1.3);
+    private static readonly Pen _endpointBackPen = new(new SolidColorBrush(Color.FromArgb(210, 246, 248, 252)), 1.0);
 
-    private readonly List<GizmoHitTarget> hitTargets = [];
-    private float heading;
-    private float attitude;
+    private readonly List<GizmoHitTarget> _hitTargets = [];
+    private float _heading;
+    private float _attitude;
 
     public event EventHandler<PreviewGizmoView>? ViewRequested;
 
@@ -44,15 +44,15 @@ internal sealed class PreviewCameraGizmo : Control
 
     public void SetCamera(float heading, float attitude)
     {
-        this.heading = heading;
-        this.attitude = attitude;
+        _heading = heading;
+        _attitude = attitude;
         InvalidateVisual();
     }
 
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        hitTargets.Clear();
+        _hitTargets.Clear();
 
         var center = new Point(Bounds.Width / 2.0, Bounds.Height / 2.0);
         if (center.X < 40.0 || center.Y < 40.0)
@@ -60,19 +60,19 @@ internal sealed class PreviewCameraGizmo : Control
             return;
         }
 
-        context.DrawEllipse(BackgroundBrush, BackgroundPen, center, 44.0, 44.0);
+        context.DrawEllipse(_backgroundBrush, _backgroundPen, center, 44.0, 44.0);
 
         var endpoints = BuildEndpoints(center);
         DrawAxis(context, endpoints, PreviewGizmoView.NegativeX, PreviewGizmoView.PositiveX, Color.FromRgb(224, 84, 84));
         DrawAxis(context, endpoints, PreviewGizmoView.NegativeY, PreviewGizmoView.PositiveY, Color.FromRgb(86, 204, 126));
         DrawAxis(context, endpoints, PreviewGizmoView.NegativeZ, PreviewGizmoView.PositiveZ, Color.FromRgb(90, 156, 255));
 
-        context.DrawEllipse(CenterBrush, null, center, 3.0, 3.0);
+        context.DrawEllipse(_centerBrush, null, center, 3.0, 3.0);
 
         foreach (var endpoint in endpoints.OrderBy(endpoint => endpoint.Depth))
         {
             DrawEndpoint(context, endpoint);
-            hitTargets.Add(new GizmoHitTarget(endpoint.View, endpoint.HitBounds));
+            _hitTargets.Add(new GizmoHitTarget(endpoint.View, endpoint.HitBounds));
         }
     }
 
@@ -94,7 +94,7 @@ internal sealed class PreviewCameraGizmo : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        Cursor = HitTest(e.GetPosition(this)) is null ? null : HandCursor;
+        Cursor = HitTest(e.GetPosition(this)) is null ? null : _handCursor;
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
@@ -119,8 +119,8 @@ internal sealed class PreviewCameraGizmo : Control
 
     private Matrix4x4 CreateTransform()
     {
-        var headingRadians = DegreesToRadians(-heading);
-        var attitudeRadians = DegreesToRadians(attitude);
+        var headingRadians = DegreesToRadians(-_heading);
+        var attitudeRadians = DegreesToRadians(_attitude);
         return Matrix4x4.CreateRotationY(headingRadians) * Matrix4x4.CreateRotationX(attitudeRadians);
     }
 
@@ -144,10 +144,10 @@ internal sealed class PreviewCameraGizmo : Control
             projected = default;
         }
 
-        var radius = EndpointRadius + (transformed.Z > 0 ? 1.5 : 0.0);
+        var radius = _endpointRadius + (transformed.Z > 0 ? 1.5 : 0.0);
         var position = new Point(
-            center.X + projected.X * GizmoRadius,
-            center.Y + projected.Y * GizmoRadius);
+            center.X + projected.X * _gizmoRadius,
+            center.Y + projected.Y * _gizmoRadius);
         var hitRadius = radius + 4.0;
         var hitBounds = new Rect(
             position.X - hitRadius,
@@ -175,7 +175,7 @@ internal sealed class PreviewCameraGizmo : Control
     {
         var opacity = endpoint.Depth >= 0 ? 1.0 : 0.74;
         var fill = new SolidColorBrush(((SolidColorBrush)endpoint.Fill).Color, opacity);
-        var border = endpoint.Depth >= 0 ? EndpointFrontPen : EndpointBackPen;
+        var border = endpoint.Depth >= 0 ? _endpointFrontPen : _endpointBackPen;
         context.DrawEllipse(fill, border, endpoint.Position, endpoint.Radius, endpoint.Radius);
 
         var fontSize = endpoint.Label.Length > 1 ? 8.5 : 10.0;
@@ -194,9 +194,9 @@ internal sealed class PreviewCameraGizmo : Control
 
     private GizmoHitTarget? HitTest(Point point)
     {
-        for (var i = hitTargets.Count - 1; i >= 0; i--)
+        for (var i = _hitTargets.Count - 1; i >= 0; i--)
         {
-            var target = hitTargets[i];
+            var target = _hitTargets[i];
             if (target.Bounds.Contains(point))
             {
                 return target;

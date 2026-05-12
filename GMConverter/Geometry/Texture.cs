@@ -4,7 +4,7 @@ namespace GMConverter.Geometry;
 
 internal sealed class Texture(string name, MagickImage image, bool hasAlpha = false, string? path = null)
 {
-    private readonly MagickImage image = image;
+    private readonly MagickImage _image = image;
 
     public string Name { get; } = name;
 
@@ -14,7 +14,7 @@ internal sealed class Texture(string name, MagickImage image, bool hasAlpha = fa
 
     public byte[] ToPngBytes()
     {
-        using var output = (MagickImage)image.Clone();
+        using var output = (MagickImage)_image.Clone();
         output.Format = MagickFormat.Png;
         return output.ToByteArray();
     }
@@ -43,7 +43,7 @@ internal sealed class Texture(string name, MagickImage image, bool hasAlpha = fa
     {
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path) ?? ".");
 
-        using var output = (MagickImage)image.Clone();
+        using var output = (MagickImage)_image.Clone();
         if (alphaMask is not null)
         {
             ApplyAlphaMask(output, alphaMask);
@@ -55,7 +55,7 @@ internal sealed class Texture(string name, MagickImage image, bool hasAlpha = fa
 
     private static void ApplyAlphaMask(MagickImage output, Texture alphaMask)
     {
-        using var mask = (MagickImage)alphaMask.image.Clone();
+        using var mask = (MagickImage)alphaMask._image.Clone();
         if (mask.Width != output.Width || mask.Height != output.Height)
         {
             mask.Resize(output.Width, output.Height);

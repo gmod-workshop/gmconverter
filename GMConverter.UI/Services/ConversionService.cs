@@ -10,7 +10,7 @@ namespace GMConverter.UI.Services;
 
 internal sealed class ConversionService(UiLogSink logSink)
 {
-    private const int MaxCoacdPreviewTriangles = 5000;
+    private const int _maxCoacdPreviewTriangles = 5000;
 
     public string RunConversion(ConversionSettings settings)
     {
@@ -240,11 +240,11 @@ internal sealed class ConversionService(UiLogSink logSink)
     private IReadOnlyList<Mesh> BuildCoacdPhysicsPreviewMeshes(Model model, ConversionSettings settings)
     {
         var triangleCount = model.Meshes.Sum(mesh => mesh.Triangles.Count());
-        if (triangleCount > MaxCoacdPreviewTriangles)
+        if (triangleCount > _maxCoacdPreviewTriangles)
         {
             logSink.Append(
                 $"Skipped CoACD physics preview for {triangleCount:N0} render triangles. " +
-                $"Preview uses bounds above {MaxCoacdPreviewTriangles:N0} triangles; run conversion to build full CoACD physics.");
+                $"Preview uses bounds above {_maxCoacdPreviewTriangles:N0} triangles; run conversion to build full CoACD physics.");
             return [CreateBoundsMesh(model.Bounds().WithMinimumThickness())];
         }
 

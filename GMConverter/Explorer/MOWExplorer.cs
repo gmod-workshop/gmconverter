@@ -6,17 +6,17 @@ namespace GMConverter.Explorer;
 
 internal sealed class MOWExplorer : IExplorer
 {
-    private static readonly IReadOnlyDictionary<string, string> ModelExtensions =
+    private static readonly Dictionary<string, string> _modelExtensions =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [".def"] = "mow",
             [".mdl"] = "mow"
         };
 
-    private readonly Dictionary<string, IReadOnlyList<string>> archivePathCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IReadOnlyList<ArchiveEntryInfo>> archiveEntryCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IReadOnlyList<TextureArchiveEntry>> textureEntryCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object cacheLock = new();
+    private readonly Dictionary<string, IReadOnlyList<string>> _archivePathCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<ArchiveEntryInfo>> _archiveEntryCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<TextureArchiveEntry>> _textureEntryCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _cacheLock = new();
 
     public string Id => "mow";
 
@@ -63,11 +63,11 @@ internal sealed class MOWExplorer : IExplorer
 
     public void ClearCaches()
     {
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            archivePathCache.Clear();
-            archiveEntryCache.Clear();
-            textureEntryCache.Clear();
+            _archivePathCache.Clear();
+            _archiveEntryCache.Clear();
+            _textureEntryCache.Clear();
         }
     }
 
@@ -152,7 +152,7 @@ internal sealed class MOWExplorer : IExplorer
         return new ExplorerResolvedEntry(fileEntry.FilePath, extractionRoot);
     }
 
-    private static IReadOnlySet<string> FindMOWTextureReferences(string extractionRoot)
+    private static HashSet<string> FindMOWTextureReferences(string extractionRoot)
     {
         HashSet<string> textureReferences = new(StringComparer.OrdinalIgnoreCase);
 
@@ -193,7 +193,7 @@ internal sealed class MOWExplorer : IExplorer
         string searchRoot,
         string selectedArchivePath,
         string extractionRoot,
-        IReadOnlySet<string> textureReferences)
+        HashSet<string> textureReferences)
     {
         if (textureReferences.Count == 0)
         {
@@ -224,7 +224,7 @@ internal sealed class MOWExplorer : IExplorer
             entryDirectory.StartsWith($"{selectedDirectory}/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool MatchesTextureReference(IReadOnlySet<string> textureReferences, string textureName)
+    private static bool MatchesTextureReference(HashSet<string> textureReferences, string textureName)
     {
         return textureReferences.Contains(textureName) ||
             textureReferences.Any(reference => reference.EndsWith(textureName, StringComparison.OrdinalIgnoreCase));
@@ -243,9 +243,9 @@ internal sealed class MOWExplorer : IExplorer
     private IReadOnlyList<string> GetPakArchives(string searchRoot)
     {
         var cacheKey = Path.GetFullPath(searchRoot);
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            if (archivePathCache.TryGetValue(cacheKey, out var archivePaths))
+            if (_archivePathCache.TryGetValue(cacheKey, out var archivePaths))
             {
                 return archivePaths;
             }
@@ -256,9 +256,9 @@ internal sealed class MOWExplorer : IExplorer
             .Select(Path.GetFullPath)
             .ToArray();
 
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            archivePathCache[cacheKey] = discoveredArchivePaths;
+            _archivePathCache[cacheKey] = discoveredArchivePaths;
         }
 
         return discoveredArchivePaths;
@@ -267,9 +267,9 @@ internal sealed class MOWExplorer : IExplorer
     private IReadOnlyList<ArchiveEntryInfo> GetArchiveEntries(string archivePath)
     {
         var cacheKey = ArchiveCacheKey(archivePath);
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            if (archiveEntryCache.TryGetValue(cacheKey, out var entries))
+            if (_archiveEntryCache.TryGetValue(cacheKey, out var entries))
             {
                 return entries;
             }
@@ -283,9 +283,9 @@ internal sealed class MOWExplorer : IExplorer
                 ExplorerFileSystem.NormalizeArchivePath(entry.FullName)))
             .ToArray();
 
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            archiveEntryCache[cacheKey] = discoveredEntries;
+            _archiveEntryCache[cacheKey] = discoveredEntries;
         }
 
         return discoveredEntries;
@@ -294,9 +294,9 @@ internal sealed class MOWExplorer : IExplorer
     private IReadOnlyList<TextureArchiveEntry> GetTextureEntries(string searchRoot)
     {
         var cacheKey = Path.GetFullPath(searchRoot);
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            if (textureEntryCache.TryGetValue(cacheKey, out var textureEntries))
+            if (_textureEntryCache.TryGetValue(cacheKey, out var textureEntries))
             {
                 return textureEntries;
             }
@@ -312,9 +312,9 @@ internal sealed class MOWExplorer : IExplorer
                     NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(entry.NormalizedPath)))))
             .ToArray();
 
-        lock (cacheLock)
+        lock (_cacheLock)
         {
-            textureEntryCache[cacheKey] = discoveredTextureEntries;
+            _textureEntryCache[cacheKey] = discoveredTextureEntries;
         }
 
         return discoveredTextureEntries;
@@ -414,7 +414,7 @@ internal sealed class MOWExplorer : IExplorer
 
     private static bool SupportsExtension(string extension)
     {
-        return ModelExtensions.ContainsKey(extension);
+        return _modelExtensions.ContainsKey(extension);
     }
 
     private static bool IsPakArchive(string file)
@@ -424,7 +424,7 @@ internal sealed class MOWExplorer : IExplorer
 
     private static string GetInputFormat(string extension)
     {
-        return ModelExtensions.TryGetValue(extension, out var inputFormat)
+        return _modelExtensions.TryGetValue(extension, out var inputFormat)
             ? inputFormat
             : throw new GMConverterException($"Unsupported model extension: {extension}");
     }

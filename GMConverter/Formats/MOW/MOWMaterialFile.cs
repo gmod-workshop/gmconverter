@@ -11,7 +11,7 @@ internal sealed record MOWMaterialFile(
     public static MOWMaterialFile Read(string path)
     {
         var root = MOWTextParser.ParseFile(path);
-        var material = root.FirstChild("material") ?? root.Children.FirstOrDefault();
+        var material = root.FirstChild("material") ?? (root.Children.Count > 0 ? root.Children[0] : null);
         var name = System.IO.Path.GetFileNameWithoutExtension(path);
 
         return new MOWMaterialFile(

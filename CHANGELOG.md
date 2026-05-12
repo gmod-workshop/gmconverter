@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the Avalonia UI app to use the SharpEngine open source license.
+
 ## [1.3.1] - 2026-05-12
 
 ### Fixed

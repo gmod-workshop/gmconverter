@@ -57,7 +57,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _settingsSaveCts;
     private CancellationTokenSource? _explorerFilterCts;
     private bool _disposed;
-    private bool _suppressSettingsSave;
+    private readonly bool _suppressSettingsSave;
     private string _explorerProfileName = "Explorer";
 
     [ObservableProperty]

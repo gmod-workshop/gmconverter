@@ -1,9 +1,9 @@
 using System.Globalization;
 using GMConverter.Common;
 
-namespace GMConverter.GUI;
+namespace GMConverter.UI.Services;
 
-internal sealed record Config(
+internal sealed record UiConfig(
     string? InputFormat,
     string? OutputFormat,
     string? InputPath,
@@ -27,7 +27,7 @@ internal sealed record Config(
 {
     public const string DefaultFileName = "gmconverter.ini";
 
-    public static Config Load(string path)
+    public static UiConfig Load(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -47,12 +47,8 @@ internal sealed record Config(
         {
             lineNumber++;
             var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#') || line.StartsWith(';'))
-            {
-                continue;
-            }
-
-            if (line.StartsWith('[') && line.EndsWith(']'))
+            if (line.Length == 0 || line.StartsWith('#') || line.StartsWith(';') ||
+                line.StartsWith('[') && line.EndsWith(']'))
             {
                 continue;
             }
@@ -232,9 +228,9 @@ internal sealed record Config(
             }
         }
 
-        public Config Build()
+        public UiConfig Build()
         {
-            return new Config(
+            return new UiConfig(
                 InputFormat,
                 OutputFormat,
                 InputPath,

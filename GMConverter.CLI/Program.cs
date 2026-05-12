@@ -98,17 +98,17 @@ internal static class Program
         var coacdThresholdOption = new Option<float>("--coacd-threshold")
         {
             Description = "CoACD termination threshold from 0.01 to 1.",
-            DefaultValueFactory = _ => 0.01f
+            DefaultValueFactory = _ => 0.05f
         };
         var maxConvexPiecesOption = new Option<int>("--max-convex-pieces")
         {
             Description = "Maximum CoACD convex hull count. Use -1 for no limit.",
-            DefaultValueFactory = _ => 32
+            DefaultValueFactory = _ => 16
         };
         var maxHullVerticesOption = new Option<int>("--coacd-max-hull-vertices")
         {
             Description = "Maximum vertices per CoACD hull.",
-            DefaultValueFactory = _ => 32
+            DefaultValueFactory = _ => 16
         };
         var physicsMassOption = new Option<float>("--physics-mass")
         {

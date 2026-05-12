@@ -59,10 +59,10 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 ## GUI
 
-`GMConverter.GUI` provides a simple Windows frontend for the same conversion library. Build the solution and run:
+`GMConverter.UI` provides an Avalonia frontend for the same conversion library, including model preview and archive browsing through the Explorer tab. Build the solution and run:
 
 ```powershell
-./GMConverter.GUI
+./GMConverter.UI
 ```
 
 <details>

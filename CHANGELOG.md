@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-12
+
+### Changed
+
+- Updated the publish workflow to package the Avalonia `GMConverter.UI` app instead of the removed WinForms GUI project.
+- Documented the published release archive names in the README.
+- Added SharpEngine credit to the README.
+
 ## [1.2.0] - 2026-05-12
 
 ### Added
@@ -71,7 +79,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/gmod-workshop/gmconverter/releases/tag/v1.0.0

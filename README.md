@@ -74,6 +74,8 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 The GUI auto-loads the first `gmconverter.ini` it finds in the current directory.
 
+Release builds publish the Windows UI as `GMConverter.UI-win-x64-<tag>.zip`. The CLI and library are published separately as `GMConverter.CLI-win-x64-<tag>.zip` and `GMConverter.Library-<tag>.zip`.
+
 <details>
 <summary>Example Config</summary>
 

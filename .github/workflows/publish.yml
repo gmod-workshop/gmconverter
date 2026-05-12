@@ -63,13 +63,13 @@ jobs:
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
 
-      - name: Publish GUI
+      - name: Publish UI
         run: >
-          dotnet publish GMConverter.GUI/GMConverter.GUI.csproj
+          dotnet publish GMConverter.UI/GMConverter.UI.csproj
           --configuration Release
           --runtime win-x64
           --self-contained true
-          --output artifacts/publish/GMConverter.GUI-win-x64
+          --output artifacts/publish/GMConverter.UI-win-x64
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
 
@@ -91,8 +91,8 @@ jobs:
             -Force
 
           Compress-Archive `
-            -Path 'artifacts/publish/GMConverter.GUI-win-x64/*' `
-            -DestinationPath "$releaseDir/GMConverter.GUI-win-x64-$safeTag.zip" `
+            -Path 'artifacts/publish/GMConverter.UI-win-x64/*' `
+            -DestinationPath "$releaseDir/GMConverter.UI-win-x64-$safeTag.zip" `
             -Force
 
       - name: Attach archives to release

@@ -6,15 +6,15 @@ using SharpGLTF.Materials;
 using SharpGLTF.Memory;
 using SharpGLTF.Scenes;
 using SharpGLTF.Transforms;
+using GltfMeshBuilder = SharpGLTF.Geometry.MeshBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexEmpty>;
+using GltfSkinnedMeshBuilder = SharpGLTF.Geometry.MeshBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexJoints4>;
+using GltfSkinnedVertexBuilder = SharpGLTF.Geometry.VertexBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexJoints4>;
+using GltfVertexBuilder = SharpGLTF.Geometry.VertexBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexEmpty>;
 using ResourceWriteMode = SharpGLTF.Schema2.ResourceWriteMode;
 using TextureInterpolationFilter = SharpGLTF.Schema2.TextureInterpolationFilter;
 using TextureMipMapFilter = SharpGLTF.Schema2.TextureMipMapFilter;
 using TextureWrapMode = SharpGLTF.Schema2.TextureWrapMode;
 using WriteSettings = SharpGLTF.Schema2.WriteSettings;
-using GltfMeshBuilder = SharpGLTF.Geometry.MeshBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexEmpty>;
-using GltfSkinnedMeshBuilder = SharpGLTF.Geometry.MeshBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexJoints4>;
-using GltfSkinnedVertexBuilder = SharpGLTF.Geometry.VertexBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexJoints4>;
-using GltfVertexBuilder = SharpGLTF.Geometry.VertexBuilder<SharpGLTF.Geometry.VertexTypes.VertexPositionNormal, SharpGLTF.Geometry.VertexTypes.VertexTexture1, SharpGLTF.Geometry.VertexTypes.VertexEmpty>;
 
 namespace GMConverter.Exporters;
 
@@ -106,7 +106,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
     private static GltfMeshBuilder BuildMesh(
         Mesh mesh,
         int meshIndex,
-        IReadOnlyDictionary<string, MaterialBuilder> materialBuilders)
+        Dictionary<string, MaterialBuilder> materialBuilders)
     {
         var meshBuilder = new GltfMeshBuilder(FormattableString.Invariant($"mesh_{meshIndex}"));
 
@@ -130,7 +130,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
     private static GltfSkinnedMeshBuilder BuildSkinnedMesh(
         Mesh mesh,
         int meshIndex,
-        IReadOnlyDictionary<string, MaterialBuilder> materialBuilders,
+        Dictionary<string, MaterialBuilder> materialBuilders,
         int boneCount)
     {
         var meshBuilder = new GltfSkinnedMeshBuilder(FormattableString.Invariant($"mesh_{meshIndex}"));
@@ -279,7 +279,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         return keyframes.Any(keyframe => Vector3.DistanceSquared(keyframe.Transform.Scale, Vector3.One) > 0.000001f);
     }
 
-    private static IReadOnlyDictionary<string, MaterialBuilder> BuildMaterials(Model model)
+    private static Dictionary<string, MaterialBuilder> BuildMaterials(Model model)
     {
         Dictionary<string, MaterialBuilder> materialBuilders = new(StringComparer.OrdinalIgnoreCase);
 
@@ -331,7 +331,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
     private static MaterialBuilder ResolveMaterial(
         string? materialName,
-        IReadOnlyDictionary<string, MaterialBuilder> materialBuilders)
+        Dictionary<string, MaterialBuilder> materialBuilders)
     {
         if (!string.IsNullOrWhiteSpace(materialName) &&
             materialBuilders.TryGetValue(materialName, out var materialBuilder))

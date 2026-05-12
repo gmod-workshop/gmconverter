@@ -6,10 +6,8 @@ namespace GMConverter.UI.Models;
 
 public sealed partial class ExplorerNode(string name, ExplorerNodeKind kind = ExplorerNodeKind.Folder) : ObservableObject
 {
-    private ExplorerNodeKind kind = kind;
-
     [ObservableProperty]
-    private bool isExpanded;
+    private bool _isExpanded;
 
     public string Name { get; } = name;
 
@@ -27,15 +25,15 @@ public sealed partial class ExplorerNode(string name, ExplorerNodeKind kind = Ex
 
     public ExplorerNodeKind Kind
     {
-        get => kind;
+        get;
         private set
         {
-            if (SetProperty(ref kind, value))
+            if (SetProperty(ref field, value))
             {
                 OnPropertyChanged(nameof(Badge));
             }
         }
-    }
+    } = kind;
 
     public void MarkAsArchive()
     {

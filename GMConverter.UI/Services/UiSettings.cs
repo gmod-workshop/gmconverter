@@ -31,7 +31,7 @@ internal sealed record UiSettings(
     int MaxConvexPieces,
     int MaxHullVertices)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true
     };
@@ -53,7 +53,7 @@ internal sealed record UiSettings(
         try
         {
             var json = File.ReadAllText(path);
-            var settings = JsonSerializer.Deserialize<UiSettings>(json, JsonOptions);
+            var settings = JsonSerializer.Deserialize<UiSettings>(json, _jsonOptions);
             if (settings is null)
             {
                 return null;
@@ -85,6 +85,6 @@ internal sealed record UiSettings(
         var path = SettingsPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? AppContext.BaseDirectory);
         using var stream = File.Create(path);
-        JsonSerializer.Serialize(stream, this, JsonOptions);
+        JsonSerializer.Serialize(stream, this, _jsonOptions);
     }
 }

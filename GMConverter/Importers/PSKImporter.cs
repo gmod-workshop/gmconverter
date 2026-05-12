@@ -187,7 +187,7 @@ internal sealed class PSKImporter : IImporter
         return new Skeleton(bones);
     }
 
-    private static IReadOnlyList<AnimationClip>? BuildAnimations(Skeleton? skeleton, ModelParseOptions options)
+    private static List<AnimationClip>? BuildAnimations(Skeleton? skeleton, ModelParseOptions options)
     {
         if (skeleton is null || string.IsNullOrWhiteSpace(options.AnimationPath))
         {
@@ -364,14 +364,14 @@ internal sealed class PSKImporter : IImporter
 
     private sealed class PSKMaterialResolver
     {
-        private static readonly string[] ImageExtensions = [".png", ".tga", ".dds", ".bmp", ".jpg", ".jpeg"];
-        private readonly Dictionary<string, string> materialSidecars;
-        private readonly Dictionary<string, string> images;
+        private static readonly string[] _imageExtensions = [".png", ".tga", ".dds", ".bmp", ".jpg", ".jpeg"];
+        private readonly Dictionary<string, string> _materialSidecars;
+        private readonly Dictionary<string, string> _images;
 
         private PSKMaterialResolver(Dictionary<string, string> materialSidecars, Dictionary<string, string> images)
         {
-            this.materialSidecars = materialSidecars;
-            this.images = images;
+            _materialSidecars = materialSidecars;
+            _images = images;
         }
 
         public static PSKMaterialResolver Create(MaterialResolveOptions? options)
@@ -384,12 +384,12 @@ internal sealed class PSKImporter : IImporter
 
             return new PSKMaterialResolver(
                 IndexFiles(options.SearchDirectory, [".mat"]),
-                IndexFiles(options.SearchDirectory, ImageExtensions));
+                IndexFiles(options.SearchDirectory, _imageExtensions));
         }
 
         public Material Resolve(PSKMaterial material)
         {
-            if (!materialSidecars.TryGetValue(material.Name, out var materialPath))
+            if (!_materialSidecars.TryGetValue(material.Name, out var materialPath))
             {
                 return new Material(material.Name);
             }
@@ -411,7 +411,7 @@ internal sealed class PSKImporter : IImporter
         }
 
         private Texture? TryLoadTexture(
-            IReadOnlyDictionary<string, string> references,
+            Dictionary<string, string> references,
             IReadOnlyCollection<string> channels,
             bool hasAlpha)
         {
@@ -434,7 +434,7 @@ internal sealed class PSKImporter : IImporter
         }
 
         private Texture? TryLoadRelatedTexture(
-            IReadOnlyDictionary<string, string> references,
+            Dictionary<string, string> references,
             IReadOnlyCollection<string> baseChannels,
             IReadOnlyCollection<string> suffixes,
             bool hasAlpha)
@@ -451,7 +451,7 @@ internal sealed class PSKImporter : IImporter
                 foreach (var suffix in suffixes)
                 {
                     var relatedName = $"{baseName}{suffix}";
-                    if (images.ContainsKey(relatedName))
+                    if (_images.ContainsKey(relatedName))
                     {
                         return TryLoadTexture(relatedName, hasAlpha);
                     }
@@ -464,7 +464,7 @@ internal sealed class PSKImporter : IImporter
         private Texture? TryLoadTexture(string textureReference, bool hasAlpha)
         {
             var textureName = NameHelpers.SanitizeMaterialName(textureReference);
-            if (!images.TryGetValue(textureName, out var imagePath))
+            if (!_images.TryGetValue(textureName, out var imagePath))
             {
                 return null;
             }
@@ -573,8 +573,8 @@ internal sealed class PSKImporter : IImporter
         private static int ImageExtensionPriority(string path)
         {
             var extension = Path.GetExtension(path);
-            var index = Array.FindIndex(ImageExtensions, item => string.Equals(item, extension, StringComparison.OrdinalIgnoreCase));
-            return index < 0 ? ImageExtensions.Length : index;
+            var index = Array.FindIndex(_imageExtensions, item => string.Equals(item, extension, StringComparison.OrdinalIgnoreCase));
+            return index < 0 ? _imageExtensions.Length : index;
         }
     }
 }

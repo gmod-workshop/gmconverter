@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Added repository-wide `.editorconfig` and analyzer enforcement, and updated the codebase to satisfy the enabled style and quality checks.
+
 ## [1.3.1] - 2026-05-12
 
 ### Fixed

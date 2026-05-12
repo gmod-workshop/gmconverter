@@ -22,13 +22,7 @@ internal static class ProcessRunner
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo);
-
-        if (process is null)
-        {
-            throw new GMConverterException($"Failed to start {fileName}.");
-        }
-
+        using var process = Process.Start(startInfo) ?? throw new GMConverterException($"Failed to start {fileName}.");
         process.WaitForExit();
 
         if (process.ExitCode != 0)

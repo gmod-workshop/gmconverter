@@ -66,7 +66,8 @@ internal sealed record MOWSummary(
 
     private static string? GetAnimationFile(MOWNode sequence)
     {
-        var file = sequence.FirstChild("file")?.Values.FirstOrDefault();
+        var fileValues = sequence.FirstChild("file")?.Values;
+        var file = fileValues is { Count: > 0 } ? fileValues[0] : null;
         if (!string.IsNullOrWhiteSpace(file))
         {
             return file;

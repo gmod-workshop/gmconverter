@@ -4,7 +4,7 @@ namespace GMConverter.Explorer;
 
 internal sealed class GenericExplorer : IExplorer
 {
-    private static readonly IReadOnlyDictionary<string, string> ModelExtensions =
+    private static readonly Dictionary<string, string> _modelExtensions =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [".opt"] = "opt",
@@ -72,12 +72,12 @@ internal sealed class GenericExplorer : IExplorer
 
     private static bool SupportsExtension(string extension)
     {
-        return ModelExtensions.ContainsKey(extension);
+        return _modelExtensions.ContainsKey(extension);
     }
 
     private static string GetInputFormat(string extension)
     {
-        return ModelExtensions.TryGetValue(extension, out var inputFormat)
+        return _modelExtensions.TryGetValue(extension, out var inputFormat)
             ? inputFormat
             : throw new GMConverterException($"Unsupported model extension: {extension}");
     }

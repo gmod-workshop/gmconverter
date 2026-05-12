@@ -1,4 +1,4 @@
-﻿namespace GMConverter.Geometry;
+namespace GMConverter.Geometry;
 
 internal sealed record Bone(
     int Index,

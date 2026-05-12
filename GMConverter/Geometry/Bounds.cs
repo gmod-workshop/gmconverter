@@ -10,7 +10,7 @@ namespace GMConverter.Geometry;
 /// <param name="Max">Maximum coordinates.</param>
 internal sealed record Bounds(Vector3 Min, Vector3 Max)
 {
-    private const float MinimumThickness = 1.0f;
+    private const float _minimumThickness = 1.0f;
 
     public static Bounds FromPoints(IReadOnlyList<Vector3> points)
     {
@@ -57,13 +57,13 @@ internal sealed record Bounds(Vector3 Min, Vector3 Max)
 
     private static void EnsureThickness(ref float min, ref float max)
     {
-        if (max - min >= MinimumThickness)
+        if (max - min >= _minimumThickness)
         {
             return;
         }
 
         var center = (min + max) / 2.0f;
-        min = center - MinimumThickness / 2.0f;
-        max = center + MinimumThickness / 2.0f;
+        min = center - _minimumThickness / 2.0f;
+        max = center + _minimumThickness / 2.0f;
     }
 }

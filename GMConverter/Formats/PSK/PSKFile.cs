@@ -10,8 +10,8 @@ namespace GMConverter.Formats.PSK;
 /// </summary>
 internal sealed class PSKFile
 {
-    private static readonly Encoding SectionNameEncoding = Encoding.ASCII;
-    private static readonly Encoding TextEncoding = Encoding.UTF8;
+    private static readonly Encoding _sectionNameEncoding = Encoding.ASCII;
+    private static readonly Encoding _textEncoding = Encoding.UTF8;
 
     public List<Vector3> Points { get; } = [];
     public List<PSKWedge> Wedges { get; } = [];
@@ -116,7 +116,7 @@ internal sealed class PSKFile
         }
 
         return new PSKSection(
-            DecodeFixedString(nameBytes, SectionNameEncoding),
+            DecodeFixedString(nameBytes, _sectionNameEncoding),
             reader.ReadInt32(),
             reader.ReadInt32(),
             reader.ReadInt32());
@@ -185,14 +185,14 @@ internal sealed class PSKFile
     private static PSKMaterial ReadMaterial(ReadOnlySpan<byte> record)
     {
         RequireRecordSize(record, 88, "MATT0000");
-        var originalName = DecodeFixedString(record[..64], TextEncoding);
+        var originalName = DecodeFixedString(record[..64], _textEncoding);
         return new PSKMaterial(NameHelpers.SanitizeMaterialName(originalName), originalName);
     }
 
     private static PSKBone ReadBone(ReadOnlySpan<byte> record)
     {
         RequireRecordSize(record, 120, "REFSKELT");
-        var name = DecodeFixedString(record[..64], TextEncoding);
+        var name = DecodeFixedString(record[..64], _textEncoding);
 
         return new PSKBone(
             name,

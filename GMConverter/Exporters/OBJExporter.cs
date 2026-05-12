@@ -6,7 +6,7 @@ namespace GMConverter.Exporters;
 
 internal sealed class OBJExporter : IExporter<OBJExportOptions>
 {
-    private static readonly UTF8Encoding Utf8NoBom = new(false);
+    private static readonly UTF8Encoding _utf8NoBom = new(false);
 
     public string OutputFormat => "obj";
 
@@ -37,7 +37,7 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
 
     private static void WriteMaterials(Model model, string materialPath)
     {
-        using var writer = new StreamWriter(materialPath, false, Utf8NoBom);
+        using var writer = new StreamWriter(materialPath, false, _utf8NoBom);
 
         foreach (var material in model.Materials)
         {
@@ -74,9 +74,9 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
         }
     }
 
-    private void WriteObj(Model model, string objPath, string safeBaseName)
+    private static void WriteObj(Model model, string objPath, string safeBaseName)
     {
-        using var writer = new StreamWriter(objPath, false, Utf8NoBom);
+        using var writer = new StreamWriter(objPath, false, _utf8NoBom);
         writer.WriteLine(FormattableString.Invariant($"mtllib {safeBaseName}.mtl"));
         writer.WriteLine(FormattableString.Invariant($"o {safeBaseName}"));
 

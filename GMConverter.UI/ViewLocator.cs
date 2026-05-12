@@ -1,4 +1,3 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -17,7 +16,9 @@ public class ViewLocator : IDataTemplate
     public Control? Build(object? param)
     {
         if (param is null)
+        {
             return null;
+        }
 
         var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
         var type = Type.GetType(name);

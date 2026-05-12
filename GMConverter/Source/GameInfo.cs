@@ -58,14 +58,14 @@ internal sealed record GameInfo(
 
     public string? InferEngineDirectory()
     {
-        if (string.IsNullOrWhiteSpace(this.GameBin))
+        if (string.IsNullOrWhiteSpace(GameBin))
         {
             return null;
         }
 
-        string normalizedGameBin = this.GameBin.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
-        string gameDirectoryName = Path.GetFileName(this.GameDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        DirectoryInfo? parent = Directory.GetParent(this.GameDirectory);
+        string normalizedGameBin = GameBin.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        string gameDirectoryName = Path.GetFileName(GameDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        DirectoryInfo? parent = Directory.GetParent(GameDirectory);
 
         if (Path.IsPathRooted(normalizedGameBin))
         {
@@ -166,6 +166,6 @@ internal sealed record GameInfo(
             }
         }
 
-        return tokens.ToArray();
+        return [.. tokens];
     }
 }

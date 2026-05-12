@@ -11,7 +11,7 @@ namespace GMConverter.Importers;
 
 internal sealed class MOWImporter : IImporter
 {
-    private const float AnimationFrameRate = 30.0f;
+    private const float _animationFrameRate = 30.0f;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<MOWImporter> _logger;
 
@@ -193,10 +193,10 @@ internal sealed class MOWImporter : IImporter
         return new Mesh(vertices, submeshes);
     }
 
-    private static IReadOnlyList<AnimationClip> LoadAnimations(
+    private static List<AnimationClip> LoadAnimations(
         MOWNode root,
         string modelDirectory,
-        IReadOnlyList<Bone> bones,
+        List<Bone> bones,
         IReadOnlyDictionary<string, List<int>> boneIndicesByMOWName,
         ModelParseOptions options,
         ILogger logger)
@@ -237,7 +237,7 @@ internal sealed class MOWImporter : IImporter
     private static AnimationClip BuildAnimationClip(
         string name,
         MOWAnimationFile animation,
-        IReadOnlyList<Bone> bones,
+        List<Bone> bones,
         IReadOnlyDictionary<string, List<int>> boneIndicesByMOWName,
         ModelParseOptions options)
     {
@@ -278,7 +278,7 @@ internal sealed class MOWImporter : IImporter
                         keyframesByBone[boneIndex] = keyframes;
                     }
 
-                    keyframes[frame.Time] = new TransformKeyframe(frame.Time / AnimationFrameRate, transform);
+                    keyframes[frame.Time] = new TransformKeyframe(frame.Time / _animationFrameRate, transform);
                 }
             }
         }
@@ -294,7 +294,7 @@ internal sealed class MOWImporter : IImporter
         var maxFrame = animation.Frames.Count == 0 ? 0 : animation.Frames.Max(frame => frame.Time);
         var durationFrame = Math.Max(maxFrame, animation.DurationFrames > 0 ? animation.DurationFrames - 1 : 0);
 
-        return new AnimationClip(name, AnimationFrameRate, durationFrame / AnimationFrameRate, tracks);
+        return new AnimationClip(name, _animationFrameRate, durationFrame / _animationFrameRate, tracks);
     }
 
     private static string? GetSequenceName(MOWNode sequence)
@@ -304,7 +304,8 @@ internal sealed class MOWImporter : IImporter
 
     private static string ResolveAnimationPath(MOWNode sequence, string sequenceName, string modelDirectory)
     {
-        var fileName = sequence.FirstChild("file")?.Values.FirstOrDefault();
+        var fileValues = sequence.FirstChild("file")?.Values;
+        var fileName = fileValues is { Count: > 0 } ? fileValues[0] : null;
         fileName = string.IsNullOrWhiteSpace(fileName) ? $"{sequenceName}.anm" : fileName;
 
         return Path.GetFullPath(Path.IsPathRooted(fileName) ? fileName : Path.Combine(modelDirectory, fileName));
@@ -377,7 +378,7 @@ internal sealed class MOWImporter : IImporter
         return MaterialSurfaceKind.Unspecified;
     }
 
-    private static IReadOnlyList<string> GetMeshFileNames(MOWNode bone)
+    private static string[] GetMeshFileNames(MOWNode bone)
     {
         var directVolumeViews = bone.Children
             .Where(IsVolumeViewNode)
@@ -385,7 +386,7 @@ internal sealed class MOWImporter : IImporter
             .ToArray();
         if (directVolumeViews.Length > 0)
         {
-            return directVolumeViews.Select(node => node.Values[0]).ToArray();
+            return [.. directVolumeViews.Select(node => node.Values[0])];
         }
 
         var lodView = bone.FirstChild("LodView");
@@ -394,11 +395,13 @@ internal sealed class MOWImporter : IImporter
             return [];
         }
 
-        return lodView.Children
+        return
+        [
+            .. lodView.Children
             .Where(IsVolumeViewNode)
             .Where(node => node.Values.Count > 0)
             .Select(node => node.Values[0])
-            .ToArray();
+        ];
     }
 
     private static Matrix4x4 GetLocalTransform(MOWNode bone)
@@ -564,14 +567,14 @@ internal sealed class MOWImporter : IImporter
 
     private sealed class MOWTextureResolver
     {
-        private static readonly string[] ImageExtensions = [".dds", ".png", ".tga", ".bmp", ".jpg", ".jpeg"];
-        private readonly string modelDirectory;
-        private readonly Dictionary<string, string> searchIndex;
+        private static readonly string[] _imageExtensions = [".dds", ".png", ".tga", ".bmp", ".jpg", ".jpeg"];
+        private readonly string _modelDirectory;
+        private readonly Dictionary<string, string> _searchIndex;
 
         private MOWTextureResolver(string modelDirectory, Dictionary<string, string> searchIndex, ILogger logger)
         {
-            this.modelDirectory = modelDirectory;
-            this.searchIndex = searchIndex;
+            _modelDirectory = modelDirectory;
+            _searchIndex = searchIndex;
             Logger = logger;
         }
 
@@ -645,7 +648,7 @@ internal sealed class MOWImporter : IImporter
             }
 
             var normalizedTextureName = NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(textureName));
-            if (searchIndex.TryGetValue(normalizedTextureName, out var exactMatch))
+            if (_searchIndex.TryGetValue(normalizedTextureName, out var exactMatch))
             {
                 if (yieldedPaths.Add(exactMatch))
                 {
@@ -653,7 +656,7 @@ internal sealed class MOWImporter : IImporter
                 }
             }
 
-            foreach (var candidate in searchIndex
+            foreach (var candidate in _searchIndex
                 .Where(candidate => normalizedTextureName.EndsWith(candidate.Key, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(candidate => candidate.Key.Length)
                 .Select(candidate => candidate.Value))
@@ -674,14 +677,14 @@ internal sealed class MOWImporter : IImporter
             }
             else
             {
-                yield return Path.GetFullPath(Path.Combine(modelDirectory, normalized));
+                yield return Path.GetFullPath(Path.Combine(_modelDirectory, normalized));
             }
 
             if (!Path.HasExtension(normalized))
             {
-                foreach (var extension in ImageExtensions)
+                foreach (var extension in _imageExtensions)
                 {
-                    yield return Path.GetFullPath(Path.Combine(modelDirectory, $"{normalized}{extension}"));
+                    yield return Path.GetFullPath(Path.Combine(_modelDirectory, $"{normalized}{extension}"));
                 }
             }
         }
@@ -694,7 +697,7 @@ internal sealed class MOWImporter : IImporter
                          .OrderBy(ImageExtensionPriority)
                          .ThenBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
-                if (!ImageExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                if (!_imageExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -708,8 +711,8 @@ internal sealed class MOWImporter : IImporter
         private static int ImageExtensionPriority(string path)
         {
             var extension = Path.GetExtension(path);
-            var index = Array.FindIndex(ImageExtensions, item => string.Equals(item, extension, StringComparison.OrdinalIgnoreCase));
-            return index < 0 ? ImageExtensions.Length : index;
+            var index = Array.FindIndex(_imageExtensions, item => string.Equals(item, extension, StringComparison.OrdinalIgnoreCase));
+            return index < 0 ? _imageExtensions.Length : index;
         }
     }
 

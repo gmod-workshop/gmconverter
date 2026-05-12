@@ -6,25 +6,25 @@ namespace GMConverter.Source;
 
 internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirectory)
 {
-    private readonly string vtexPath = Path.GetFullPath(vtexPath);
-    private readonly string gameDirectory = Path.GetFullPath(gameDirectory);
-    private static readonly UTF8Encoding Utf8NoBom = new(false);
+    private readonly string _vtexPath = Path.GetFullPath(vtexPath);
+    private readonly string _gameDirectory = Path.GetFullPath(gameDirectory);
+    private static readonly UTF8Encoding _utf8NoBom = new(false);
 
     public void Compile(IEnumerable<Material> materials, string materialRelativeDirectory)
     {
-        if (!File.Exists(vtexPath))
+        if (!File.Exists(_vtexPath))
         {
-            throw new GMConverterException($"vtex not found: {vtexPath}");
+            throw new GMConverterException($"vtex not found: {_vtexPath}");
         }
 
-        if (!Directory.Exists(gameDirectory))
+        if (!Directory.Exists(_gameDirectory))
         {
-            throw new GMConverterException($"Game directory not found: {gameDirectory}");
+            throw new GMConverterException($"Game directory not found: {_gameDirectory}");
         }
 
         var normalizedMaterialDirectory = NormalizeMaterialDirectory(materialRelativeDirectory);
-        var materialSourceDirectory = Path.Combine(gameDirectory, "materialsrc", normalizedMaterialDirectory.Replace('/', Path.DirectorySeparatorChar));
-        var materialOutputDirectory = Path.Combine(gameDirectory, "materials", normalizedMaterialDirectory.Replace('/', Path.DirectorySeparatorChar));
+        var materialSourceDirectory = Path.Combine(_gameDirectory, "materialsrc", normalizedMaterialDirectory.Replace('/', Path.DirectorySeparatorChar));
+        var materialOutputDirectory = Path.Combine(_gameDirectory, "materials", normalizedMaterialDirectory.Replace('/', Path.DirectorySeparatorChar));
 
         Directory.CreateDirectory(materialSourceDirectory);
         Directory.CreateDirectory(materialOutputDirectory);
@@ -84,12 +84,12 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
 
     private void RunVtex(string tgaPath)
     {
-        ProcessRunner.Run(vtexPath, ["-nopause", "-mkdir", tgaPath], Path.GetDirectoryName(vtexPath));
+        ProcessRunner.Run(_vtexPath, ["-nopause", "-mkdir", tgaPath], Path.GetDirectoryName(_vtexPath));
     }
 
-    private void WriteVmt(string vmtPath, string baseTexturePath, Material material)
+    private static void WriteVmt(string vmtPath, string baseTexturePath, Material material)
     {
-        using var writer = new StreamWriter(vmtPath, false, Utf8NoBom);
+        using var writer = new StreamWriter(vmtPath, false, _utf8NoBom);
         writer.WriteLine("\"VertexLitGeneric\"");
         writer.WriteLine("{");
         writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{baseTexturePath}\""));

@@ -16,17 +16,18 @@ using GMConverter.UI.ViewModels;
 
 namespace GMConverter.UI.Views;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IDisposable
 {
-    private MainWindowViewModel? subscribedViewModel;
-    private PointerCameraController? previewCameraController;
-    private TargetPositionCamera? previewCamera;
-    private GroupNode? previewModelNodes;
-    private GroupNode? previewPhysicsNodes;
-    private MultiLineNode? previewWireframeNode;
-    private MultiLineNode? previewPhysicsWireframeNode;
-    private bool previewWireframeEnabled;
-    private bool previewPhysicsEnabled;
+    private MainWindowViewModel? _subscribedViewModel;
+    private PointerCameraController? _previewCameraController;
+    private TargetPositionCamera? _previewCamera;
+    private GroupNode? _previewModelNodes;
+    private GroupNode? _previewPhysicsNodes;
+    private MultiLineNode? _previewWireframeNode;
+    private MultiLineNode? _previewPhysicsWireframeNode;
+    private bool _previewWireframeEnabled;
+    private bool _previewPhysicsEnabled;
+    private bool _disposed;
 
     public MainWindow()
     {
@@ -39,32 +40,30 @@ public partial class MainWindow : Window
             if (DataContext is MainWindowViewModel viewModel)
             {
                 viewModel.SaveSettingsNow();
+                viewModel.Dispose();
             }
 
-            PreviewSceneView.Dispose();
+            DisposePreviewResources();
         };
     }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
-        if (subscribedViewModel is not null)
-        {
-            subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        }
+        _subscribedViewModel?.PropertyChanged -= OnViewModelPropertyChanged;
 
         base.OnDataContextChanged(e);
 
-        subscribedViewModel = DataContext as MainWindowViewModel;
-        if (subscribedViewModel is not null)
+        _subscribedViewModel = DataContext as MainWindowViewModel;
+        if (_subscribedViewModel is not null)
         {
-            subscribedViewModel.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyPreviewSettings(subscribedViewModel);
+            _subscribedViewModel.PropertyChanged += OnViewModelPropertyChanged;
+            ApplyPreviewSettings(_subscribedViewModel);
         }
     }
 
     private void InitializePreviewScene()
     {
-        previewCamera = new TargetPositionCamera
+        _previewCamera = new TargetPositionCamera
         {
             Heading = -35,
             Attitude = -25,
@@ -73,15 +72,15 @@ public partial class MainWindow : Window
             ShowCameraLight = ShowCameraLightType.Always
         };
 
-        PreviewSceneView.SceneView.Camera = previewCamera;
+        PreviewSceneView.SceneView.Camera = _previewCamera;
         PreviewSceneView.Scene.SetAmbientLight(0.45f);
         PreviewSceneView.Scene.Lights.Add(new DirectionalLight(new Vector3(-0.45f, -0.75f, -0.35f)));
         PreviewSceneView.Scene.Lights.Add(new DirectionalLight(new Vector3(0.55f, -0.35f, 0.65f)));
-        previewCamera.CameraChanged += (_, _) => UpdatePreviewGizmo();
+        _previewCamera.CameraChanged += (_, _) => UpdatePreviewGizmo();
         PreviewGizmo.ViewRequested += PreviewGizmo_ViewRequested;
         UpdatePreviewGizmo();
 
-        previewCameraController = new PointerCameraController(PreviewSceneView)
+        _previewCameraController = new PointerCameraController(PreviewSceneView)
         {
             RotateCameraConditions = PointerAndKeyboardConditions.LeftPointerButtonPressed,
             MoveCameraConditions = PointerAndKeyboardConditions.LeftPointerButtonPressed | PointerAndKeyboardConditions.ControlKey,
@@ -159,7 +158,7 @@ public partial class MainWindow : Window
         });
     }
 
-    private void ConfigurePathDrop(Control control, DropPathKind pathKind, Action<string> applyPath)
+    private static void ConfigurePathDrop(Control control, DropPathKind pathKind, Action<string> applyPath)
     {
         DragDrop.SetAllowDrop(control, true);
 
@@ -250,12 +249,12 @@ public partial class MainWindow : Window
         }
 
         PreviewSceneView.Scene.RootNode.Clear();
-        previewModelNodes = null;
-        previewPhysicsNodes = null;
-        previewWireframeNode = null;
-        previewPhysicsWireframeNode = null;
-        previewWireframeEnabled = DataContext is MainWindowViewModel viewModel && viewModel.PreviewWireframe;
-        previewPhysicsEnabled = false;
+        _previewModelNodes = null;
+        _previewPhysicsNodes = null;
+        _previewWireframeNode = null;
+        _previewPhysicsWireframeNode = null;
+        _previewWireframeEnabled = DataContext is MainWindowViewModel viewModel && viewModel.PreviewWireframe;
+        _previewPhysicsEnabled = false;
 
         var modelNodes = await ImportPreviewNodesAsync(modelPath);
         if (modelNodes is null)
@@ -263,7 +262,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        previewModelNodes = modelNodes;
+        _previewModelNodes = modelNodes;
         PreviewSceneView.Scene.RootNode.Add(modelNodes);
 
         if (modelNodes.WorldBoundingBox.IsUndefined)
@@ -273,21 +272,21 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(physicsModelPath) && File.Exists(physicsModelPath))
         {
-            previewPhysicsNodes = await ImportPreviewNodesAsync(physicsModelPath);
-            if (previewPhysicsNodes is not null)
+            _previewPhysicsNodes = await ImportPreviewNodesAsync(physicsModelPath);
+            if (_previewPhysicsNodes is not null)
             {
-                previewPhysicsNodes.SetVisibility(false);
-                PreviewSceneView.Scene.RootNode.Add(previewPhysicsNodes);
-                if (previewPhysicsNodes.WorldBoundingBox.IsUndefined)
+                _previewPhysicsNodes.SetVisibility(false);
+                PreviewSceneView.Scene.RootNode.Add(_previewPhysicsNodes);
+                if (_previewPhysicsNodes.WorldBoundingBox.IsUndefined)
                 {
-                    previewPhysicsNodes.Update();
+                    _previewPhysicsNodes.Update();
                 }
             }
         }
 
-        previewPhysicsEnabled = DataContext is MainWindowViewModel currentViewModel &&
+        _previewPhysicsEnabled = DataContext is MainWindowViewModel currentViewModel &&
             currentViewModel.PreviewPhysicsOverlay &&
-            previewPhysicsNodes is not null;
+            _previewPhysicsNodes is not null;
 
         UpdatePreviewWireframe();
         UpdatePreviewPhysicsWireframe();
@@ -331,7 +330,7 @@ public partial class MainWindow : Window
 
     private void PreviewProjection_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (previewCamera is null)
+        if (_previewCamera is null)
         {
             return;
         }
@@ -342,7 +341,7 @@ public partial class MainWindow : Window
             viewModel.PreviewOrthographic = useOrthographic;
         }
 
-        previewCamera.ProjectionType = useOrthographic
+        _previewCamera.ProjectionType = useOrthographic
             ? ProjectionTypes.Orthographic
             : ProjectionTypes.Perspective;
         FitPreviewToModel();
@@ -350,10 +349,10 @@ public partial class MainWindow : Window
 
     private void PreviewWireframe_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        previewWireframeEnabled = PreviewWireframeToggle.IsChecked is true;
+        _previewWireframeEnabled = PreviewWireframeToggle.IsChecked is true;
         if (DataContext is MainWindowViewModel viewModel)
         {
-            viewModel.PreviewWireframe = previewWireframeEnabled;
+            viewModel.PreviewWireframe = _previewWireframeEnabled;
         }
 
         UpdatePreviewWireframe();
@@ -368,7 +367,7 @@ public partial class MainWindow : Window
             viewModel.PreviewPhysicsOverlay = showPhysics;
         }
 
-        previewPhysicsEnabled = showPhysics && previewPhysicsNodes is not null;
+        _previewPhysicsEnabled = showPhysics && _previewPhysicsNodes is not null;
         UpdatePreviewPhysicsWireframe();
         RenderPreviewScene();
     }
@@ -379,15 +378,12 @@ public partial class MainWindow : Window
         PreviewWireframeToggle.IsChecked = viewModel.PreviewWireframe;
         PreviewPhysicsToggle.IsChecked = viewModel.PreviewPhysicsOverlay;
 
-        if (previewCamera is not null)
-        {
-            previewCamera.ProjectionType = viewModel.PreviewOrthographic
+        _previewCamera?.ProjectionType = viewModel.PreviewOrthographic
                 ? ProjectionTypes.Orthographic
                 : ProjectionTypes.Perspective;
-        }
 
-        previewWireframeEnabled = viewModel.PreviewWireframe;
-        previewPhysicsEnabled = viewModel.PreviewPhysicsOverlay && previewPhysicsNodes is not null;
+        _previewWireframeEnabled = viewModel.PreviewWireframe;
+        _previewPhysicsEnabled = viewModel.PreviewPhysicsOverlay && _previewPhysicsNodes is not null;
         UpdatePreviewWireframe();
         UpdatePreviewPhysicsWireframe();
         RenderPreviewScene();
@@ -425,13 +421,13 @@ public partial class MainWindow : Window
 
     private void SetPreviewCamera(float heading, float attitude, bool fit)
     {
-        if (previewCamera is null)
+        if (_previewCamera is null)
         {
             return;
         }
 
-        previewCamera.Heading = heading;
-        previewCamera.Attitude = attitude;
+        _previewCamera.Heading = heading;
+        _previewCamera.Attitude = attitude;
         if (fit)
         {
             FitPreviewToModel();
@@ -444,23 +440,23 @@ public partial class MainWindow : Window
 
     private void FitPreviewToModel()
     {
-        if (previewCamera is null || previewModelNodes is null)
+        if (_previewCamera is null || _previewModelNodes is null)
         {
             return;
         }
 
-        if (previewModelNodes.WorldBoundingBox.IsUndefined)
+        if (_previewModelNodes.WorldBoundingBox.IsUndefined)
         {
-            previewModelNodes.Update();
+            _previewModelNodes.Update();
         }
 
-        if (!previewModelNodes.WorldBoundingBox.IsUndefined)
+        if (!_previewModelNodes.WorldBoundingBox.IsUndefined)
         {
-            var fitted = previewCamera.FitIntoView(previewModelNodes, FitIntoViewType.CheckBounds, true, 1.15f, false);
+            var fitted = _previewCamera.FitIntoView(_previewModelNodes, FitIntoViewType.CheckBounds, true, 1.15f, false);
             if (!fitted)
             {
-                previewCamera.TargetPosition = previewModelNodes.WorldBoundingBox.GetCenterPosition();
-                previewCamera.Distance = MathF.Max(previewModelNodes.WorldBoundingBox.GetDiagonalLength() * 1.5f, 1.0f);
+                _previewCamera.TargetPosition = _previewModelNodes.WorldBoundingBox.GetCenterPosition();
+                _previewCamera.Distance = MathF.Max(_previewModelNodes.WorldBoundingBox.GetDiagonalLength() * 1.5f, 1.0f);
             }
         }
 
@@ -469,19 +465,19 @@ public partial class MainWindow : Window
 
     private void UpdatePreviewWireframe()
     {
-        if (previewWireframeNode is not null)
+        if (_previewWireframeNode is not null)
         {
-            PreviewSceneView.Scene.RootNode.Remove(previewWireframeNode);
-            previewWireframeNode.Dispose();
-            previewWireframeNode = null;
+            PreviewSceneView.Scene.RootNode.Remove(_previewWireframeNode);
+            _previewWireframeNode.Dispose();
+            _previewWireframeNode = null;
         }
 
-        if (!previewWireframeEnabled || previewModelNodes is null)
+        if (!_previewWireframeEnabled || _previewModelNodes is null)
         {
             return;
         }
 
-        var positions = LineUtils.GetWireframeLinePositions(previewModelNodes, removedDuplicateLines: false);
+        var positions = LineUtils.GetWireframeLinePositions(_previewModelNodes, removedDuplicateLines: false);
         if (positions.Length == 0)
         {
             return;
@@ -492,28 +488,28 @@ public partial class MainWindow : Window
             DepthBias = 0.002f
         };
 
-        previewWireframeNode = new MultiLineNode(isLineStrip: false, material, "PreviewWireframe")
+        _previewWireframeNode = new MultiLineNode(isLineStrip: false, material, "PreviewWireframe")
         {
             Positions = positions
         };
-        PreviewSceneView.Scene.RootNode.Add(previewWireframeNode);
+        PreviewSceneView.Scene.RootNode.Add(_previewWireframeNode);
     }
 
     private void UpdatePreviewPhysicsWireframe()
     {
-        if (previewPhysicsWireframeNode is not null)
+        if (_previewPhysicsWireframeNode is not null)
         {
-            PreviewSceneView.Scene.RootNode.Remove(previewPhysicsWireframeNode);
-            previewPhysicsWireframeNode.Dispose();
-            previewPhysicsWireframeNode = null;
+            PreviewSceneView.Scene.RootNode.Remove(_previewPhysicsWireframeNode);
+            _previewPhysicsWireframeNode.Dispose();
+            _previewPhysicsWireframeNode = null;
         }
 
-        if (!previewPhysicsEnabled || previewPhysicsNodes is null)
+        if (!_previewPhysicsEnabled || _previewPhysicsNodes is null)
         {
             return;
         }
 
-        var positions = LineUtils.GetWireframeLinePositions(previewPhysicsNodes, removedDuplicateLines: true);
+        var positions = LineUtils.GetWireframeLinePositions(_previewPhysicsNodes, removedDuplicateLines: true);
         if (positions.Length == 0)
         {
             return;
@@ -524,11 +520,11 @@ public partial class MainWindow : Window
             DepthBias = 0.004f
         };
 
-        previewPhysicsWireframeNode = new MultiLineNode(isLineStrip: false, material, "PreviewPhysicsWireframe")
+        _previewPhysicsWireframeNode = new MultiLineNode(isLineStrip: false, material, "PreviewPhysicsWireframe")
         {
             Positions = positions
         };
-        PreviewSceneView.Scene.RootNode.Add(previewPhysicsWireframeNode);
+        PreviewSceneView.Scene.RootNode.Add(_previewPhysicsWireframeNode);
     }
 
     private void RenderPreviewScene()
@@ -539,12 +535,12 @@ public partial class MainWindow : Window
 
     private void UpdatePreviewGizmo()
     {
-        if (previewCamera is null)
+        if (_previewCamera is null)
         {
             return;
         }
 
-        PreviewGizmo.SetCamera(previewCamera.Heading, previewCamera.Attitude);
+        PreviewGizmo.SetCamera(_previewCamera.Heading, _previewCamera.Attitude);
     }
 
     private void AppendLog(string? message)
@@ -691,6 +687,34 @@ public partial class MainWindow : Window
             "mow" => [new FilePickerFileType("Men of War model") { Patterns = ["*.def", "*.mdl"] }],
             _ => [new FilePickerFileType("Supported models") { Patterns = ["*.opt", "*.mdl", "*.psk", "*.pskx", "*.def"] }]
         };
+    }
+
+    public void Dispose()
+    {
+        DisposePreviewResources();
+        GC.SuppressFinalize(this);
+    }
+
+    private void DisposePreviewResources()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        if (_subscribedViewModel is { } subscribedViewModel)
+        {
+            subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _subscribedViewModel = null;
+        }
+
+        PreviewGizmo.ViewRequested -= PreviewGizmo_ViewRequested;
+        _previewWireframeNode?.Dispose();
+        _previewWireframeNode = null;
+        _previewPhysicsWireframeNode?.Dispose();
+        _previewPhysicsWireframeNode = null;
+        PreviewSceneView.Dispose();
     }
 
     private enum DropPathKind

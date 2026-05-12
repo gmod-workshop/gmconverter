@@ -3,24 +3,24 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Common;
-using GMConverter.Exporters;
 using GMConverter.Explorer;
+using GMConverter.Exporters;
 using GMConverter.Importers;
 using GMConverter.UI.Models;
 using GMConverter.UI.Services;
 
 namespace GMConverter.UI.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase
+public partial class MainWindowViewModel : ViewModelBase, IDisposable
 {
-    private const double DefaultCoacdThreshold = 0.05;
-    private const int DefaultMaxConvexPieces = 16;
-    private const int DefaultMaxHullVertices = 16;
-    private const double LegacyDefaultCoacdThreshold = 0.01;
-    private const int LegacyDefaultMaxConvexPieces = 32;
-    private const int LegacyDefaultMaxHullVertices = 32;
+    private const double _defaultCoacdThreshold = 0.05;
+    private const int _defaultMaxConvexPieces = 16;
+    private const int _defaultMaxHullVertices = 16;
+    private const double _legacyDefaultCoacdThreshold = 0.01;
+    private const int _legacyDefaultMaxConvexPieces = 32;
+    private const int _legacyDefaultMaxHullVertices = 32;
 
-    private static readonly HashSet<string> PersistedPropertyNames = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> _persistedPropertyNames = new(StringComparer.Ordinal)
     {
         nameof(SelectedInputFormat),
         nameof(SelectedOutputFormat),
@@ -50,137 +50,138 @@ public partial class MainWindowViewModel : ViewModelBase
         nameof(MaxHullVertices)
     };
 
-    private readonly UiLogSink logSink = new();
-    private readonly ConversionService conversionService;
-    private readonly ExplorerService explorerService = new();
-    private readonly List<ExplorerFileEntry> explorerEntries = [];
-    private CancellationTokenSource? settingsSaveCts;
-    private CancellationTokenSource? explorerFilterCts;
-    private bool suppressSettingsSave;
-    private string explorerProfileName = "Explorer";
+    private readonly UiLogSink _logSink = new();
+    private readonly ConversionService _conversionService;
+    private readonly ExplorerService _explorerService = new();
+    private readonly List<ExplorerFileEntry> _explorerEntries = [];
+    private CancellationTokenSource? _settingsSaveCts;
+    private CancellationTokenSource? _explorerFilterCts;
+    private bool _disposed;
+    private readonly bool _suppressSettingsSave;
+    private string _explorerProfileName = "Explorer";
 
     [ObservableProperty]
-    private DisplayOption selectedInputFormat;
+    private DisplayOption _selectedInputFormat;
 
     [ObservableProperty]
-    private DisplayOption selectedOutputFormat;
+    private DisplayOption _selectedOutputFormat;
 
     [ObservableProperty]
-    private DisplayOption selectedAxisMode;
+    private DisplayOption _selectedAxisMode;
 
     [ObservableProperty]
-    private DisplayOption selectedExplorerProfile;
+    private DisplayOption _selectedExplorerProfile;
 
     [ObservableProperty]
-    private ExplorerNode? selectedExplorerNode;
+    private ExplorerNode? _selectedExplorerNode;
 
     [ObservableProperty]
-    private DisplayOption selectedPhysicsMode;
+    private DisplayOption _selectedPhysicsMode;
 
     [ObservableProperty]
-    private string configPath = string.Empty;
+    private string _configPath = string.Empty;
 
     [ObservableProperty]
-    private string inputPath = string.Empty;
+    private string _inputPath = string.Empty;
 
     [ObservableProperty]
-    private string animationPath = string.Empty;
+    private string _animationPath = string.Empty;
 
     [ObservableProperty]
-    private string outputPath = string.Empty;
+    private string _outputPath = string.Empty;
 
     [ObservableProperty]
-    private string baseName = string.Empty;
+    private string _baseName = string.Empty;
 
     [ObservableProperty]
-    private string modelPath = "gmconverter/model.mdl";
+    private string _modelPath = "gmconverter/model.mdl";
 
     [ObservableProperty]
-    private string gameDirectory = string.Empty;
+    private string _gameDirectory = string.Empty;
 
     [ObservableProperty]
-    private string engineDirectory = string.Empty;
+    private string _engineDirectory = string.Empty;
 
     [ObservableProperty]
-    private string materialDirectory = string.Empty;
+    private string _materialDirectory = string.Empty;
 
     [ObservableProperty]
-    private string explorerRootDirectory = string.Empty;
+    private string _explorerRootDirectory = string.Empty;
 
     [ObservableProperty]
-    private string explorerFilter = string.Empty;
+    private string _explorerFilter = string.Empty;
 
     [ObservableProperty]
-    private string selectedExplorerDetails = "Select a model in the tree.";
+    private string _selectedExplorerDetails = "Select a model in the tree.";
 
     [ObservableProperty]
-    private double scaleFactor = 1.0;
+    private double _scaleFactor = 1.0;
 
     [ObservableProperty]
-    private bool buildMaterials = true;
+    private bool _buildMaterials = true;
 
     [ObservableProperty]
-    private bool generatePhysics;
+    private bool _generatePhysics;
 
     [ObservableProperty]
-    private bool previewOrthographic;
+    private bool _previewOrthographic;
 
     [ObservableProperty]
-    private bool previewWireframe;
+    private bool _previewWireframe;
 
     [ObservableProperty]
-    private bool previewPhysicsOverlay;
+    private bool _previewPhysicsOverlay;
 
     [ObservableProperty]
-    private double physicsMass = 100.0;
+    private double _physicsMass = 100.0;
 
     [ObservableProperty]
-    private double coacdThreshold = DefaultCoacdThreshold;
+    private double _coacdThreshold = _defaultCoacdThreshold;
 
     [ObservableProperty]
-    private int maxConvexPieces = DefaultMaxConvexPieces;
+    private int _maxConvexPieces = _defaultMaxConvexPieces;
 
     [ObservableProperty]
-    private int maxHullVertices = DefaultMaxHullVertices;
+    private int _maxHullVertices = _defaultMaxHullVertices;
 
     [ObservableProperty]
-    private bool isBusy;
+    private bool _isBusy;
 
     [ObservableProperty]
-    private string previewText = "No preview loaded.";
+    private string _previewText = "No preview loaded.";
 
     [ObservableProperty]
-    private string previewModelPath = string.Empty;
+    private string _previewModelPath = string.Empty;
 
     [ObservableProperty]
-    private string previewPhysicsModelPath = string.Empty;
+    private string _previewPhysicsModelPath = string.Empty;
 
     [ObservableProperty]
-    private string statusMessage = "Ready.";
+    private string _statusMessage = "Ready.";
 
     [ObservableProperty]
-    private string explorerStatus = "Select a root directory and scan for supported models.";
+    private string _explorerStatus = "Select a root directory and scan for supported models.";
 
     public MainWindowViewModel()
     {
-        suppressSettingsSave = true;
-        conversionService = new ConversionService(logSink);
-        foreach (var profile in explorerService.Profiles)
+        _suppressSettingsSave = true;
+        _conversionService = new ConversionService(_logSink);
+        foreach (var profile in _explorerService.Profiles)
         {
             ExplorerProfiles.Add(new DisplayOption(profile.Id, profile.DisplayName, string.Empty));
         }
 
-        selectedInputFormat = InputFormats[0];
-        selectedOutputFormat = OutputFormats.First(format => format.Value == "mdl");
-        selectedAxisMode = AxisModes[0];
-        selectedPhysicsMode = PhysicsModes[0];
-        selectedExplorerProfile = ExplorerProfiles[0];
+        _selectedInputFormat = InputFormats[0];
+        _selectedOutputFormat = OutputFormats.First(format => format.Value == "mdl");
+        _selectedAxisMode = AxisModes[0];
+        _selectedPhysicsMode = PhysicsModes[0];
+        _selectedExplorerProfile = ExplorerProfiles[0];
         TryLoadDefaultConfig();
         TryLoadSettings();
-        suppressSettingsSave = false;
+        _suppressSettingsSave = false;
         PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is not null && PersistedPropertyNames.Contains(e.PropertyName))
+            if (e.PropertyName is not null && _persistedPropertyNames.Contains(e.PropertyName))
             {
                 QueueSettingsSave();
             }
@@ -225,7 +226,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public ObservableCollection<ExplorerNode> ExplorerNodes { get; } = [];
 
-    public ObservableCollection<string> LogLines => logSink.Lines;
+    public ObservableCollection<string> LogLines => _logSink.Lines;
 
     public bool HasSelectedExplorerEntry => SelectedExplorerNode?.Entry is not null;
 
@@ -322,8 +323,8 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         await RunBusyAsync("Running conversion...", () =>
         {
-            var result = conversionService.RunConversion(CaptureSettings());
-            logSink.Append(result);
+            var result = _conversionService.RunConversion(CaptureSettings());
+            _logSink.Append(result);
         });
     }
 
@@ -332,7 +333,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(ConfigPath))
         {
-            logSink.Append("Config path is empty.");
+            _logSink.Append("Config path is empty.");
             StatusMessage = "Config path is empty.";
             return;
         }
@@ -342,12 +343,12 @@ public partial class MainWindowViewModel : ViewModelBase
             ApplyConfig(UiConfig.Load(ConfigPath));
             ConfigPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(ConfigPath));
             StatusMessage = "Config loaded.";
-            logSink.Append($"Loaded config: {ConfigPath}");
+            _logSink.Append($"Loaded config: {ConfigPath}");
         }
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             StatusMessage = "Config load failed.";
-            logSink.Append($"Config load failed. {ex.Message}");
+            _logSink.Append($"Config load failed. {ex.Message}");
         }
     }
 
@@ -367,7 +368,7 @@ public partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             StatusMessage = "Preview failed.";
-            logSink.Append(ex.Message);
+            _logSink.Append(ex.Message);
         }
         finally
         {
@@ -398,30 +399,30 @@ public partial class MainWindowViewModel : ViewModelBase
         var message = clearCaches ? "Refreshing explorer..." : "Scanning explorer root...";
         StatusMessage = message;
         ExplorerStatus = message;
-        logSink.Append(message);
+        _logSink.Append(message);
         try
         {
             var result = await Task.Run(() =>
             {
                 if (clearCaches)
                 {
-                    explorerService.ClearCaches();
+                    _explorerService.ClearCaches();
                 }
 
-                return explorerService.Scan(ExplorerRootDirectory, SelectedExplorerProfile.Value);
+                return _explorerService.Scan(ExplorerRootDirectory, SelectedExplorerProfile.Value);
             });
-            explorerEntries.Clear();
-            explorerEntries.AddRange(result.Entries);
-            explorerProfileName = result.Profile.DisplayName;
+            _explorerEntries.Clear();
+            _explorerEntries.AddRange(result.Entries);
+            _explorerProfileName = result.Profile.DisplayName;
             RebuildExplorerNodes();
             StatusMessage = clearCaches ? "Explorer refresh complete." : "Explorer scan complete.";
-            logSink.Append($"Explorer found {result.Entries.Count} supported model file(s) using {result.Profile.DisplayName}.");
+            _logSink.Append($"Explorer found {result.Entries.Count} supported model file(s) using {result.Profile.DisplayName}.");
         }
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             ExplorerStatus = "Scan failed.";
             StatusMessage = "Explorer scan failed.";
-            logSink.Append(ex.Message);
+            _logSink.Append(ex.Message);
         }
         finally
         {
@@ -448,7 +449,7 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             StatusMessage = "Explorer preview failed.";
             ExplorerStatus = "Preview failed.";
-            logSink.Append($"Explorer preview failed. {ex.Message}");
+            _logSink.Append($"Explorer preview failed. {ex.Message}");
         }
         finally
         {
@@ -470,16 +471,16 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             await ApplyExplorerSelectionAsync(entry);
             StatusMessage = "Running conversion...";
-            logSink.Append("Running conversion...");
-            var result = await Task.Run(() => conversionService.RunConversion(CaptureSettings()));
-            logSink.Append(result);
+            _logSink.Append("Running conversion...");
+            var result = await Task.Run(() => _conversionService.RunConversion(CaptureSettings()));
+            _logSink.Append(result);
             StatusMessage = "Done.";
         }
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             StatusMessage = "Explorer export failed.";
             ExplorerStatus = "Export failed.";
-            logSink.Append($"Explorer export failed. {ex.Message}");
+            _logSink.Append($"Explorer export failed. {ex.Message}");
         }
         finally
         {
@@ -491,7 +492,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private void ClearExplorerFilter()
     {
         ExplorerFilter = string.Empty;
-        explorerFilterCts?.Cancel();
+        _explorerFilterCts?.Cancel();
         RebuildExplorerNodes();
     }
 
@@ -512,9 +513,9 @@ public partial class MainWindowViewModel : ViewModelBase
             : "Resolving archive model and textures...";
         StatusMessage = resolveMessage;
         ExplorerStatus = resolveMessage;
-        logSink.Append(resolveMessage);
+        _logSink.Append(resolveMessage);
 
-        var resolvedEntry = await Task.Run(() => explorerService.ResolveEntry(entry));
+        var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
         PopulateExplorerSelection(entry, resolvedEntry);
         ModelPath = $"gmconverter/{SanitizePathToken(BaseName)}.mdl";
         ExplorerStatus = $"Prepared {entry.DisplayPath}.";
@@ -523,15 +524,15 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task LoadPreviewCoreAsync()
     {
         StatusMessage = "Loading preview...";
-        logSink.Append("Loading preview...");
+        _logSink.Append("Loading preview...");
         PreviewPhysicsModelPath = string.Empty;
 
-        var result = await Task.Run(() => conversionService.LoadPreview(CaptureSettings()));
+        var result = await Task.Run(() => _conversionService.LoadPreview(CaptureSettings()));
         PreviewText = result.Summary.ToString();
         PreviewPhysicsModelPath = result.PhysicsModelPath ?? string.Empty;
         PreviewModelPath = result.ModelPath;
         StatusMessage = "Preview loaded.";
-        logSink.Append("Preview loaded.");
+        _logSink.Append("Preview loaded.");
     }
 
     private void PopulateExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)
@@ -556,7 +557,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         IsBusy = true;
         StatusMessage = message;
-        logSink.Append(message);
+        _logSink.Append(message);
         try
         {
             await Task.Run(action);
@@ -565,7 +566,7 @@ public partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             StatusMessage = "Operation failed.";
-            logSink.Append(ex.Message);
+            _logSink.Append(ex.Message);
         }
         finally
         {
@@ -616,12 +617,12 @@ public partial class MainWindowViewModel : ViewModelBase
             if (UiSettings.Load() is { } settings)
             {
                 ApplySettings(settings);
-                logSink.Append($"Loaded UI settings: {UiSettings.SettingsPath}");
+                _logSink.Append($"Loaded UI settings: {UiSettings.SettingsPath}");
             }
         }
         catch (GMConverterException ex)
         {
-            logSink.Append(ex.Message);
+            _logSink.Append(ex.Message);
         }
     }
 
@@ -653,9 +654,9 @@ public partial class MainWindowViewModel : ViewModelBase
         PhysicsMass = settings.PhysicsMass;
         if (HasLegacyCoacdDefaults(settings))
         {
-            CoacdThreshold = DefaultCoacdThreshold;
-            MaxConvexPieces = DefaultMaxConvexPieces;
-            MaxHullVertices = DefaultMaxHullVertices;
+            CoacdThreshold = _defaultCoacdThreshold;
+            MaxConvexPieces = _defaultMaxConvexPieces;
+            MaxHullVertices = _defaultMaxHullVertices;
         }
         else
         {
@@ -698,14 +699,14 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void QueueSettingsSave()
     {
-        if (suppressSettingsSave)
+        if (_suppressSettingsSave || _disposed)
         {
             return;
         }
 
-        settingsSaveCts?.Cancel();
-        settingsSaveCts = new CancellationTokenSource();
-        var token = settingsSaveCts.Token;
+        _settingsSaveCts?.Cancel();
+        _settingsSaveCts = new CancellationTokenSource();
+        var token = _settingsSaveCts.Token;
         _ = SaveSettingsSoonAsync(token);
     }
 
@@ -721,26 +722,43 @@ public partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException)
         {
-            logSink.Append($"Failed to save UI settings. {ex.Message}");
+            _logSink.Append($"Failed to save UI settings. {ex.Message}");
         }
     }
 
     public void SaveSettingsNow()
     {
-        if (suppressSettingsSave)
+        if (_suppressSettingsSave || _disposed)
         {
             return;
         }
 
         try
         {
-            settingsSaveCts?.Cancel();
+            _settingsSaveCts?.Cancel();
             CaptureSettingsState().Save();
         }
         catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException)
         {
-            logSink.Append($"Failed to save UI settings. {ex.Message}");
+            _logSink.Append($"Failed to save UI settings. {ex.Message}");
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _settingsSaveCts?.Cancel();
+        _settingsSaveCts?.Dispose();
+        _settingsSaveCts = null;
+        _explorerFilterCts?.Cancel();
+        _explorerFilterCts?.Dispose();
+        _explorerFilterCts = null;
+        GC.SuppressFinalize(this);
     }
 
     private void ApplyConfig(UiConfig config)
@@ -858,15 +876,12 @@ public partial class MainWindowViewModel : ViewModelBase
             nodes = node.Children;
         }
 
-        if (current is not null)
-        {
-            current.MarkAsModel(fileEntry);
-        }
+        current?.MarkAsModel(fileEntry);
     }
 
     private void RebuildExplorerNodes()
     {
-        explorerFilterCts?.Cancel();
+        _explorerFilterCts?.Cancel();
         ExplorerNodes.Clear();
         SelectedExplorerNode = null;
 
@@ -877,8 +892,8 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         ExplorerStatus = string.IsNullOrWhiteSpace(ExplorerFilter)
-            ? $"{explorerProfileName}: {explorerEntries.Count} supported model file(s)."
-            : $"{explorerProfileName}: {filteredEntries.Length} of {explorerEntries.Count} supported model file(s).";
+            ? $"{_explorerProfileName}: {_explorerEntries.Count} supported model file(s)."
+            : $"{_explorerProfileName}: {filteredEntries.Length} of {_explorerEntries.Count} supported model file(s).";
     }
 
     private IEnumerable<ExplorerFileEntry> FilterExplorerEntries()
@@ -887,24 +902,24 @@ public partial class MainWindowViewModel : ViewModelBase
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (terms.Length == 0)
         {
-            return explorerEntries;
+            return _explorerEntries;
         }
 
-        return explorerEntries.Where(entry => terms.All(term =>
+        return _explorerEntries.Where(entry => terms.All(term =>
             entry.DisplayPath.Contains(term, StringComparison.OrdinalIgnoreCase)));
     }
 
     private void QueueExplorerFilterRebuild()
     {
-        explorerFilterCts?.Cancel();
+        _explorerFilterCts?.Cancel();
 
-        if (explorerEntries.Count == 0)
+        if (_explorerEntries.Count == 0)
         {
             return;
         }
 
-        explorerFilterCts = new CancellationTokenSource();
-        var token = explorerFilterCts.Token;
+        _explorerFilterCts = new CancellationTokenSource();
+        var token = _explorerFilterCts.Token;
         _ = RebuildExplorerNodesSoonAsync(token);
     }
 
@@ -958,9 +973,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private static bool HasLegacyCoacdDefaults(UiSettings settings)
     {
-        return Math.Abs(settings.CoacdThreshold - LegacyDefaultCoacdThreshold) < 0.000001 &&
-            settings.MaxConvexPieces == LegacyDefaultMaxConvexPieces &&
-            settings.MaxHullVertices == LegacyDefaultMaxHullVertices;
+        return Math.Abs(settings.CoacdThreshold - _legacyDefaultCoacdThreshold) < 0.000001 &&
+            settings.MaxConvexPieces == _legacyDefaultMaxConvexPieces &&
+            settings.MaxHullVertices == _legacyDefaultMaxHullVertices;
     }
 
     private static string SanitizePathToken(string value)

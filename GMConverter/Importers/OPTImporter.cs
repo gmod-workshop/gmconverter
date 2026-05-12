@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using ImageMagick;
-using JeremyAnsel.Xwa.Opt;
 using GMConverter.Common;
 using GMConverter.Geometry;
+using ImageMagick;
+using JeremyAnsel.Xwa.Opt;
 using Mesh = GMConverter.Geometry.Mesh;
 using OptTexture = JeremyAnsel.Xwa.Opt.Texture;
 using Vector = JeremyAnsel.Xwa.Opt.Vector;
@@ -36,7 +36,7 @@ internal sealed class OPTImporter : IImporter
             BuildMaterials(opt));
     }
 
-    private static IReadOnlyList<Mesh> BuildMeshes(OptFile opt, float lodDistance, float scaleFactor, ModelAxisMode axisMode)
+    private static List<Mesh> BuildMeshes(OptFile opt, float lodDistance, float scaleFactor, ModelAxisMode axisMode)
     {
         List<Mesh> meshes = [];
 
@@ -104,9 +104,11 @@ internal sealed class OPTImporter : IImporter
         return vertices.Count - 1;
     }
 
-    private static IReadOnlyList<Material> BuildMaterials(OptFile opt)
+    private static Material[] BuildMaterials(OptFile opt)
     {
-        return opt.Textures.Values
+        return
+        [
+            .. opt.Textures.Values
             .Select(texture =>
             {
                 var name = NameHelpers.SanitizeMaterialName(texture.Name);
@@ -117,7 +119,7 @@ internal sealed class OPTImporter : IImporter
                         ? new Geometry.Texture($"{name}_illum", CreateIlluminationImage(texture))
                         : null);
             })
-            .ToArray();
+        ];
     }
 
     private static MagickImage CreateTextureImage(OptTexture texture)
@@ -139,13 +141,7 @@ internal sealed class OPTImporter : IImporter
 
     private static MagickImage CreateIlluminationImage(OptTexture texture)
     {
-        var illum = texture.GetIllumMap(0, out var width, out var height);
-
-        if (illum is null)
-        {
-            throw new GMConverterException($"Texture has no illumination map: {texture.Name}");
-        }
-
+        var illum = texture.GetIllumMap(0, out var width, out var height) ?? throw new GMConverterException($"Texture has no illumination map: {texture.Name}");
         var bgra = new byte[width * height * 4];
 
         for (var i = 0; i < width * height; i++)

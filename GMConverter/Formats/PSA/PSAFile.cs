@@ -10,8 +10,8 @@ namespace GMConverter.Formats.PSA;
 /// </summary>
 internal sealed class PSAFile
 {
-    private static readonly Encoding SectionNameEncoding = Encoding.ASCII;
-    private static readonly Encoding TextEncoding = Encoding.Latin1;
+    private static readonly Encoding _sectionNameEncoding = Encoding.ASCII;
+    private static readonly Encoding _textEncoding = Encoding.Latin1;
 
     public List<PSABone> Bones { get; } = [];
     public List<PSASequence> Sequences { get; } = [];
@@ -104,7 +104,7 @@ internal sealed class PSAFile
         }
 
         return new PSASection(
-            DecodeFixedString(nameBytes, SectionNameEncoding),
+            DecodeFixedString(nameBytes, _sectionNameEncoding),
             reader.ReadInt32(),
             reader.ReadInt32(),
             reader.ReadInt32());
@@ -138,7 +138,7 @@ internal sealed class PSAFile
     {
         RequireRecordSize(record, 120, "BONENAMES");
         return new PSABone(
-            DecodeFixedString(record[..64], TextEncoding),
+            DecodeFixedString(record[..64], _textEncoding),
             ReadInt32(record, 64),
             ReadInt32(record, 68),
             ReadInt32(record, 72),
@@ -152,8 +152,8 @@ internal sealed class PSAFile
     {
         RequireRecordSize(record, 168, "ANIMINFO");
         return new PSASequence(
-            DecodeFixedString(record[..64], TextEncoding),
-            DecodeFixedString(record.Slice(64, 64), TextEncoding),
+            DecodeFixedString(record[..64], _textEncoding),
+            DecodeFixedString(record.Slice(64, 64), _textEncoding),
             ReadInt32(record, 128),
             ReadInt32(record, 132),
             ReadInt32(record, 136),

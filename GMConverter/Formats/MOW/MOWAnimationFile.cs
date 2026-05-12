@@ -27,16 +27,16 @@ internal sealed record MOWAnimationFrame(
 
 internal sealed class MOWAnimationFile
 {
-    private static readonly byte[] Magic = "EANM"u8.ToArray();
-    private const uint HeaderId = 0x00060000;
+    private static readonly byte[] _magic = "EANM"u8.ToArray();
+    private const uint _headerId = 0x00060000;
 
     public string Path { get; }
     public uint DurationFrames { get; private set; }
-    public IReadOnlyList<string> Entities => entities;
-    public IReadOnlyList<MOWAnimationFrame> Frames => frames;
+    public IReadOnlyList<string> Entities => _entities;
+    public IReadOnlyList<MOWAnimationFrame> Frames => _frames;
 
-    private readonly List<string> entities = [];
-    private readonly List<MOWAnimationFrame> frames = [];
+    private readonly List<string> _entities = [];
+    private readonly List<MOWAnimationFrame> _frames = [];
 
     private MOWAnimationFile(string path)
     {
@@ -56,13 +56,13 @@ internal sealed class MOWAnimationFile
         using var reader = new BinaryReader(stream);
 
         var magic = ReadBytes(reader, 4, "ANM header");
-        if (!magic.SequenceEqual(Magic))
+        if (!magic.SequenceEqual(_magic))
         {
             throw new GMConverterException($"Unsupported Men of War ANM file: {Path}");
         }
 
         var headerId = reader.ReadUInt32();
-        if (headerId != HeaderId)
+        if (headerId != _headerId)
         {
             throw new GMConverterException($"Unsupported Men of War ANM header 0x{headerId:X8} in {Path}.");
         }
@@ -82,7 +82,7 @@ internal sealed class MOWAnimationFile
                     break;
 
                 case "FRM2":
-                    frames.Add(ReadFrame(reader));
+                    _frames.Add(ReadFrame(reader));
                     break;
 
                 default:
@@ -99,7 +99,7 @@ internal sealed class MOWAnimationFile
         for (var index = 0; index < count; index++)
         {
             var nameLength = checked((int)reader.ReadUInt32());
-            entities.Add(Encoding.UTF8.GetString(ReadBytes(reader, nameLength, "ANM entity name")));
+            _entities.Add(Encoding.UTF8.GetString(ReadBytes(reader, nameLength, "ANM entity name")));
         }
     }
 

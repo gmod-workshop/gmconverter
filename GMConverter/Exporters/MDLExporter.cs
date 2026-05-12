@@ -12,8 +12,8 @@ namespace GMConverter.Exporters;
 /// </summary>
 internal sealed class MDLExporter : IExporter<MDLExportOptions>
 {
-    private static readonly UTF8Encoding Utf8NoBom = new(false);
-    private const int SourceMaxConvexPieces = 1024;
+    private static readonly UTF8Encoding _utf8NoBom = new(false);
+    private const int _sourceMaxConvexPieces = 1024;
 
     public string OutputFormat => "mdl";
 
@@ -60,7 +60,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         Compile(model, result, sourceTools, options.BuildMaterials);
     }
 
-    private void Compile(Model model, MDLExportResult result, SourceToolPaths sourceTools, bool buildMaterials)
+    private static void Compile(Model model, MDLExportResult result, SourceToolPaths sourceTools, bool buildMaterials)
     {
         if (buildMaterials)
         {
@@ -104,9 +104,9 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
     }
 
-    private void WriteSmd(Model model, string smdPath)
+    private static void WriteSmd(Model model, string smdPath)
     {
-        using var writer = new StreamWriter(smdPath, false, Utf8NoBom);
+        using var writer = new StreamWriter(smdPath, false, _utf8NoBom);
         writer.WriteLine("version 1");
         WriteSmdNodes(writer, model.Skeleton);
         WriteReferenceSkeleton(writer, model.Skeleton);
@@ -167,12 +167,10 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             return [];
         }
 
-        return validWeights
-            .Select(weight => new VertexBoneWeight(weight.BoneIndex, weight.Weight / totalWeight))
-            .ToArray();
+        return [.. validWeights.Select(weight => new VertexBoneWeight(weight.BoneIndex, weight.Weight / totalWeight))];
     }
 
-    private void WritePhysicsSmd(Model model, string physicsSmdPath, PhysicsOptions physicsOptions)
+    private static void WritePhysicsSmd(Model model, string physicsSmdPath, PhysicsOptions physicsOptions)
     {
         switch (physicsOptions.Mode)
         {
@@ -190,7 +188,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
     }
 
-    private void WriteBoundsPhysicsSmd(Model model, string physicsSmdPath)
+    private static void WriteBoundsPhysicsSmd(Model model, string physicsSmdPath)
     {
         var bounds = model.Bounds().WithMinimumThickness();
         using var writer = CreatePhysicsSmdWriter(physicsSmdPath);
@@ -217,7 +215,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         writer.WriteLine("end");
     }
 
-    private void WriteCoacdPhysicsSmd(Model model, string physicsSmdPath, CoacdOptions options)
+    private static void WriteCoacdPhysicsSmd(Model model, string physicsSmdPath, CoacdOptions options)
     {
         var parts = CoacdNative.Decompose(
             model.Merge(),
@@ -231,7 +229,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         WritePhysicsPartsSmd(physicsSmdPath, parts);
     }
 
-    private void WritePhysicsPartsSmd(string physicsSmdPath, IReadOnlyList<Mesh> parts)
+    private static void WritePhysicsPartsSmd(string physicsSmdPath, IReadOnlyList<Mesh> parts)
     {
         using var writer = CreatePhysicsSmdWriter(physicsSmdPath);
         var triangleCount = 0;
@@ -265,7 +263,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
     private static StreamWriter CreatePhysicsSmdWriter(string physicsSmdPath)
     {
-        var writer = new StreamWriter(physicsSmdPath, false, Utf8NoBom);
+        var writer = new StreamWriter(physicsSmdPath, false, _utf8NoBom);
         writer.WriteLine("version 1");
         WriteSmdNodes(writer, null);
         WriteReferenceSkeleton(writer, null);
@@ -288,7 +286,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         return Vector3.UnitZ;
     }
 
-    private static void WritePhysicsQuad(StreamWriter writer, IReadOnlyList<Vector3> vertices, int a, int b, int c,
+    private static void WritePhysicsQuad(StreamWriter writer, Vector3[] vertices, int a, int b, int c,
         int d, Vector3 normal)
     {
         WritePhysicsTriangle(writer, vertices[a], vertices[b], vertices[c], normal);
@@ -324,10 +322,10 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
-        IReadOnlyList<(AnimationClip Clip, string SmdPath)> animationSmdPaths)
+        (AnimationClip Clip, string SmdPath)[] animationSmdPaths)
     {
         var smdFileName = $"{safeBaseName}.smd";
-        using var writer = new StreamWriter(qcPath, false, Utf8NoBom);
+        using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
 
         writer.WriteLine(FormattableString.Invariant($"$modelname \"{modelPath.Replace('\\', '/')}\""));
         writer.WriteLine(FormattableString.Invariant($"$body \"body\" \"{smdFileName}\""));
@@ -336,7 +334,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             writer.WriteLine(FormattableString.Invariant($"$cdmaterials \"{materialRelativeDirectory.Replace('\\', '/')}\""));
         }
 
-        if (model.Skeleton is null && animationSmdPaths.Count == 0)
+        if (model.Skeleton is null && animationSmdPaths.Length == 0)
         {
             writer.WriteLine("$staticprop");
         }
@@ -345,7 +343,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
-        if (animationSmdPaths.Count > 0)
+        if (animationSmdPaths.Length > 0)
         {
             foreach (var (clip, animationSmdPath) in animationSmdPaths)
             {
@@ -361,7 +359,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             if (physicsOptions?.Mode is PhysicsMode.Coacd)
             {
                 writer.WriteLine("    $concave");
-                writer.WriteLine(FormattableString.Invariant($"    $maxconvexpieces {SourceMaxConvexPieces}"));
+                writer.WriteLine(FormattableString.Invariant($"    $maxconvexpieces {_sourceMaxConvexPieces}"));
             }
 
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
@@ -369,7 +367,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
     }
 
-    private static IReadOnlyList<(AnimationClip Clip, string SmdPath)> GetAnimationSmdPaths(
+    private static (AnimationClip Clip, string SmdPath)[] GetAnimationSmdPaths(
         Model model,
         string outputDirectory,
         string safeBaseName)
@@ -379,12 +377,14 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             return [];
         }
 
-        return model.Animations
+        return
+        [
+            .. model.Animations
             .Where(clip => clip.Tracks.OfType<BoneTransformTrack>().Any())
             .Select((clip, index) => (
                 clip,
                 Path.Combine(outputDirectory, $"{safeBaseName}_{index}_{NameHelpers.SanitizeFileName(clip.Name)}.smd")))
-            .ToArray();
+        ];
     }
 
     private static void WriteAnimationSmd(Model model, AnimationClip clip, string smdPath)
@@ -394,7 +394,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             return;
         }
 
-        using var writer = new StreamWriter(smdPath, false, Utf8NoBom);
+        using var writer = new StreamWriter(smdPath, false, _utf8NoBom);
         writer.WriteLine("version 1");
         WriteSmdNodes(writer, model.Skeleton);
         writer.WriteLine("skeleton");
@@ -501,9 +501,9 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         writer.WriteLine("end");
     }
 
-    private static IReadOnlyDictionary<int, Transform> BuildSourceLocalTransforms(
+    private static Dictionary<int, Transform> BuildSourceLocalTransforms(
         Skeleton skeleton,
-        IReadOnlyDictionary<int, Transform>? localTransforms = null)
+        Dictionary<int, Transform>? localTransforms = null)
     {
         Dictionary<int, Matrix4x4> originalWorldTransforms = [];
         Dictionary<int, Matrix4x4> sourceWorldTransforms = [];
@@ -588,7 +588,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         return value.Replace("\"", "'", StringComparison.Ordinal);
     }
 
-    private void ExportSourceMaterials(Model model, string materialDirectory, string materialRelativeDirectory)
+    private static void ExportSourceMaterials(Model model, string materialDirectory, string materialRelativeDirectory)
     {
         foreach (var material in model.Materials)
         {
@@ -613,7 +613,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             material.NormalTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
             material.SpecularTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
 
-            using var writer = new StreamWriter(vmtPath, false, Utf8NoBom);
+            using var writer = new StreamWriter(vmtPath, false, _utf8NoBom);
             writer.WriteLine("\"VertexLitGeneric\"");
             writer.WriteLine("{");
             writer.WriteLine(FormattableString.Invariant($"    \"$basetexture\" \"{sourceTexturePath}\""));
@@ -674,7 +674,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
     }
 
-    private static IReadOnlyList<string> GetMaterialDirectories(Model model, string modelPath)
+    private static string[] GetMaterialDirectories(Model model, string modelPath)
     {
         var directories = model.Materials
             .SelectMany(MaterialPaths)

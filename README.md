@@ -51,9 +51,9 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `--physics` | Generate bounds collision for Source output. | `--physics` | Off |
 | `--physics-mode <mode>` | Collision generation mode: `bounds` or `coacd`. | `--physics-mode coacd` | `bounds` |
 | `--physics-mass <value>` | Physics mass for Source collision. | `--physics-mass 250` | `100` |
-| `--coacd-threshold <value>` | CoACD termination threshold. | `--coacd-threshold 0.05` | `0.01` |
-| `--max-convex-pieces <count>` | Maximum CoACD convex hull count. Use `-1` for no limit. | `--max-convex-pieces 16` | `32` |
-| `--coacd-max-hull-vertices <count>` | Maximum vertices per CoACD hull. | `--coacd-max-hull-vertices 32` | `32` |
+| `--coacd-threshold <value>` | CoACD termination threshold. | `--coacd-threshold 0.05` | `0.05` |
+| `--max-convex-pieces <count>` | Maximum CoACD convex hull count. Use `-1` for no limit. | `--max-convex-pieces 16` | `16` |
+| `--coacd-max-hull-vertices <count>` | Maximum vertices per CoACD hull. | `--coacd-max-hull-vertices 16` | `16` |
 
 </details>
 
@@ -93,7 +93,8 @@ physics-mass = 100
 
 ## Format Details
 
-### OPT
+<details>
+<summary>OPT</summary>
 
 X-Wing Alliance OPT files are supported as input. The importer reads mesh geometry, material slots, textures, and model statistics. OPT does not carry skeletal animation data in the current converter.
 
@@ -113,7 +114,10 @@ Export diagnostic OBJ, MTL, and PNG assets:
 
 Outputs mesh, LOD, texture, face, and vertex counts, plus bounding-box sizes at Source scale and OPT library display scale.
 
-### PSK / PSKX
+</details>
+
+<details>
+<summary>PSK / PSKX</summary>
 
 Unreal ActorX PSK/PSKX files are supported as input. The importer reads mesh geometry, UVs, material slots, skeleton bind data, skin weights, and PSKX vertex normals when present.
 
@@ -129,7 +133,10 @@ PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA 
   --material-dir "E:\Tools\umodel\UmodelExport"
 ```
 
-### MDL
+</details>
+
+<details>
+<summary>MDL</summary>
 
 Source MDL files are supported as input and output. MDL read support decompiles reference SMD meshes through MdlCrowbar and currently imports static reference mesh geometry and material references, not full compiled animation data.
 
@@ -145,7 +152,10 @@ MDL write support generates SMD, QC, material files, optional animation SMDs, an
 
 `--game-dir` is required and must point to a Source game directory containing `gameinfo.txt`. The tool reads `gameinfo.txt` to identify the game and infer the engine root from `gamebin`.
 
-### Men of War (MOW)
+</details>
+
+<details>
+<summary>Men of War (MOW)</summary>
 
 Men of War / Assault Squad 2 extracted assets are supported with `--input-format mow`. The importer accepts either the entity `.def` file or the referenced `.mdl` file. `.def` input resolves the first `Extension` node to find the model.
 
@@ -157,13 +167,21 @@ The current importer reads the `.mdl` skeleton tree, loads each bone `VolumeView
   --output-path "out\bddispenser-glb"
 ```
 
-### OBJ / MTL
+</details>
+
+<details>
+<summary>OBJ / MTL</summary>
 
 OBJ export is intended for diagnostics and static interchange. It writes OBJ, MTL, and PNG texture files. Materials include diffuse maps, alpha maps, specular maps, normal maps via `map_Bump`, and emissive maps where available. OBJ does not support bones, skin weights, or animations.
 
-### glTF / GLB
+</details>
+
+<details>
+<summary>glTF / GLB</summary>
 
 glTF/GLB export writes portable mesh assets with materials, normal maps, skeletons, skin weights, and animations. `glb` writes a single binary file with embedded buffers and images. `gltf` writes a JSON glTF file with satellite resources.
+
+</details>
 
 ## Physics
 

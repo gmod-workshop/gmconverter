@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-12
+
 ### Added
 
 - Added importer logging support through `ILoggerFactory`, with CLI console logging and GUI log-box routing.
@@ -69,6 +71,7 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/gmod-workshop/gmconverter/releases/tag/v1.0.0

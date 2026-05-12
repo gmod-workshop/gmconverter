@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using GMConverter.Common;
+using GMConverter.Formats.MOW;
 
 namespace GMConverter.GameExplorer;
 
@@ -99,6 +100,7 @@ internal sealed class GameExplorerService
             relativePath.Replace(Path.DirectorySeparatorChar, '/'),
             Path.GetFullPath(file),
             profile.GetInputFormat(Path.GetExtension(file)),
+            root,
             root);
     }
 
@@ -140,6 +142,7 @@ internal sealed class GameExplorerService
                         Path.Combine(extractionRoot, entryPath.Replace('/', Path.DirectorySeparatorChar)),
                         profile.GetInputFormat(Path.GetExtension(entry.Name)),
                         extractionRoot,
+                        root,
                         archivePath,
                         entryPath);
                 }
@@ -174,7 +177,106 @@ internal sealed class GameExplorerService
             entry.ExtractToFile(outputPath, overwrite: true);
         }
 
+        ExtractSearchArchiveTextures(
+            explorerEntry.SearchRoot,
+            archivePath,
+            extractionRoot,
+            FindMOWTextureReferences(extractionRoot));
+
         return new GameExplorerEntryResolver(explorerEntry.FilePath, extractionRoot);
+    }
+
+    private static IReadOnlySet<string> FindMOWTextureReferences(string extractionRoot)
+    {
+        HashSet<string> textureReferences = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var materialPath in EnumerateFiles(extractionRoot)
+                     .Where(file => string.Equals(Path.GetExtension(file), ".mtl", StringComparison.OrdinalIgnoreCase)))
+        {
+            MOWMaterialFile materialFile;
+            try
+            {
+                materialFile = MOWMaterialFile.Read(materialPath);
+            }
+            catch (GMConverterException)
+            {
+                continue;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            AddTextureReference(textureReferences, materialFile.DiffuseTexture);
+            AddTextureReference(textureReferences, materialFile.SpecularTexture);
+            AddTextureReference(textureReferences, materialFile.NormalTexture);
+        }
+
+        return textureReferences;
+    }
+
+    private static void AddTextureReference(HashSet<string> textureReferences, string? textureReference)
+    {
+        if (!string.IsNullOrWhiteSpace(textureReference))
+        {
+            textureReferences.Add(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(textureReference)));
+        }
+    }
+
+    private static void ExtractSearchArchiveTextures(
+        string searchRoot,
+        string selectedArchivePath,
+        string extractionRoot,
+        IReadOnlySet<string> textureReferences)
+    {
+        if (textureReferences.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var archivePath in EnumerateFiles(searchRoot).Where(file => IsZipBackedPak(file)))
+        {
+            if (string.Equals(Path.GetFullPath(archivePath), Path.GetFullPath(selectedArchivePath), StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            ZipArchive archive;
+            try
+            {
+                archive = ZipFile.OpenRead(archivePath);
+            }
+            catch (InvalidDataException)
+            {
+                continue;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            using (archive)
+            {
+                foreach (var entry in archive.Entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Name)))
+                {
+                    var normalizedEntryPath = NormalizeArchivePath(entry.FullName);
+                    if (!IsImageExtension(Path.GetExtension(normalizedEntryPath)))
+                    {
+                        continue;
+                    }
+
+                    var textureName = NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(normalizedEntryPath));
+                    if (!MatchesTextureReference(textureReferences, textureName))
+                    {
+                        continue;
+                    }
+
+                    var outputPath = TextureOutputPath(extractionRoot, normalizedEntryPath);
+                    Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? extractionRoot);
+                    entry.ExtractToFile(outputPath, overwrite: true);
+                }
+            }
+        }
     }
 
     private static bool ShouldExtractEntry(string entryPath, string selectedEntryPath)
@@ -199,6 +301,31 @@ internal sealed class GameExplorerService
             extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".anm", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsImageExtension(string extension)
+    {
+        return extension.Equals(".dds", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".tga", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesTextureReference(IReadOnlySet<string> textureReferences, string textureName)
+    {
+        return textureReferences.Contains(textureName) ||
+            textureReferences.Any(reference => reference.EndsWith(textureName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string TextureOutputPath(string extractionRoot, string entryPath)
+    {
+        var fileName = Path.GetFileName(entryPath);
+        var directoryHash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(ArchiveDirectoryName(entryPath))))[..12];
+
+        return Path.Combine(extractionRoot, "__archive_textures", directoryHash, fileName);
     }
 
     private static bool IsZipBackedPak(string file)

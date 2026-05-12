@@ -21,4 +21,14 @@ internal static partial class MOWLogMessages
         Level = LogLevel.Warning,
         Message = "Men of War texture file not found for reference '{TextureName}'")]
     public static partial void MissingTextureReference(this ILogger logger, string textureName);
+
+    [LoggerMessage(
+        EventId = 1003,
+        Level = LogLevel.Warning,
+        Message = "Men of War texture file could not be loaded for reference '{TextureName}': {TexturePath}. {ErrorMessage}")]
+    public static partial void UnreadableTextureReference(
+        this ILogger logger,
+        string textureName,
+        string texturePath,
+        string errorMessage);
 }

@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Added Source Engine Phong mask output from imported specular textures such as MOW `_sp` maps.
 - Added a GUI Game Explorer tab for scanning loose game folders and previewing/exporting supported model files.
 - Added Game Explorer support for zip-backed Men of War `.pak` archives.
+- Added cross-PAK texture extraction for Men of War models selected in the Game Explorer.
 
 ### Changed
 
@@ -26,6 +27,7 @@ All notable changes to this project will be documented in this file.
 - Fixed MOW PLY parsing for multi-material mesh sections.
 - Fixed additional MOW PLY material and vertex format variants found in real assets.
 - Fixed MOW ANM vertex-animation chunk skipping for animations with variable trailer sizes.
+- Fixed unreadable MOW texture files aborting model preview or export.
 - Improved MOW parser errors for truncated or unsupported PLY and ANM data.
 
 ## [1.1.0] - 2026-05-11

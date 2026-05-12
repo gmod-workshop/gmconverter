@@ -601,33 +601,68 @@ internal sealed class MOWImporter : IImporter
                 return null;
             }
 
-            var texturePath = ResolveTexturePath(textureName);
-            if (texturePath is null)
+            var foundCandidate = false;
+            foreach (var texturePath in ResolveTexturePaths(textureName))
+            {
+                foundCandidate = true;
+                MagickImage image;
+                try
+                {
+                    image = new MagickImage(texturePath);
+                }
+                catch (Exception ex) when (ex is MagickException or IOException or UnauthorizedAccessException)
+                {
+                    Logger.UnreadableTextureReference(textureName, texturePath, ex.Message);
+                    continue;
+                }
+
+                if (!hasAlpha && image.HasAlpha)
+                {
+                    image.Alpha(AlphaOption.Opaque);
+                }
+
+                return new Texture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);
+            }
+
+            if (!foundCandidate)
             {
                 Logger.MissingTextureReference(textureName);
-                return null;
             }
 
-            var image = new MagickImage(texturePath);
-            if (!hasAlpha && image.HasAlpha)
-            {
-                image.Alpha(AlphaOption.Opaque);
-            }
-
-            return new Texture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);
+            return null;
         }
 
-        private string? ResolveTexturePath(string textureName)
+        private IEnumerable<string> ResolveTexturePaths(string textureName)
         {
+            HashSet<string> yieldedPaths = new(StringComparer.OrdinalIgnoreCase);
             foreach (var localCandidate in LocalCandidates(textureName))
             {
                 if (File.Exists(localCandidate))
                 {
-                    return localCandidate;
+                    yieldedPaths.Add(localCandidate);
+                    yield return localCandidate;
                 }
             }
 
-            return searchIndex.GetValueOrDefault(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(textureName)));
+            var normalizedTextureName = NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(textureName));
+            if (searchIndex.TryGetValue(normalizedTextureName, out var exactMatch))
+            {
+                if (yieldedPaths.Add(exactMatch))
+                {
+                    yield return exactMatch;
+                }
+            }
+
+            foreach (var candidate in searchIndex
+                .Where(candidate => normalizedTextureName.EndsWith(candidate.Key, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(candidate => candidate.Key.Length)
+                .Select(candidate => candidate.Value))
+            {
+                if (yieldedPaths.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
         }
 
         private IEnumerable<string> LocalCandidates(string textureName)

@@ -5,5 +5,6 @@ internal sealed record GameExplorerEntry(
     string FilePath,
     string InputFormat,
     string MaterialDirectory,
+    string SearchRoot,
     string? ArchivePath = null,
     string? ArchiveEntryPath = null);

@@ -17,7 +17,7 @@ internal enum PreviewGizmoView
     NegativeZ
 }
 
-internal sealed class PreviewCameraGizmo : Control
+internal sealed class PreviewGizmo : Control
 {
     private const double _gizmoRadius = 34.0;
     private const double _endpointRadius = 9.0;
@@ -35,7 +35,7 @@ internal sealed class PreviewCameraGizmo : Control
 
     public event EventHandler<PreviewGizmoView>? ViewRequested;
 
-    public PreviewCameraGizmo()
+    public PreviewGizmo()
     {
         Width = 96;
         Height = 96;

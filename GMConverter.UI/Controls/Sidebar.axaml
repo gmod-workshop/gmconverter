@@ -1,0 +1,198 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:shadui="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="260"
+             d:DesignHeight="720"
+             x:Class="GMConverter.UI.Controls.Sidebar"
+             x:DataType="vm:MainWindowViewModel">
+    <Panel>
+        <shadui:Sidebar Background="{DynamicResource SidebarBackgroundColor}"
+                        BorderBrush="{DynamicResource BorderColor}"
+                        BorderThickness="0,0,1,0"
+                        CurrentRoute="{Binding CurrentRoute}"
+                        Expanded="True"
+                        IsVisible="{Binding IsSidebarExpanded}"
+                        ItemIconContentSpacing="12"
+                        Padding="12"
+                        Width="260">
+            <shadui:Sidebar.Header>
+                <Grid Margin="0,4,0,18">
+                    <Button Background="{DynamicResource SidebarBackgroundColor}"
+                            CornerRadius="{DynamicResource MdCornerRadius}"
+                            Command="{Binding ToggleSidebarCommand}"
+                            Height="30"
+                            HorizontalAlignment="Left"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="30"
+                            ToolTip.Tip="Collapse Sidebar">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}"
+                                  Width="16"
+                                  Height="16"/>
+                    </Button>
+                </Grid>
+            </shadui:Sidebar.Header>
+
+            <StackPanel Spacing="4">
+                <shadui:SidebarItemLabel Text="Workflow" AsSeparator="True"/>
+                <shadui:SidebarItem Content="Convert"
+                                     Command="{Binding ShowConvertCommand}"
+                                     IsChecked="{Binding IsConvertWorkspace}"
+                                     Route="convert">
+                    <shadui:SidebarItem.Icon>
+                        <PathIcon Data="{x:Static shadui:Icons.Settings}" Foreground="{DynamicResource ForegroundColor}"/>
+                    </shadui:SidebarItem.Icon>
+                </shadui:SidebarItem>
+                <shadui:SidebarItem Content="Explorer"
+                                     Command="{Binding ShowExplorerCommand}"
+                                     IsChecked="{Binding IsExplorerWorkspace}"
+                                     Route="explorer">
+                    <shadui:SidebarItem.Icon>
+                        <PathIcon Data="{x:Static shadui:Icons.Search}" Foreground="{DynamicResource ForegroundColor}"/>
+                    </shadui:SidebarItem.Icon>
+                </shadui:SidebarItem>
+
+                <shadui:SidebarItemLabel Text="Current" AsSeparator="True"/>
+                <shadui:SidebarItem Content="{Binding Convert.SelectedInputFormat.Label}" Route="input">
+                    <shadui:SidebarItem.Icon>
+                        <PathIcon Data="{x:Static shadui:Icons.ClipBoard}" Foreground="{DynamicResource MutedColor}"/>
+                    </shadui:SidebarItem.Icon>
+                </shadui:SidebarItem>
+                <shadui:SidebarItem Content="{Binding Convert.SelectedOutputFormat.Label}" Route="output">
+                    <shadui:SidebarItem.Icon>
+                        <PathIcon Data="{x:Static shadui:Icons.ArrowDown}" Foreground="{DynamicResource MutedColor}"/>
+                    </shadui:SidebarItem.Icon>
+                </shadui:SidebarItem>
+                <shadui:SidebarItem Content="{Binding Preview.PreviewFileLabel}" Route="preview">
+                    <shadui:SidebarItem.Icon>
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}" Foreground="{DynamicResource MutedColor}"/>
+                    </shadui:SidebarItem.Icon>
+                </shadui:SidebarItem>
+            </StackPanel>
+
+            <shadui:Sidebar.Footer>
+                <StackPanel Spacing="8">
+                    <Button Classes="Outline"
+                            Content="Load Preview"
+                            Command="{Binding Convert.LoadPreviewCommand}">
+                        <shadui:ButtonAssist.Icon>
+                            <PathIcon Data="{x:Static shadui:Icons.SidePanel}" Width="16" Margin="0,0,6,0"/>
+                        </shadui:ButtonAssist.Icon>
+                    </Button>
+                    <Button Classes="Primary"
+                            Content="Run Conversion"
+                            Command="{Binding Convert.RunConversionCommand}">
+                        <shadui:ButtonAssist.Icon>
+                            <PathIcon Data="{x:Static shadui:Icons.Check}" Width="16" Margin="0,0,6,0"/>
+                        </shadui:ButtonAssist.Icon>
+                    </Button>
+                </StackPanel>
+            </shadui:Sidebar.Footer>
+        </shadui:Sidebar>
+
+        <Border Width="64"
+                Background="{DynamicResource CardBackgroundColor}"
+                BorderBrush="{DynamicResource BorderColor}"
+                BorderThickness="0,0,1,0"
+                IsVisible="{Binding IsSidebarCollapsed}">
+            <DockPanel Margin="10,16,10,16">
+                <StackPanel DockPanel.Dock="Bottom" Spacing="8">
+                    <Button Classes="Outline"
+                            Command="{Binding Convert.LoadPreviewCommand}"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="Load Preview">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}" Width="16"/>
+                    </Button>
+                    <Button Classes="Primary"
+                            Command="{Binding Convert.RunConversionCommand}"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="Run Conversion">
+                        <PathIcon Data="{x:Static shadui:Icons.Check}" Width="16"/>
+                    </Button>
+                </StackPanel>
+
+                <StackPanel Spacing="10">
+                    <Button Background="{DynamicResource GmAccentBrush}"
+                            Command="{Binding ToggleSidebarCommand}"
+                            CornerRadius="{DynamicResource XlCornerRadius}"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="Expand Sidebar">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}"
+                                  Foreground="#FFFFFFFF"
+                                  Width="18"/>
+                    </Button>
+
+                    <Separator Margin="0,8"/>
+
+                    <ToggleButton Command="{Binding ShowConvertCommand}"
+                                  IsChecked="{Binding IsConvertWorkspace}"
+                                  Height="40"
+                                  HorizontalContentAlignment="Center"
+                                  Padding="0"
+                                  VerticalContentAlignment="Center"
+                                  Width="40"
+                                  ToolTip.Tip="Convert">
+                        <PathIcon Data="{x:Static shadui:Icons.Settings}" Width="16"/>
+                    </ToggleButton>
+                    <ToggleButton Command="{Binding ShowExplorerCommand}"
+                                  IsChecked="{Binding IsExplorerWorkspace}"
+                                  Height="40"
+                                  HorizontalContentAlignment="Center"
+                                  Padding="0"
+                                  VerticalContentAlignment="Center"
+                                  Width="40"
+                                  ToolTip.Tip="Explorer">
+                        <PathIcon Data="{x:Static shadui:Icons.Search}" Width="16"/>
+                    </ToggleButton>
+
+                    <Separator Margin="0,8"/>
+
+                    <Button Classes="Outline"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="{Binding Convert.SelectedInputFormat.Label}">
+                        <PathIcon Data="{x:Static shadui:Icons.ClipBoard}" Width="16"/>
+                    </Button>
+                    <Button Classes="Outline"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="{Binding Convert.SelectedOutputFormat.Label}">
+                        <PathIcon Data="{x:Static shadui:Icons.ArrowDown}" Width="16"/>
+                    </Button>
+                    <Button Classes="Outline"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="{Binding Preview.PreviewFileLabel}">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}" Width="16"/>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Panel>
+</UserControl>

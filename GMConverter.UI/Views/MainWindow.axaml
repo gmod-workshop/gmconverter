@@ -1,316 +1,96 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:GMConverter.UI.ViewModels"
-        xmlns:models="using:GMConverter.UI.Models"
-        xmlns:views="using:GMConverter.UI.Views"
-        xmlns:sharpEngine="clr-namespace:Ab4d.SharpEngine.AvaloniaUI;assembly=Ab4d.SharpEngine.AvaloniaUI"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d"
-        d:DesignWidth="1280"
-        d:DesignHeight="760"
-        Width="1280"
-        Height="940"
-        MinWidth="1080"
-        MinHeight="680"
-        x:Class="GMConverter.UI.Views.MainWindow"
-        x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="GMConverter">
+<shadui:Window
+  Width="1024"
+  Height="768"
+  Icon="/Assets/avalonia-logo.ico"
+  SaveWindowState="True"
+  WindowStartupLocation="CenterScreen"
+  Title="GMConverter"
+  TitleFontWeight="SemiBold"
+  EnableTrafficLightPositioning="True"
+  TrafficLightOffset="5,8"
+  mc:Ignorable="d"
+  d:DesignWidth="800"
+  x:Class="GMConverter.UI.MainWindow"
+  x:DataType="vm:MainWindowViewModel"
+  x:Name="Window"
+  xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:views="using:GMConverter.UI.Views"
+             xmlns:primitives="using:Avalonia.Controls.Primitives"
+             xmlns:shadui="clr-namespace:ShadUI;assembly=ShadUI"
+             xmlns:svg="clr-namespace:Avalonia.Svg.Skia;assembly=Svg.Controls.Skia.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:preview="clr-namespace:GMConverter.UI.Controls.Preview"
+             xmlns:controls="clr-namespace:GMConverter.UI.Controls">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Grid Margin="12" ColumnDefinitions="3*,*" RowDefinitions="*">
-        <TabControl Grid.Column="0" Margin="0,0,12,0">
-            <TabItem Header="Convert">
-                <Grid RowDefinitions="*,140">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,12">
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,12,0">
-                        <GroupBox Header="Format" Margin="0,0,8,8">
-                            <Grid ColumnDefinitions="120,*,160" RowDefinitions="Auto,Auto,Auto" Margin="8">
-                                <TextBlock Text="Input format" VerticalAlignment="Center"/>
-                                <ComboBox Grid.Column="1"
-                                          Grid.ColumnSpan="2"
-                                          ItemsSource="{Binding InputFormats}"
-                                          SelectedItem="{Binding SelectedInputFormat}"/>
-                                <TextBlock Grid.Row="1" Text="Output format" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <ComboBox Grid.Row="1"
-                                          Grid.Column="1"
-                                          Grid.ColumnSpan="2"
-                                          ItemsSource="{Binding OutputFormats}"
-                                          SelectedItem="{Binding SelectedOutputFormat}"
-                                          Margin="0,8,0,0"/>
-                                <TextBlock Grid.Row="2" Text="Config file" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <TextBox x:Name="ConfigPathBox" Grid.Row="2" Grid.Column="1" Text="{Binding ConfigPath}" Margin="0,8,0,0"/>
-                                <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="8,8,0,0">
-                                    <Button Content="Browse" Click="BrowseConfigPath_Click" IsEnabled="{Binding IsIdle}"/>
-                                    <Button Content="Load" Command="{Binding LoadConfigCommand}"/>
-                                </StackPanel>
-                            </Grid>
-                        </GroupBox>
+    <shadui:Window.LogoContent>
+        <svg:Svg Width="24"
+                 Height="24"
+                 Margin="8,8,0,8"
+                 Path="/Assets/icon.svg"
+                 Stretch="Uniform"/>
+    </shadui:Window.LogoContent>
 
-                        <GroupBox Grid.Column="1" Header="Geometry" Margin="8,0,0,8">
-                            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" Margin="8">
-                                <TextBlock Text="Scale" VerticalAlignment="Center"/>
-                                <NumericUpDown Grid.Column="1"
-                                               Value="{Binding ScaleFactor}"
-                                               Minimum="0.0001"
-                                               Maximum="100000"
-                                               Increment="0.1"
-                                               FormatString="F4"/>
-                                <TextBlock Grid.Row="1" Text="Input axes" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <ComboBox Grid.Row="1"
-                                          Grid.Column="1"
-                                          ItemsSource="{Binding AxisModes}"
-                                          SelectedItem="{Binding SelectedAxisMode}"
-                                          Margin="0,8,0,0"/>
-                            </Grid>
-                        </GroupBox>
+    <shadui:Window.RightWindowTitleBarContent>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Background="{DynamicResource SidebarBackgroundColor}"
+                    CornerRadius="{DynamicResource MdCornerRadius}"
+                    Height="30"
+                    HorizontalContentAlignment="Center"
+                    Padding="0"
+                    VerticalContentAlignment="Center"
+                    Width="30"
+                    ToolTip.Tip="Switch Theme"
+                    Click="SwitchTheme_Click">
+                <PathIcon Data="{x:Static shadui:Icons.Palette}" Width="16" Height="16"/>
+            </Button>
+            <Button Background="{DynamicResource SidebarBackgroundColor}"
+                    CornerRadius="{DynamicResource MdCornerRadius}"
+                    Height="30"
+                    HorizontalContentAlignment="Center"
+                    Padding="0"
+                    VerticalContentAlignment="Center"
+                    Width="30"
+                    ToolTip.Tip="Toggle Fullscreen"
+                    Click="ToggleFullscreen_Click">
+                <PathIcon Data="{x:Static shadui:Icons.WindowMaximize}" Width="16" Height="16"/>
+            </Button>
+        </StackPanel>
+    </shadui:Window.RightWindowTitleBarContent>
 
-                        <GroupBox Grid.Row="1" Header="File Paths" Margin="0,0,8,8">
-                            <Grid ColumnDefinitions="120,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" Margin="8">
-                                <TextBlock Text="Input path" VerticalAlignment="Center"/>
-                                <TextBox x:Name="InputPathBox" Grid.Column="1" Text="{Binding InputPath}"/>
-                                <Button Grid.Column="2" Content="Browse" Click="BrowseInputPath_Click" IsEnabled="{Binding IsIdle}" MinWidth="76" Margin="8,0,0,0"/>
+    <Panel>
+        <Grid x:Name="ShellGrid" ColumnDefinitions="Auto,0.75*,6,0.25*">
 
-                                <TextBlock Grid.Row="1" Text="Animation path" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <TextBox x:Name="AnimationPathBox" Grid.Row="1" Grid.Column="1" Text="{Binding AnimationPath}" IsEnabled="{Binding CanBrowseAnimation}" Margin="0,8,0,0"/>
-                                <Button Grid.Row="1" Grid.Column="2" Content="Browse" Click="BrowseAnimationPath_Click" IsEnabled="{Binding CanBrowseAnimation}" MinWidth="76" Margin="8,8,0,0"/>
+            <controls:Sidebar Grid.Column="0"/>
 
-                                <TextBlock Grid.Row="2" Text="Output path" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <TextBox x:Name="OutputPathBox" Grid.Row="2" Grid.Column="1" Text="{Binding OutputPath}" Margin="0,8,0,0"/>
-                                <Button Grid.Row="2" Grid.Column="2" Content="Browse" Click="BrowseOutputPath_Click" IsEnabled="{Binding IsIdle}" MinWidth="76" Margin="8,8,0,0"/>
-
-                                <TextBlock Grid.Row="3" Text="Name" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding BaseName}" Margin="0,8,0,0"/>
-                            </Grid>
-                        </GroupBox>
-
-                        <GroupBox Grid.Row="1" Grid.Column="1" Header="Source Engine" IsEnabled="{Binding IsSourceOutput}" Margin="8,0,0,8">
-                            <Grid ColumnDefinitions="120,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" Margin="8">
-                                <TextBlock Text="Model path" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ModelPath}"/>
-
-                                <TextBlock Grid.Row="1" Text="Game directory" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <TextBox x:Name="GameDirectoryBox" Grid.Row="1" Grid.Column="1" Text="{Binding GameDirectory}" Margin="0,8,0,0"/>
-                                <Button Grid.Row="1" Grid.Column="2" Content="Browse" Click="BrowseGameDirectory_Click" IsEnabled="{Binding IsIdle}" MinWidth="76" Margin="8,8,0,0"/>
-
-                                <TextBlock Grid.Row="2" Text="Engine directory" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <TextBox x:Name="EngineDirectoryBox" Grid.Row="2" Grid.Column="1" Text="{Binding EngineDirectory}" Margin="0,8,0,0"/>
-                                <Button Grid.Row="2" Grid.Column="2" Content="Browse" Click="BrowseEngineDirectory_Click" IsEnabled="{Binding IsIdle}" MinWidth="76" Margin="8,8,0,0"/>
-
-                                <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Content="Build VTF/VMT materials" IsChecked="{Binding BuildMaterials}" Margin="0,8,0,0"/>
-                            </Grid>
-                        </GroupBox>
-
-                        <StackPanel Grid.Row="2" Margin="0,0,8,8" Spacing="8" VerticalAlignment="Top">
-                            <GroupBox Header="Material Search">
-                                <Grid ColumnDefinitions="120,*,Auto" RowDefinitions="Auto" Margin="8">
-                                    <TextBlock Text="Material directory" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="MaterialDirectoryBox" Grid.Column="1" Text="{Binding MaterialDirectory}" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="2" Content="Browse" Click="BrowseMaterialDirectory_Click" IsEnabled="{Binding IsIdle}" MinWidth="76" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                                </Grid>
-                            </GroupBox>
-
-                            <GroupBox Header="Actions">
-                                <WrapPanel Margin="8">
-                                    <Button Content="Run Conversion" Command="{Binding RunConversionCommand}" Margin="0,0,8,0"/>
-                                    <Button Content="Load Preview" Command="{Binding LoadPreviewCommand}"/>
-                                </WrapPanel>
-                            </GroupBox>
-                        </StackPanel>
-
-                        <GroupBox Grid.Row="2" Grid.Column="1" Header="Physics" IsEnabled="{Binding IsSourceOutput}" Margin="8,0,0,8">
-                            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="8">
-                                <CheckBox Grid.Column="1" Content="Generate physics mesh" IsChecked="{Binding GeneratePhysics}"/>
-
-                                <TextBlock Grid.Row="1" Text="Physics mode" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding PhysicsModes}" SelectedItem="{Binding SelectedPhysicsMode}" Margin="0,8,0,0"/>
-
-                                <TextBlock Grid.Row="2" Text="Mass" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <NumericUpDown Grid.Row="2"
-                                               Grid.Column="1"
-                                               Value="{Binding PhysicsMass}"
-                                               Minimum="0.1"
-                                               Maximum="100000"
-                                               Increment="10"
-                                               FormatString="F1"
-                                               IsEnabled="{Binding IsPhysicsEnabled}"
-                                               Margin="0,8,0,0"/>
-
-                                <TextBlock Grid.Row="3" Text="CoACD threshold" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <NumericUpDown Grid.Row="3"
-                                               Grid.Column="1"
-                                               Value="{Binding CoacdThreshold}"
-                                               Minimum="0.0001"
-                                               Maximum="1"
-                                               Increment="0.001"
-                                               FormatString="F4"
-                                               IsEnabled="{Binding IsCoacdEnabled}"
-                                               Margin="0,8,0,0"/>
-
-                                <TextBlock Grid.Row="4" Text="Max pieces" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <NumericUpDown Grid.Row="4"
-                                               Grid.Column="1"
-                                               Value="{Binding MaxConvexPieces}"
-                                               Minimum="1"
-                                               Maximum="128"
-                                               Increment="1"
-                                               FormatString="F0"
-                                               IsEnabled="{Binding IsCoacdEnabled}"
-                                               Margin="0,8,0,0"/>
-
-                                <TextBlock Grid.Row="5" Text="Hull vertices" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                                <NumericUpDown Grid.Row="5"
-                                               Grid.Column="1"
-                                               Value="{Binding MaxHullVertices}"
-                                               Minimum="4"
-                                               Maximum="256"
-                                               Increment="1"
-                                               FormatString="F0"
-                                               IsEnabled="{Binding IsCoacdEnabled}"
-                                               Margin="0,8,0,0"/>
-                            </Grid>
-                        </GroupBox>
-                    </Grid>
-                    </ScrollViewer>
-
-                    <Grid Grid.Row="1" RowDefinitions="Auto,*">
-                        <TextBlock Text="{Binding StatusMessage}" Margin="4,0,0,8"/>
-                        <Border Grid.Row="1" Background="#1f2227" Padding="10" MinHeight="120">
-                            <ListBox ItemsSource="{Binding LogLines}"/>
-                        </Border>
-                    </Grid>
+            <Panel Grid.Column="1">
+                <Grid IsVisible="{Binding IsConvertWorkspace}">
+                    <views:ConvertView DataContext="{Binding Convert}"/>
                 </Grid>
-            </TabItem>
-
-            <TabItem Header="Explorer">
-                <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-                    <GroupBox Header="Explorer" Margin="0,0,0,8">
-                        <Grid ColumnDefinitions="120,*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="8">
-                            <TextBlock Text="Root directory" VerticalAlignment="Center"/>
-                            <TextBox x:Name="ExplorerRootDirectoryBox" Grid.Column="1" Text="{Binding ExplorerRootDirectory}"/>
-                            <Button Grid.Column="2" Content="Browse" Click="BrowseExplorerRootDirectory_Click" IsEnabled="{Binding IsIdle}" MinWidth="76" Margin="8,0,0,0"/>
-
-                            <TextBlock Grid.Row="1" Text="Profile" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                            <ComboBox Grid.Row="1"
-                                      Grid.Column="1"
-                                      ItemsSource="{Binding ExplorerProfiles}"
-                                      SelectedItem="{Binding SelectedExplorerProfile}"
-                                      Margin="0,8,0,0"/>
-                            <WrapPanel Grid.Row="1" Grid.Column="2" Margin="8,8,0,0">
-                                <Button Content="Scan" Command="{Binding ScanExplorerCommand}" IsEnabled="{Binding IsIdle}" Margin="0,0,6,0"/>
-                                <Button Content="Refresh" Command="{Binding RefreshExplorerCommand}" IsEnabled="{Binding IsIdle}"/>
-                            </WrapPanel>
-
-                            <TextBlock Grid.Row="2" Text="Filter" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                            <TextBox Grid.Row="2"
-                                     Grid.Column="1"
-                                     Text="{Binding ExplorerFilter}"
-                                     PlaceholderText="arc republic vehicle"
-                                     Margin="0,8,0,0"/>
-                            <Button Grid.Row="2"
-                                    Grid.Column="2"
-                                    Content="Clear"
-                                    Command="{Binding ClearExplorerFilterCommand}"
-                                    Margin="8,8,0,0"/>
-                        </Grid>
-                    </GroupBox>
-
-                    <TextBlock Grid.Row="1" Text="{Binding ExplorerStatus}" Margin="6,0,0,8"/>
-                    <TextBlock Grid.Row="2"
-                               Text="{Binding SelectedExplorerDetails}"
-                               TextWrapping="Wrap"
-                               FontFamily="Consolas"
-                               Margin="6,0,0,8"/>
-
-                    <TreeView x:Name="ExplorerTree"
-                              Grid.Row="3"
-                              ItemsSource="{Binding ExplorerNodes}"
-                              SelectedItem="{Binding SelectedExplorerNode}"
-                              DoubleTapped="ExplorerTree_DoubleTapped">
-                        <TreeView.Styles>
-                            <Style Selector="TreeViewItem">
-                                <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/>
-                            </Style>
-                        </TreeView.Styles>
-                        <TreeView.DataTemplates>
-                            <TreeDataTemplate DataType="models:ExplorerNode" ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Border Background="#3c4654"
-                                            CornerRadius="3"
-                                            Padding="4,1"
-                                            MinWidth="28">
-                                        <TextBlock Text="{Binding Badge}"
-                                                   Foreground="#f3f5f7"
-                                                   FontSize="10"
-                                                   FontWeight="SemiBold"
-                                                   HorizontalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </TreeDataTemplate>
-                        </TreeView.DataTemplates>
-                    </TreeView>
-
-                    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                        <Button Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}"/>
-                        <Button Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}"/>
-                    </StackPanel>
+                <Grid IsVisible="{Binding IsExplorerWorkspace}">
+                    <views:ExplorerView DataContext="{Binding Explorer}"/>
                 </Grid>
-            </TabItem>
-        </TabControl>
+            </Panel>
 
-        <GroupBox Grid.Column="1" Header="Preview">
-            <Grid RowDefinitions="*,Auto">
-                <Border Background="#1a1c20" Padding="12">
-                    <Grid>
-                        <sharpEngine:SharpEngineSceneView x:Name="PreviewSceneView"
-                                                          PresentationType="SharedTexture"
-                                                          BackgroundColor="Transparent"/>
-                        <Border HorizontalAlignment="Stretch"
-                                VerticalAlignment="Bottom"
-                                Background="#CC252932"
-                                Padding="6"
-                                CornerRadius="4">
-                            <WrapPanel>
-                                <Button Content="Fit" Click="PreviewFit_Click" Margin="0,0,6,0"/>
-                                <ToggleButton x:Name="PreviewProjectionToggle"
-                                              Content="Ortho"
-                                              IsChecked="{Binding PreviewOrthographic}"
-                                              Click="PreviewProjection_Click"
-                                              Margin="0,0,6,0"/>
-                                <ToggleButton x:Name="PreviewWireframeToggle"
-                                              Content="Wire"
-                                              IsChecked="{Binding PreviewWireframe}"
-                                              Click="PreviewWireframe_Click"
-                                              Margin="0,0,6,0"/>
-                                <ToggleButton x:Name="PreviewPhysicsToggle"
-                                              Content="Physics"
-                                              IsChecked="{Binding PreviewPhysicsOverlay}"
-                                              Click="PreviewPhysics_Click"
-                                              IsEnabled="{Binding HasPreviewPhysics}"/>
-                            </WrapPanel>
-                        </Border>
-                        <views:PreviewCameraGizmo x:Name="PreviewGizmo"
-                                                  HorizontalAlignment="Right"
-                                                  VerticalAlignment="Top"
-                                                  Margin="0,8,8,0"/>
-                        <TextBlock Text="No model loaded."
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="#dce0e6"
-                                   IsVisible="{Binding IsPreviewEmpty}"/>
-                    </Grid>
-                </Border>
-                <TextBlock Grid.Row="1"
-                           Text="{Binding PreviewText}"
-                           FontFamily="Consolas"
-                           TextWrapping="Wrap"
-                           Margin="0,8,0,0"/>
-            </Grid>
-        </GroupBox>
-    </Grid>
-</Window>
+            <primitives:Thumb Grid.Column="2"
+                              Cursor="SizeWestEast"
+                              DragDelta="PreviewResizeThumb_DragDelta"
+                              IsVisible="{Binding IsPreviewPaneExpanded}"
+                              ToolTip.Tip="Resize Preview">
+                <primitives:Thumb.Template>
+                    <ControlTemplate>
+                        <Border Background="Transparent"/>
+                    </ControlTemplate>
+                </primitives:Thumb.Template>
+            </primitives:Thumb>
+
+            <preview:PreviewSidebar Grid.Column="3"/>
+        </Grid>
+    </Panel>
+</shadui:Window>

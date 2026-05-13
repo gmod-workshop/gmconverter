@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:views="using:GMConverter.UI.Views"
+             xmlns:shadui="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="360"
+             d:DesignHeight="720"
+             x:Class="GMConverter.UI.Controls.Preview.PreviewSidebar"
+             x:DataType="vm:MainWindowViewModel">
+    <Panel>
+        <Border Background="{DynamicResource SidebarBackgroundColor}"
+                BorderBrush="{DynamicResource BorderColor}"
+                BorderThickness="1,0,0,0"
+                IsVisible="{Binding IsPreviewPaneExpanded}"
+                Padding="18,22">
+            <Grid RowDefinitions="Auto,16,*">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Preview" Classes="h3"/>
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Background="{DynamicResource SidebarBackgroundColor}"
+                            CornerRadius="{DynamicResource MdCornerRadius}"
+                            Command="{Binding TogglePreviewPaneCommand}"
+                            Height="30"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="30"
+                            ToolTip.Tip="Collapse Preview">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}" Width="16"/>
+                    </Button>
+                </Grid>
+
+                <views:PreviewPane Grid.Row="2" DataContext="{Binding Preview}"/>
+            </Grid>
+        </Border>
+
+        <Border Width="64"
+                Background="{DynamicResource CardBackgroundColor}"
+                BorderBrush="{DynamicResource BorderColor}"
+                BorderThickness="1,0,0,0"
+                IsVisible="{Binding IsPreviewPaneCollapsed}">
+            <DockPanel Margin="10,16,10,16">
+                <StackPanel DockPanel.Dock="Bottom" Spacing="8">
+                    <Button Classes="Outline"
+                            Command="{Binding Convert.LoadPreviewCommand}"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="Load Preview">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}" Width="16"/>
+                    </Button>
+                </StackPanel>
+
+                <StackPanel Spacing="10">
+                    <Button Background="{DynamicResource GmAccentBrush}"
+                            Command="{Binding TogglePreviewPaneCommand}"
+                            CornerRadius="{DynamicResource XlCornerRadius}"
+                            Height="40"
+                            HorizontalContentAlignment="Center"
+                            Padding="0"
+                            VerticalContentAlignment="Center"
+                            Width="40"
+                            ToolTip.Tip="Expand Preview">
+                        <PathIcon Data="{x:Static shadui:Icons.SidePanel}"
+                                  Foreground="#FFFFFFFF"
+                                  Width="18"/>
+                    </Button>
+
+                    <Separator Margin="0,8"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Panel>
+</UserControl>

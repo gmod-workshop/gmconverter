@@ -1,0 +1,107 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <Thickness x:Key="PageMargin">48,24,48,24</Thickness>
+    <x:Double x:Key="PageMaxWidth">1180</x:Double>
+    <SolidColorBrush x:Key="GmAccentBrush" Color="#1447E6"/>
+    <SolidColorBrush x:Key="GmViewportBrush" Color="#050608"/>
+    <SolidColorBrush x:Key="GmPreviewToolActiveBrush" Color="#251447E6"/>
+  </Styles.Resources>
+
+  <Style Selector="TextBlock.LucideIcon">
+    <Setter Property="Height" Value="18"/>
+    <Setter Property="Width" Value="18"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="TextAlignment" Value="Center"/>
+    <Setter Property="FontFamily" Value="{StaticResource LucideIcon}"/>
+    <Setter Property="FontSize" Value="18"/>
+    <Setter Property="FontWeight" Value="ExtraLight"/>
+  </Style>
+
+  <Style Selector="TextBlock.ShadUIIcon">
+    <Setter Property="Height" Value="18"/>
+    <Setter Property="Width" Value="18"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="TextAlignment" Value="Center"/>
+    <Setter Property="FontFamily" Value="{StaticResource ShadUIIcon}"/>
+    <Setter Property="FontSize" Value="18"/>
+    <Setter Property="FontWeight" Value="ExtraLight"/>
+  </Style>
+
+  <Style Selector="Border.viewport">
+    <Setter Property="Background" Value="{DynamicResource GmViewportBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource XlCornerRadius}"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+  </Style>
+
+  <Style Selector="Border.toolbar">
+    <Setter Property="Background" Value="{DynamicResource CardBackgroundColor}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource LgCornerRadius}"/>
+    <Setter Property="Padding" Value="4"/>
+  </Style>
+
+  <Style Selector="Button.preview-tool, ToggleButton.preview-tool">
+    <Setter Property="Width" Value="30"/>
+    <Setter Property="Height" Value="30"/>
+    <Setter Property="MinWidth" Value="30"/>
+    <Setter Property="MinHeight" Value="30"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource MdCornerRadius}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <Style Selector="Button.preview-tool:pointerover, ToggleButton.preview-tool:pointerover">
+    <Setter Property="Background" Value="{DynamicResource GmPreviewToolActiveBrush}"/>
+  </Style>
+
+  <Style Selector="ToggleButton.preview-tool:checked">
+    <Setter Property="Background" Value="{DynamicResource GmPreviewToolActiveBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource GmAccentBrush}"/>
+  </Style>
+
+  <Style Selector="Border.preview-tool-separator">
+    <Setter Property="Width" Value="1"/>
+    <Setter Property="Height" Value="18"/>
+    <Setter Property="Margin" Value="3,6"/>
+    <Setter Property="Background" Value="{DynamicResource BorderColor}"/>
+  </Style>
+
+  <Style Selector="Path.preview-toolbar-icon">
+    <Setter Property="Fill" Value="{DynamicResource ForegroundColor}"/>
+    <Setter Property="RenderTransformOrigin" Value="0,0"/>
+  </Style>
+
+  <Style Selector="Path.preview-toolbar-line-icon">
+    <Setter Property="Fill" Value="Transparent"/>
+    <Setter Property="Stroke" Value="{DynamicResource ForegroundColor}"/>
+    <Setter Property="StrokeThickness" Value="1.6"/>
+    <Setter Property="StrokeLineCap" Value="Round"/>
+  </Style>
+
+  <Style Selector="PathIcon.accent-icon">
+    <Setter Property="Foreground" Value="{DynamicResource GmAccentBrush}"/>
+    <Setter Property="Width" Value="15"/>
+    <Setter Property="Height" Value="15"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <Style Selector="ListBox.log-list">
+    <Setter Property="FontFamily" Value="Consolas"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+
+  <Style Selector="TreeView.explorer-tree">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+</Styles>

@@ -2,14 +2,23 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="GMConverter.UI.App"
              xmlns:local="using:GMConverter.UI"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             RequestedThemeVariant="Dark">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
-  
+
+    <Application.Resources>
+      <FontFamily x:Key="JetbrainsFont">avares://GMConverter.UI/Assets/Fonts#Jetbrains</FontFamily>
+      <FontFamily x:Key="ManropeFont">avares://GMConverter.UI/Assets/Fonts#Manrope</FontFamily>
+      <FontFamily x:Key="LucideIcon">avares://GMConverter.UI/Assets/Fonts#lucide</FontFamily>
+      <FontFamily x:Key="ShadUIIcon">avares://GMConverter.UI/Assets/Fonts#shadui</FontFamily>
+      <x:Double x:Key="ControlContentThemeFontSize">12</x:Double>
+    </Application.Resources>
+
     <Application.Styles>
-        <FluentTheme />
+        <shad:ShadTheme/>
+        <StyleInclude Source="avares://GMConverter.UI/Styles/Index.axaml"/>
     </Application.Styles>
 </Application>

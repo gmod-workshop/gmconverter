@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:common="using:GMConverter.UI.Controls.Common"
+             mc:Ignorable="d"
+             d:DesignWidth="900"
+             x:Class="GMConverter.UI.Controls.Common.Header"
+             x:DataType="common:Header"
+             x:Name="Root">
+    <StackPanel Margin="{StaticResource PageMargin}"
+                MaxWidth="{StaticResource PageMaxWidth}"
+                Spacing="4">
+        <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="h2" Text="{Binding Title, ElementName=Root}"/>
+            <ContentPresenter Grid.Column="1"
+                              Content="{Binding RightContent, ElementName=Root}"
+                              VerticalAlignment="Center"/>
+        </Grid>
+        <TextBlock Classes="p"
+                   Text="{Binding Description, ElementName=Root}"
+                   TextWrapping="Wrap"/>
+    </StackPanel>
+</UserControl>

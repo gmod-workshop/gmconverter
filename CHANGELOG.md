@@ -6,6 +6,28 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Reworked the Avalonia UI around ShadUI with a new shell layout, modular Convert, Explorer, and Preview views, and a card-based visual structure.
+- Split the Avalonia shell state into dedicated Convert, Explorer, and Preview view models to match the modular views.
+- Added a collapsible sidebar that remains accessible as a compact icon rail.
+- Moved the model preview into a collapsible right-side panel.
+- Made the right-side preview panel width adjustable with ratio-based sizing so it scales with the window.
+- Replaced the visible convert-page scrollbar with a bottom vertical scroll progress indicator and refined title bar spacing.
+- Moved workspace titles into docked per-page headers that match the ShadUI demo layout.
+- Simplified the expanded sidebar header by removing the redundant app title and logo.
+- Split shared Avalonia shell and page chrome into reusable sidebar, page header, and scroll-progress controls.
+- Hid the preview width resize handle while keeping the resize hit area available.
+- Simplified the preview panel by removing the status badge, metric strip, and bottom model summary text.
+- Reworked the preview toolbar into a minimal Blender-style icon strip with tooltip labels and grouped projection/shading controls.
+- Fixed the custom preview toolbar icons so transformed SVG paths stay anchored inside their buttons.
+- Updated preview shading modes so Solid removes textures and Wireframe hides textured faces while showing only model edges.
+- Switched Solid preview shading to a lit neutral material so model depth remains visible without textures.
+- Replaced the custom title-bar logo badge with the app SVG from `Assets/icon.svg`.
+- Updated the 3D preview render background to follow the active light or dark theme.
+- Updated preview wireframe lines to use a theme-aware color for better contrast in light mode.
+- Added maximized-window chrome insets so title-bar controls and bottom content are not clipped at the screen edge.
+- Aligned Explorer page cards and actions to the same page width.
+- Matched Explorer card spacing to the Convert page spacing rhythm.
+- Normalized Convert page two-column card gutters so wide and split rows share the same outer width.
 - Updated the Avalonia UI app to use the SharpEngine open source license.
 - Added repository-wide `.editorconfig` and analyzer enforcement, and updated the codebase to satisfy the enabled style and quality checks.
 - Added agent workflow guidance for branch hygiene, scoped changes, changelog updates, and Conventional Commits.

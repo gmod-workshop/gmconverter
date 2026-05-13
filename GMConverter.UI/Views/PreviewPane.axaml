@@ -1,0 +1,155 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:views="using:GMConverter.UI.Views"
+             xmlns:sharpEngine="clr-namespace:Ab4d.SharpEngine.AvaloniaUI;assembly=Ab4d.SharpEngine.AvaloniaUI"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="420"
+             d:DesignHeight="720"
+             x:Class="GMConverter.UI.Views.PreviewPane"
+             x:DataType="vm:PreviewViewModel">
+    <Grid>
+            <Border x:Name="PreviewViewport" Classes="viewport">
+                <Grid>
+                    <sharpEngine:SharpEngineSceneView x:Name="PreviewSceneView"
+                                                      PresentationType="SharedTexture"
+                                                      BackgroundColor="Transparent"/>
+                    <Border HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Classes="toolbar"
+                            Margin="12">
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                            <Button Classes="preview-tool"
+                                    Click="PreviewFit_Click"
+                                    ToolTip.Tip="Frame Model">
+                                <PathIcon Width="15"
+                                          Height="15"
+                                          Data="{x:Static shad:Icons.Search}"/>
+                            </Button>
+                            <Border Classes="preview-tool-separator"/>
+                            <ToggleButton x:Name="PreviewProjectionToggle"
+                                          IsChecked="{Binding PreviewOrthographic}"
+                                          Click="PreviewProjection_Click"
+                                          Classes="preview-tool"
+                                          ToolTip.Tip="Toggle Orthographic/Perspective">
+                                <Grid Width="16" Height="16">
+                                    <Viewbox x:Name="PreviewPerspectiveIcon">
+                                        <Canvas Width="1800" Height="1500">
+                                            <Path Classes="preview-toolbar-icon"
+                                                  Data="m449.75 12.000004a.50005006.50005006 0 0 0-.4824.36914l-3.25 12.000001a.50005006.50005006 0 0 0 .4824.63086h15a.50005006.50005006 0 0 0 .4824-.63086l-3.25-12.000001a.50005006.50005006 0 0 0-.4824-.36914zm.3828 1h2.086l-.2169 2h-2.4121zm3.0938 0h1.5468l.2168 2h-1.9804zm2.5547 0h2.0859l.541 2h-2.4101zm-6.461 3h2.5723l-.3262 3h-3.0586zm3.5801 0h2.1992l.3262 3h-2.8516zm3.207 0h2.5723l.8125 3h-3.0586zm-7.8711 4.000001h3.2207l-.4336 4h-3.8711zm4.2305 0h3.0664l.4356 4h-3.9375zm4.0762 0h3.2207l1.084 4h-3.8711z">
+                                                <Path.RenderTransform>
+                                                    <MatrixTransform Matrix="100,0,0,100,-44500,-1100"/>
+                                                </Path.RenderTransform>
+                                            </Path>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <Viewbox x:Name="PreviewOrthographicIcon" IsVisible="False">
+                                        <Canvas Width="1800" Height="1800">
+                                            <Path Classes="preview-toolbar-icon"
+                                                  Data="m467.5 10.000005a.50005006.50005006 0 0 0-.5.5v15a.50005006.50005006 0 0 0 .5.5h15a.50005006.50005006 0 0 0 .5-.5v-15a.50005006.50005006 0 0 0-.5-.5zm.5.999999h4v4h-4zm5 0h4v4h-4zm5 0h4v4h-4zm-10 5h4v4.000001h-4zm5 0h4v4.000001h-4zm5 0h4v4.000001h-4zm-10 5.000001h4v4h-4zm5 0h4v4h-4zm5 0h4v4h-4z">
+                                                <Path.RenderTransform>
+                                                    <MatrixTransform Matrix="100,0,0,100,-46600,-900"/>
+                                                </Path.RenderTransform>
+                                            </Path>
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
+                            </ToggleButton>
+                            <Border Classes="preview-tool-separator"/>
+                            <ToggleButton x:Name="PreviewWireframeToggle"
+                                          Click="PreviewWireframe_Click"
+                                          Classes="preview-tool"
+                                          ToolTip.Tip="Wireframe Shading">
+                                <Viewbox Width="16" Height="16">
+                                    <Canvas Width="1600" Height="1600">
+                                        <Path Classes="preview-toolbar-icon"
+                                              Opacity="0.8"
+                                              Data="m-506.01562 106.24414a.50005.50005 0 0 0-.375.19336c-.70647.88308-1.16919 1.99665-1.41016 3.5625h-3.94922c-.67616-.01-.67616 1.00956 0 1h3.83203c-.0522.60644-.082 1.26334-.082 2 0 .73665.0299 1.39356.082 2h-3.83203c-.67616-.01-.67616 1.00956 0 1h3.94922c.24099 1.56587.70375 2.67949 1.41016 3.5625a.50024408.50024408 0 0 0 .78124-.625c-.56556-.70695-.96391-1.59657-1.18554-2.9375h6.54492c.67616.01.67616-1.00956 0-1h-6.66797c-.0526-.59052-.082-1.24749-.082-2s.0294-1.40947.082-2h6.66797c.67616.01.67616-1.00956 0-1h-6.54492c.22165-1.34096.62004-2.23062 1.18554-2.9375a.50005.50005 0 0 0-.40624-.81836z">
+                                            <Path.RenderTransform>
+                                                <MatrixTransform Matrix="100,0,0,100,51400,-10500"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                        <Path Classes="preview-toolbar-icon"
+                                              Data="m34 116c-3.860075 0-7 3.13992-7 7 0 3.86007 3.139928 7 7 7s7-3.13993 7-7c0-3.86008-3.139925-7-7-7zm0 1c3.319633 0 6 2.68036 6 6 0 3.31963-2.680364 6-6 6s-6-2.68037-6-6c0-3.31964 2.680367-6 6-6z">
+                                            <Path.RenderTransform>
+                                                <MatrixTransform Matrix="100,0,0,100,-2600,-11500"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Canvas>
+                                </Viewbox>
+                            </ToggleButton>
+                            <ToggleButton x:Name="PreviewSolidToggle"
+                                          Click="PreviewSolid_Click"
+                                          Classes="preview-tool"
+                                          ToolTip.Tip="Solid Shading">
+                                <Viewbox Width="16" Height="16">
+                                    <Canvas Width="1600" Height="1600">
+                                        <Path Classes="preview-toolbar-icon"
+                                              Opacity="0.8"
+                                              Data="m61.503909 123c0 3.59202-2.911894 6.50391-6.503906 6.50391s-6.503906-2.91189-6.503906-6.50391c0-3.59201 2.911894-6.5039 6.503906-6.5039s6.503906 2.91189 6.503906 6.5039z">
+                                            <Path.RenderTransform>
+                                                <MatrixTransform Matrix="100,0,0,100,-4700,-11500"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                        <Path Classes="preview-toolbar-icon"
+                                              Data="m54.999998 115.99609c-3.862225 0-7.003902 3.14168-7.003906 7.00391-.000002 3.86223 3.141676 7.00391 7.003906 7.00391s7.003908-3.14168 7.003906-7.00391c-.000004-3.86223-3.141681-7.00391-7.003906-7.00391zm0 1c3.321786 0 6.003903 2.68212 6.003906 6.00391.000002 3.32179-2.682117 6.00391-6.003906 6.00391s-6.003908-2.68212-6.003906-6.00391c.000003-3.32179 2.68212-6.00391 6.003906-6.00391z">
+                                            <Path.RenderTransform>
+                                                <MatrixTransform Matrix="100,0,0,100,-4700,-11500"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Canvas>
+                                </Viewbox>
+                            </ToggleButton>
+                            <ToggleButton x:Name="PreviewTexturedToggle"
+                                          Click="PreviewTextured_Click"
+                                          Classes="preview-tool"
+                                          ToolTip.Tip="Textured Shading">
+                                <Viewbox Width="16" Height="16">
+                                    <Canvas Width="1600" Height="1600">
+                                        <Path Classes="preview-toolbar-icon"
+                                              Data="m118 95c-3.86007 0-7 3.139929-7 7 0 3.86008 3.13992 7 7 7s7-3.13992 7-7c0-3.860071-3.13993-7-7-7zm0 1c3.31963 0 6 2.680368 6 6 0 .3613-.03354.71441-.09441 1.05793l-.23176-.23176a.60006002.60006002 0 0 0-.42969-.18164.60006002.60006002 0 0 0-.41797 1.0293l.5.5a.60006002.60006002 0 0 0 .21154.14279c-.13173.31543-.29051.61638-.47181.90162l-1.64207-1.64207a.60006002.60006002 0 0 0-.42969-.18164.60006002.60006002 0 0 0-.41797 1.0293l1.74305 1.74305c-.21402.22182-.44447.42754-.69039.61429l-2.705-2.705a.60006002.60006002 0 0 0-.42969-.18164.60006002.60006002 0 0 0-.41797 1.0293l2.49863 2.49863c-.30346.14399-.6214.26219-.95048.3542l-.70049-.70049a.60006002.60006002 0 0 0-.42969-.18164.60006002.60006002 0 0 0-.41797 1.0293l.07242.07242c-.04954.0012-.09875.00375-.14859.00375-3.31964 0-6-2.68036-6-6 0-.01348.00093-.02672.00102-.04018 1.11175.94327 3.00531 2.04018 5.99898 2.04018z">
+                                            <Path.RenderTransform>
+                                                <MatrixTransform Matrix="100,0,0,100,-11000,-9400"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Canvas>
+                                </Viewbox>
+                            </ToggleButton>
+                            <Border Classes="preview-tool-separator"/>
+                            <ToggleButton x:Name="PreviewPhysicsToggle"
+                                          IsChecked="{Binding PreviewPhysicsOverlay}"
+                                          Click="PreviewPhysics_Click"
+                                          IsEnabled="{Binding HasPreviewPhysics}"
+                                          Classes="preview-tool"
+                                          ToolTip.Tip="Physics Mesh">
+                                <Viewbox Width="16" Height="16">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Classes="preview-toolbar-line-icon"
+                                              Data="M12 2L20 6V18L12 22L4 18V6L12 2ZM12 2V10M4 6L12 10L20 6M12 10V22"/>
+                                    </Canvas>
+                                </Viewbox>
+                            </ToggleButton>
+                        </StackPanel>
+                    </Border>
+                    <views:PreviewGizmo x:Name="PreviewGizmo"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Top"
+                                              Margin="0,10,10,0"/>
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="8"
+                                IsVisible="{Binding IsPreviewEmpty}">
+                        <PathIcon Classes="accent-icon"
+                                  Width="28"
+                                  Height="28"
+                                  Data="{x:Static shad:Icons.SidePanel}"
+                                  HorizontalAlignment="Center"/>
+                        <TextBlock Text="No model loaded" Classes="Caption Muted" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+    </Grid>
+</UserControl>

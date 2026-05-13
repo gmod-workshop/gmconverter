@@ -2,11 +2,10 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using GMConverter.UI.ViewModels;
-using GMConverter.UI.Views;
 
 namespace GMConverter.UI;
 
-public partial class App : Application
+public class App : Application
 {
     public override void Initialize()
     {

@@ -1,0 +1,108 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:models="using:GMConverter.UI.Models"
+             xmlns:common="using:GMConverter.UI.Controls.Common"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="900"
+             d:DesignHeight="720"
+             x:Class="GMConverter.UI.Views.ExplorerView"
+             x:DataType="vm:ExplorerViewModel">
+    <DockPanel LastChildFill="True">
+        <common:Header DockPanel.Dock="Top"
+                           Title="Explorer"
+                           Description="{Binding ExplorerStatus}">
+            <common:Header.RightContent>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="Outline" Content="Scan" Command="{Binding ScanExplorerCommand}" IsEnabled="{Binding IsIdle}">
+                        <shad:ButtonAssist.Icon>
+                            <PathIcon Data="{x:Static shad:Icons.Search}" Width="16" Margin="0,0,6,0"/>
+                        </shad:ButtonAssist.Icon>
+                    </Button>
+                    <Button Classes="Outline" Content="Refresh" Command="{Binding RefreshExplorerCommand}" IsEnabled="{Binding IsIdle}">
+                        <shad:ButtonAssist.Icon>
+                            <PathIcon Data="{x:Static shad:Icons.ArrowDown}" Width="16" Margin="0,0,6,0"/>
+                        </shad:ButtonAssist.Icon>
+                    </Button>
+                </StackPanel>
+            </common:Header.RightContent>
+        </common:Header>
+
+        <Grid RowDefinitions="Auto,16,*,Auto">
+            <shad:Card HasShadow="True"
+                       Margin="48,24,48,0"
+                       MaxWidth="{StaticResource PageMaxWidth}">
+                <StackPanel Spacing="16">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox x:Name="ExplorerRootDirectoryBox"
+                                 Text="{Binding ExplorerRootDirectory}"
+                                 shad:ControlAssist.Label="Root directory"/>
+                        <Button Grid.Column="1"
+                                Classes="Outline"
+                                Content="Browse"
+                                Click="BrowseExplorerRootDirectory_Click"
+                                IsEnabled="{Binding IsIdle}"
+                                VerticalAlignment="Bottom"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                        <ComboBox ItemsSource="{Binding ExplorerProfiles}"
+                                  SelectedItem="{Binding SelectedExplorerProfile}"
+                                  shad:ControlAssist.Label="Profile"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding ExplorerFilter}"
+                                 Classes="Clearable"
+                                 PlaceholderText="arc republic vehicle"
+                                 shad:ControlAssist.Label="Filter"/>
+                    </Grid>
+                </StackPanel>
+            </shad:Card>
+
+            <shad:Card Grid.Row="2"
+                       HasShadow="True"
+                       Margin="48,0,48,0"
+                       MaxWidth="{StaticResource PageMaxWidth}">
+                <shad:Card.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <shad:CardTitle>Assets</shad:CardTitle>
+                            <shad:CardDescription Content="{Binding SelectedExplorerDetails}"/>
+                        </StackPanel>
+                        <shad:Badge Grid.Column="1" Variant="Secondary" Content="Double-click to preview" VerticalAlignment="Center"/>
+                    </Grid>
+                </shad:Card.Header>
+
+                <TreeView x:Name="ExplorerTree"
+                          Classes="explorer-tree"
+                          ItemsSource="{Binding ExplorerNodes}"
+                          SelectedItem="{Binding SelectedExplorerNode}"
+                          DoubleTapped="ExplorerTree_DoubleTapped">
+                    <TreeView.Styles>
+                        <Style Selector="TreeViewItem">
+                            <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/>
+                        </Style>
+                    </TreeView.Styles>
+                    <TreeView.DataTemplates>
+                        <TreeDataTemplate DataType="models:ExplorerNode" ItemsSource="{Binding Children}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <shad:Badge Variant="Outline" Content="{Binding Badge}" MinWidth="34"/>
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </TreeDataTemplate>
+                    </TreeView.DataTemplates>
+                </TreeView>
+            </shad:Card>
+
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8"
+                        Margin="48,12,48,24">
+                <Button Classes="Outline" Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}"/>
+                <Button Classes="Primary" Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}"/>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

@@ -18,7 +18,7 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
 
         var normalizedMaterialDirectory = NormalizeMaterialDirectory(materialRelativeDirectory);
         var tempDirectory = Path.GetFullPath(Path.GetTempPath());
-        var materialSourceDirectory = Path.Combine(tempDirectory, "GMConverter", "materialsrc", Guid.NewGuid().ToString("N"));
+        var materialSourceDirectory = Path.Join(tempDirectory, "GMConverter", "materialsrc", Guid.NewGuid().ToString("N"));
 
         Directory.CreateDirectory(materialSourceDirectory);
         Directory.CreateDirectory(materialOutputDirectory);
@@ -34,7 +34,7 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
 
                 var baseTexturePath = $"{normalizedMaterialDirectory}/{material.Name}".Replace('\\', '/');
                 var texturePath = GetSourceTexturePath(materialSourceDirectory, material.Name);
-                var vmtPath = Path.Combine(materialOutputDirectory, $"{material.Name}.vmt");
+                var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
 
                 if (UseSourcePhong(material))
                 {
@@ -156,7 +156,19 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
 
     private static string GetSourceTexturePath(string materialSourceDirectory, string textureName)
     {
-        return Path.Combine(materialSourceDirectory, Path.GetFileName($"{textureName}.png"));
+        string fileName = GetFileNameOnly($"{textureName}.png");
+        return Path.Join(materialSourceDirectory, fileName);
+    }
+
+    private static string GetFileNameOnly(string path)
+    {
+        string? fileName = Path.GetFileName(path);
+        if (string.IsNullOrWhiteSpace(fileName) || Path.IsPathRooted(fileName))
+        {
+            throw new GMConverterException($"Invalid material file name: {path}");
+        }
+
+        return fileName;
     }
 
     private static string NormalizeMaterialDirectory(string materialRelativeDirectory)

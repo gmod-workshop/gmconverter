@@ -89,12 +89,13 @@ internal sealed record SourceToolPaths(
     private static string GetToolsDirectory()
     {
         string baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
-        return Path.Combine(baseDirectory, "tools");
+        return Path.Join(baseDirectory, GetPathSegment("tools"));
     }
 
     private static string GetToolDirectory(string toolName)
     {
-        return Path.Combine(GetToolsDirectory(), Path.GetFileName(toolName));
+        string segment = GetPathSegment(toolName);
+        return Path.Join(GetToolsDirectory(), segment);
     }
 
     private static string? FindStudioMdl(string rootDirectory)
@@ -142,9 +143,10 @@ internal sealed record SourceToolPaths(
 
     private static async Task DownloadAndExtractAsync(string archiveUrl, string targetDirectory)
     {
+        targetDirectory = Path.GetFullPath(targetDirectory);
         Directory.CreateDirectory(targetDirectory);
-        string archivePath = Path.Combine(targetDirectory, "download.zip");
-        string extractDirectory = Path.Combine(targetDirectory, "extracting");
+        string archivePath = Path.Join(targetDirectory, GetPathSegment("download.zip"));
+        string extractDirectory = Path.Join(targetDirectory, GetPathSegment("extracting"));
 
         if (Directory.Exists(extractDirectory))
         {
@@ -165,7 +167,8 @@ internal sealed record SourceToolPaths(
 
         foreach (string path in Directory.EnumerateFileSystemEntries(extractDirectory))
         {
-            string destination = Path.Combine(targetDirectory, Path.GetFileName(path));
+            string entryName = GetPathSegment(path);
+            string destination = Path.Join(targetDirectory, entryName);
             if (Directory.Exists(destination))
             {
                 Directory.Delete(destination, recursive: true);
@@ -186,6 +189,17 @@ internal sealed record SourceToolPaths(
         }
 
         Directory.Delete(extractDirectory, recursive: true);
+    }
+
+    private static string GetPathSegment(string path)
+    {
+        string? segment = Path.GetFileName(path);
+        if (string.IsNullOrWhiteSpace(segment) || Path.IsPathRooted(segment))
+        {
+            throw new GMConverterException($"Invalid path segment: {path}");
+        }
+
+        return segment;
     }
 
     private static HttpClient CreateHttpClient()

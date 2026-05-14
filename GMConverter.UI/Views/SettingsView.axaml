@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:common="using:GMConverter.UI.Controls.Common"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             xmlns:controls="clr-namespace:GMConverter.UI.Controls"
+             mc:Ignorable="d"
+             d:DesignWidth="900"
+             d:DesignHeight="720"
+             x:Class="GMConverter.UI.Views.SettingsView"
+             x:DataType="vm:ConvertViewModel">
+  <DockPanel LastChildFill="True">
+    <common:Header DockPanel.Dock="Top"
+                   Title="Settings"
+                   Description="Manage defaults that usually stay stable across conversion runs."/>
+
+    <controls:ScrollProgress>
+      <controls:ScrollProgress.ScrollContent>
+        <StackPanel Margin="48,0,48,24"
+                    HorizontalAlignment="Stretch"
+                    MaxWidth="{StaticResource PageMaxWidth}"
+                    Spacing="16">
+          <shad:Card HasShadow="True">
+            <shad:Card.Header>
+              <StackPanel Spacing="4">
+                <shad:CardTitle>Config</shad:CardTitle>
+                <shad:CardDescription>Load a saved conversion preset.</shad:CardDescription>
+              </StackPanel>
+            </shad:Card.Header>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox x:Name="ConfigPathBox"
+                       Text="{Binding ConfigPath}"
+                       shad:ControlAssist.Label="Config file"/>
+              <Button Grid.Column="1"
+                      Classes="Outline"
+                      Content="Browse"
+                      Click="BrowseConfigPath_Click"
+                      IsEnabled="{Binding IsIdle}"
+                      VerticalAlignment="Bottom"/>
+            </Grid>
+            <shad:Card.Footer>
+              <Button Classes="Outline"
+                      Content="Load Config"
+                      Command="{Binding LoadConfigCommand}"
+                      HorizontalAlignment="Right"/>
+            </shad:Card.Footer>
+          </shad:Card>
+
+          <shad:Card HasShadow="True">
+            <shad:Card.Header>
+              <StackPanel Spacing="4">
+                <shad:CardTitle>Source Engine</shad:CardTitle>
+                <shad:CardDescription>Defaults for MDL compile output and material generation.</shad:CardDescription>
+              </StackPanel>
+            </shad:Card.Header>
+            <StackPanel Spacing="16">
+              <TextBox Text="{Binding ModelPath}"
+                       shad:ControlAssist.Label="Model path"/>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox x:Name="GameDirectoryBox"
+                         Text="{Binding GameDirectory}"
+                         shad:ControlAssist.Label="Game directory"/>
+                <Button Grid.Column="1"
+                        Classes="Outline"
+                        Content="Browse"
+                        Click="BrowseGameDirectory_Click"
+                        IsEnabled="{Binding IsIdle}"
+                        VerticalAlignment="Bottom"/>
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox x:Name="EngineDirectoryBox"
+                         Text="{Binding EngineDirectory}"
+                         shad:ControlAssist.Label="Engine directory"/>
+                <Button Grid.Column="1"
+                        Classes="Outline"
+                        Content="Browse"
+                        Click="BrowseEngineDirectory_Click"
+                        IsEnabled="{Binding IsIdle}"
+                        VerticalAlignment="Bottom"/>
+              </Grid>
+              <CheckBox Content="Build VTF/VMT materials"
+                        IsChecked="{Binding BuildMaterials}"/>
+            </StackPanel>
+          </shad:Card>
+        </StackPanel>
+      </controls:ScrollProgress.ScrollContent>
+    </controls:ScrollProgress>
+  </DockPanel>
+</UserControl>

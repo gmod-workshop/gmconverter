@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Aligned Avalonia workspace card widths with the shared page headers.
+- Moved config loading and Source Engine defaults from the Convert page into a dedicated Settings workspace.
+- Combined animation and material lookup fields into a Supporting Files card on the Convert page.
+- Updated the Avalonia UI window and executable icon to use the GMConverter icon asset.
 
 ## [1.4.0] - 2026-05-14
 

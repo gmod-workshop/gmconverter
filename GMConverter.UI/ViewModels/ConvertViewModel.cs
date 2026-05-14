@@ -332,6 +332,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
         SelectedInputFormat = InputFormats.First(format => format.Value == fileEntry.InputFormat);
         InputPath = inputPath;
         MaterialDirectory = materialDirectory;
+        AnimationPath = resolvedEntry?.AnimationPath ?? string.Empty;
         BaseName = Path.GetFileNameWithoutExtension(inputPath);
         ModelPath = $"gmconverter/{SanitizePathToken(BaseName)}.mdl";
     }

@@ -8,4 +8,7 @@ internal sealed record ExplorerFileEntry(
     string SearchRoot,
     string? ArchivePath = null,
     string? ArchiveEntryPath = null,
-    string? ExplorerId = null);
+    string? ExplorerId = null,
+    string? Details = null,
+    bool IsConvertible = true,
+    string? AssetClass = null);

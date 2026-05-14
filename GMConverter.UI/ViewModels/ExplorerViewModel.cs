@@ -75,6 +75,8 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     public bool HasSelectedExplorerEntry => SelectedExplorerNode?.Entry is not null;
 
+    public bool HasConvertibleExplorerEntry => SelectedExplorerNode?.Entry?.IsConvertible is true;
+
     public bool HasExplorerFilter => !string.IsNullOrWhiteSpace(ExplorerFilter);
 
     public bool IsIdle => !_getIsBusy();
@@ -82,6 +84,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     partial void OnSelectedExplorerNodeChanged(ExplorerNode? value)
     {
         OnPropertyChanged(nameof(HasSelectedExplorerEntry));
+        OnPropertyChanged(nameof(HasConvertibleExplorerEntry));
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
 
@@ -253,7 +256,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private bool CanUseExplorerSelection()
     {
-        return HasSelectedExplorerEntry && !_getIsBusy();
+        return HasConvertibleExplorerEntry && !_getIsBusy();
     }
 
     private bool CanRunCommand()
@@ -272,12 +275,23 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
         var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
         PopulateExplorerSelection(entry, resolvedEntry);
-        ExplorerStatus = $"Prepared {entry.DisplayPath}.";
+        if (!string.IsNullOrWhiteSpace(resolvedEntry.AnimationPath))
+        {
+            _logSink.Append($"Resolved animation sidecar: {resolvedEntry.AnimationPath}");
+        }
+
+        ExplorerStatus = string.IsNullOrWhiteSpace(resolvedEntry.AnimationPath)
+            ? $"Prepared {entry.DisplayPath}."
+            : $"Prepared {entry.DisplayPath} with animation.";
     }
 
     private void PopulateExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)
     {
-        _convert.ApplyExplorerSelection(fileEntry, resolvedEntry);
+        if (fileEntry.IsConvertible)
+        {
+            _convert.ApplyExplorerSelection(fileEntry, resolvedEntry);
+        }
+
         SelectedExplorerDetails = FormatExplorerDetails(fileEntry);
     }
 
@@ -382,7 +396,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         var location = fileEntry.ArchivePath is null
             ? fileEntry.FilePath
             : $"{fileEntry.ArchivePath} [{fileEntry.ArchiveEntryPath}]";
-        return $"{fileEntry.InputFormat.ToUpperInvariant()} | {location}";
+        var conversionStatus = fileEntry.IsConvertible ? string.Empty : " | Browse only";
+        var details = string.IsNullOrWhiteSpace(fileEntry.Details) ? string.Empty : $" | {fileEntry.Details}";
+        return $"{fileEntry.InputFormat.ToUpperInvariant()}{conversionStatus} | {location}{details}";
     }
 
     private static ExplorerNodeKind GetExplorerNodeKind(string segment, bool isLastSegment)
@@ -399,6 +415,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private static bool IsArchiveSegment(string segment)
     {
-        return string.Equals(Path.GetExtension(segment), ".pak", StringComparison.OrdinalIgnoreCase);
+        return Path.GetExtension(segment).ToLowerInvariant() is ".pak" or ".ukx" or ".usx" or ".utx" or ".uax" or ".u" or ".umx" or ".unr" or ".ctm" or ".upx";
     }
+
 }

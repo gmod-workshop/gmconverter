@@ -17,7 +17,7 @@ public sealed partial class ExplorerNode(string name, ExplorerNodeKind kind = Ex
 
     public string Badge => Entry?.InputFormat.ToUpperInvariant() ?? Kind switch
     {
-        ExplorerNodeKind.Archive => "PAK",
+        ExplorerNodeKind.Archive => GetArchiveBadge(Name),
         _ => "DIR"
     };
 
@@ -54,6 +54,14 @@ public sealed partial class ExplorerNode(string name, ExplorerNodeKind kind = Ex
     public override string ToString()
     {
         return Name;
+    }
+
+    private static string GetArchiveBadge(string name)
+    {
+        var extension = Path.GetExtension(name);
+        return string.IsNullOrWhiteSpace(extension)
+            ? "PKG"
+            : extension.TrimStart('.').ToUpperInvariant();
     }
 }
 

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a UE2 Explorer profile that finds `SkeletalMesh` and `StaticMesh` exports in Unreal packages and resolves them natively into PSK/PSKX inputs with UE2 material sidecars, PSA animation sidecars, DXT texture extraction, wrapped material support for modifiers and combiners, and custom material fallback traversal.
+
 ### Changed
 
 - Reworked the Avalonia UI around ShadUI with a new shell layout, modular Convert, Explorer, and Preview views, and a card-based visual structure.

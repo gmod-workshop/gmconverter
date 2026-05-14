@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a Console workspace in the Avalonia UI for viewing, copying, and clearing session log entries.
+
+### Changed
+
+- Aligned Avalonia workspace card widths with the shared page headers.
+
 ## [1.4.0] - 2026-05-14
 
 ### Added

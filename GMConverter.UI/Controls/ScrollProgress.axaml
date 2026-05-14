@@ -25,7 +25,8 @@
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Hidden"
                       ScrollChanged="ContentScrollViewer_ScrollChanged">
-            <ContentPresenter Content="{Binding ScrollContent, ElementName=Root}"/>
+            <ContentPresenter Content="{Binding ScrollContent, ElementName=Root}"
+                              HorizontalContentAlignment="Stretch"/>
         </ScrollViewer>
     </DockPanel>
 </UserControl>

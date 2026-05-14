@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:models="using:GMConverter.UI.Models"
+             xmlns:common="using:GMConverter.UI.Controls.Common"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="900"
+             d:DesignHeight="720"
+             x:Class="GMConverter.UI.Views.ConsoleView"
+             x:DataType="vm:ConsoleViewModel">
+  <DockPanel LastChildFill="True">
+    <common:Header DockPanel.Dock="Top"
+                   Title="Console"
+                   Description="{Binding ConsoleSummary}">
+      <common:Header.RightContent>
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
+          <Button Classes="Outline"
+                  Content="Copy"
+                  Click="CopyLogs_Click"
+                  IsEnabled="{Binding HasEntries}">
+            <shad:ButtonAssist.Icon>
+              <PathIcon Data="{x:Static shad:Icons.ClipBoard}" Width="16" Margin="0,0,6,0"/>
+            </shad:ButtonAssist.Icon>
+          </Button>
+          <Button Classes="Outline"
+                  Content="Clear"
+                  Command="{Binding ClearLogsCommand}"/>
+        </StackPanel>
+      </common:Header.RightContent>
+    </common:Header>
+
+    <Grid Margin="48,0,48,24"
+          HorizontalAlignment="Stretch"
+          MaxWidth="{StaticResource PageMaxWidth}">
+      <shad:Card HasShadow="True"
+                 HorizontalAlignment="Stretch">
+        <Grid MinHeight="520">
+          <ListBox Classes="log-list"
+                   ItemsSource="{Binding Entries}"
+                   IsVisible="{Binding HasEntries}">
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="models:UiLogEntry">
+                <Grid ColumnDefinitions="72,86,*"
+                      ColumnSpacing="10"
+                      Margin="0,2">
+                  <TextBlock Text="{Binding TimestampText}"
+                             Foreground="{DynamicResource MutedColor}"
+                             FontFamily="{StaticResource JetbrainsFont}"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding Level}"
+                             Foreground="{DynamicResource MutedColor}"
+                             FontFamily="{StaticResource JetbrainsFont}"/>
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding Message}"
+                             FontFamily="{StaticResource JetbrainsFont}"
+                             TextWrapping="Wrap"/>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <TextBlock Classes="p"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Text="No log entries yet."
+                     IsVisible="{Binding HasNoEntries}"/>
+        </Grid>
+      </shad:Card>
+    </Grid>
+  </DockPanel>
+</UserControl>

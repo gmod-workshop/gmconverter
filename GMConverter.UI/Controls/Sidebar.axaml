@@ -56,6 +56,14 @@
                         <PathIcon Data="{x:Static shadui:Icons.Search}" Foreground="{DynamicResource ForegroundColor}"/>
                     </shadui:SidebarItem.Icon>
                 </shadui:SidebarItem>
+                <shadui:SidebarItem Content="Console"
+                                     Command="{Binding ShowConsoleCommand}"
+                                     IsChecked="{Binding IsConsoleWorkspace}"
+                                     Route="console">
+                    <shadui:SidebarItem.Icon>
+                        <PathIcon Data="{x:Static shadui:Icons.ClipBoard}" Foreground="{DynamicResource ForegroundColor}"/>
+                    </shadui:SidebarItem.Icon>
+                </shadui:SidebarItem>
 
                 <shadui:SidebarItemLabel Text="Current" AsSeparator="True"/>
                 <shadui:SidebarItem Content="{Binding Convert.SelectedInputFormat.Label}" Route="input">
@@ -160,6 +168,16 @@
                                   Width="40"
                                   ToolTip.Tip="Explorer">
                         <PathIcon Data="{x:Static shadui:Icons.Search}" Width="16"/>
+                    </ToggleButton>
+                    <ToggleButton Command="{Binding ShowConsoleCommand}"
+                                  IsChecked="{Binding IsConsoleWorkspace}"
+                                  Height="40"
+                                  HorizontalContentAlignment="Center"
+                                  Padding="0"
+                                  VerticalContentAlignment="Center"
+                                  Width="40"
+                                  ToolTip.Tip="Console">
+                        <PathIcon Data="{x:Static shadui:Icons.ClipBoard}" Width="16"/>
                     </ToggleButton>
 
                     <Separator Margin="0,8"/>

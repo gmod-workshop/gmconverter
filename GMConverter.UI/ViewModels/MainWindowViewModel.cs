@@ -76,6 +76,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _suppressSettingsSave = true;
         _conversionService = new ConversionService(_logSink);
         Preview = new PreviewViewModel(_logSink);
+        Console = new ConsoleViewModel(_logSink);
         Convert = new ConvertViewModel(
             _logSink,
             _conversionService,
@@ -125,11 +126,20 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public PreviewViewModel Preview { get; }
 
+    public ConsoleViewModel Console { get; }
+
     public bool IsConvertWorkspace => SelectedWorkspaceIndex == 0;
 
     public bool IsExplorerWorkspace => SelectedWorkspaceIndex == 1;
 
-    public string CurrentRoute => IsExplorerWorkspace ? "explorer" : "convert";
+    public bool IsConsoleWorkspace => SelectedWorkspaceIndex == 2;
+
+    public string CurrentRoute => SelectedWorkspaceIndex switch
+    {
+        1 => "explorer",
+        2 => "console",
+        _ => "convert"
+    };
 
     public bool IsSidebarCollapsed => !IsSidebarExpanded;
 
@@ -145,6 +155,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(IsConvertWorkspace));
         OnPropertyChanged(nameof(IsExplorerWorkspace));
+        OnPropertyChanged(nameof(IsConsoleWorkspace));
         OnPropertyChanged(nameof(CurrentRoute));
     }
 
@@ -193,6 +204,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void ShowExplorer()
     {
         SelectedWorkspaceIndex = 1;
+    }
+
+    [RelayCommand]
+    private void ShowConsole()
+    {
+        SelectedWorkspaceIndex = 2;
     }
 
     private void TryLoadSettings()
@@ -308,6 +325,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         _settingsSaveCts?.Dispose();
         _settingsSaveCts = null;
         Explorer.Dispose();
+        Console.Dispose();
         GC.SuppressFinalize(this);
     }
 

@@ -2,6 +2,13 @@
 
 Tools for converting model assets into Source Engine compile inputs for Garry's Mod.
 
+**Features**
+
+* Browse game archives and assets in the GUI Explorer.
+* Preview models with animation and basic Source shading.
+* Convert models to Source MDL with animation, materials, and optional physics.
+* Convert models to glTF with animation for import into Blender.
+
 ## Supported Formats
 
 | Format                | Read | Write | Mesh       | Materials / Textures | Bones / Weights | Animations |
@@ -25,7 +32,6 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
   --animation-path "MeshAnimation\BactaDispenserRASSet.psa" `
   --material-dir "E:\Tools\umodel\UmodelExport" `
   --output-path "out\bacta-source" `
-  --game-dir "E:\Games\Steam\steamapps\common\GarrysMod\garrysmod" `
   --model-path "gmconverter/bactadispenserras.mdl"
 ```
 
@@ -40,8 +46,8 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
 | `--name <base-name>` | Override generated file names. | `--name bacta_dispenser` | Input file name |
 | `--model-path <path/name.mdl>` | MDL path under the game `models` directory. | `--model-path "gmconverter/model.mdl"` | `gmconverter/<name>.mdl` |
-| `--game-dir <path>` | Source game directory containing `gameinfo.txt`. | `--game-dir "E:\Games\Steam\steamapps\common\GarrysMod\garrysmod"` | Required for `source` / `mdl` |
-| `--engine-dir <path>` | Optional Source engine root override. | `--engine-dir "E:\Games\Steam\steamapps\common\GarrysMod"` | Inferred from `gameinfo.txt` |
+| `--studiomdl-path <path>` | Optional `cestudiomdl.exe` override. | `--studiomdl-path "E:\Tools\cestudiomdl.exe"` | Auto-downloaded to `tools` |
+| `--vtfcmd-path <path>` | Optional `VTFCmd.exe` override. | `--vtfcmd-path "E:\Tools\VTFCmd.exe"` | Auto-downloaded to `tools` when materials are built |
 | `--material-dir <path>` | Recursive search directory for sidecar materials and textures. | `--material-dir "E:\Tools\umodel\UmodelExport"` | None |
 | `--animation-path <path.psa>` | PSA animation file to import alongside PSK/PSKX. | `--animation-path "MeshAnimation\model.psa"` | None |
 | `--scale <factor>` | Scale exported geometry. | `--scale 0.5` | `1` |
@@ -59,7 +65,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 ## GUI
 
-`GMConverter.UI` provides an Avalonia frontend for the same conversion library, including model preview and archive browsing through the Explorer tab. Build the solution and run:
+`GMConverter.UI` provides a frontend for the same conversion library, with some extra features.
 
 ```powershell
 ./GMConverter.UI
@@ -74,15 +80,15 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 The GUI auto-loads the first `gmconverter.ini` it finds in the current directory.
 
-Release builds publish the Windows UI as `GMConverter.UI-win-x64-<tag>.zip`. The CLI and library are published separately as `GMConverter.CLI-win-x64-<tag>.zip` and `GMConverter.Library-<tag>.zip`.
-
 <details>
 <summary>Example Config</summary>
 
 ```ini
 # gmconverter.ini
 output-format = mdl
-game-dir = E:\Games\Steam\steamapps\common\GarrysMod\garrysmod
+# Optional compiler overrides. Leave unset to use portable tools downloaded to ./tools.
+# studiomdl-path = E:\Tools\cestudiomdl.exe
+# vtfcmd-path = E:\Tools\VTFCmd.exe
 material-dir = E:\Tools\umodel\UmodelExport
 model-path = gmconverter/bactadispenserras.mdl
 axis-mode = auto
@@ -142,17 +148,16 @@ PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA 
 
 Source MDL files are supported as input and output. MDL read support decompiles reference SMD meshes through MdlCrowbar and currently imports static reference mesh geometry and material references, not full compiled animation data.
 
-MDL write support generates SMD, QC, material files, optional animation SMDs, and optionally compiles the final MDL with `studiomdl`.
+MDL write support generates SMD, QC, material files, optional animation SMDs, and compiles the final MDL with `cestudiomdl`. Material builds use `VTFCmd` to write VTF textures. If `--studiomdl-path` or `--vtfcmd-path` is omitted, GMConverter downloads portable defaults into a `tools` folder next to the executable.
 
 ```powershell
 ./GMConverter.CLI --input-format opt --output-format mdl `
   --input-path "FlightModels\buoyc.opt" `
   --output-path "out\buoyc-source" `
-  --game-dir "E:\Games\Steam\steamapps\common\GarrysMod\garrysmod" `
   --model-path "gmconverter/buoyc.mdl"
 ```
 
-`--game-dir` is required and must point to a Source game directory containing `gameinfo.txt`. The tool reads `gameinfo.txt` to identify the game and infer the engine root from `gamebin`.
+Copy the generated `models` and `materials` folders from the output directory into your Garry's Mod add-on or game content folder.
 
 </details>
 
@@ -187,7 +192,8 @@ glTF/GLB export writes portable mesh assets with materials, normal maps, skeleto
 
 ## Physics
 
-### Bounds
+<details>
+<summary>Bounds</summary>
 
 Generate a simple convex collision box:
 
@@ -195,12 +201,14 @@ Generate a simple convex collision box:
 ./GMConverter.CLI --input-format opt --output-format mdl `
   --input-path "FlightModels\buoyc.opt" `
   --output-path "out\buoyc-source" `
-  --game-dir "E:\Games\Steam\steamapps\common\GarrysMod\garrysmod" `
   --physics `
   --physics-mass 250
 ```
 
-### CoACD
+</details>
+
+<details>
+<summary>CoACD</summary>
 
 Generate a [CoACD](https://colin97.github.io/CoACD/) based collision mesh:
 
@@ -208,10 +216,11 @@ Generate a [CoACD](https://colin97.github.io/CoACD/) based collision mesh:
 ./GMConverter.CLI --input-format opt --output-format mdl `
   --input-path "FlightModels\buoyc.opt" `
   --output-path "out\buoyc-source" `
-  --game-dir "E:\Games\Steam\steamapps\common\GarrysMod\garrysmod" `
   --physics-mode coacd `
   --max-convex-pieces 16
 ```
+
+</details>
 
 ## Credits
 

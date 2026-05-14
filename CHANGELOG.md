@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-05-14
+
 ### Added
 
 - Added a Console workspace in the Avalonia UI for viewing, copying, and clearing session log entries.
@@ -15,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Combined animation and material lookup fields into a Supporting Files card on the Convert page.
 - Updated the Avalonia UI window and executable icon to use the GMConverter icon asset.
 - Replaced Source game and engine directory settings with StudioMDL and VTFCmd path overrides that auto-download portable tool defaults.
+- Updated the README examples and option reference for the portable Source tool workflow.
 
 ## [1.4.0] - 2026-05-14
 
@@ -131,7 +134,9 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.1.0...v1.2.0

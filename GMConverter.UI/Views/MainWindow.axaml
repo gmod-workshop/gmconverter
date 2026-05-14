@@ -76,6 +76,9 @@
                 <Grid IsVisible="{Binding IsExplorerWorkspace}">
                     <views:ExplorerView DataContext="{Binding Explorer}"/>
                 </Grid>
+                <Grid IsVisible="{Binding IsConsoleWorkspace}">
+                    <views:ConsoleView DataContext="{Binding Console}"/>
+                </Grid>
             </Panel>
 
             <primitives:Thumb Grid.Column="2"

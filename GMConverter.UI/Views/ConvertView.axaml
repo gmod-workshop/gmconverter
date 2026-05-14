@@ -28,7 +28,10 @@
 
         <controls:ScrollProgress>
             <controls:ScrollProgress.ScrollContent>
-            <StackPanel Margin="48,0,48,24" MaxWidth="{StaticResource PageMaxWidth}" Spacing="16">
+            <StackPanel Margin="48,0,48,24"
+                        HorizontalAlignment="Stretch"
+                        MaxWidth="{StaticResource PageMaxWidth}"
+                        Spacing="16">
                 <UniformGrid Columns="2" ColumnSpacing="16">
                     <shad:Card HasShadow="True">
                         <shad:Card.Header>

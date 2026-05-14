@@ -41,12 +41,12 @@ internal sealed class UiLoggerProvider(UiLogSink logSink) : ILoggerProvider
             var message = formatter(state, exception);
             if (!string.IsNullOrWhiteSpace(message))
             {
-                logSink.Append($"{logLevel}: {categoryName}: {message}");
+                logSink.Append(logLevel, $"{categoryName}: {message}");
             }
 
             if (exception is not null)
             {
-                logSink.Append(exception.Message);
+                logSink.Append(logLevel, exception.Message);
             }
         }
     }

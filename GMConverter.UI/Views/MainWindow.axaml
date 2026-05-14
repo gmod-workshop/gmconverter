@@ -1,7 +1,7 @@
 <shadui:Window
   Width="1024"
   Height="768"
-  Icon="/Assets/avalonia-logo.ico"
+  Icon="/Assets/icon.ico"
   SaveWindowState="True"
   WindowStartupLocation="CenterScreen"
   Title="GMConverter"
@@ -78,6 +78,9 @@
                 </Grid>
                 <Grid IsVisible="{Binding IsConsoleWorkspace}">
                     <views:ConsoleView DataContext="{Binding Console}"/>
+                </Grid>
+                <Grid IsVisible="{Binding IsSettingsWorkspace}">
+                    <views:SettingsView DataContext="{Binding Convert}"/>
                 </Grid>
             </Panel>
 

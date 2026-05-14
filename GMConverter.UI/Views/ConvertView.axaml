@@ -13,18 +13,8 @@
              x:DataType="vm:ConvertViewModel">
     <DockPanel LastChildFill="True">
         <common:Header DockPanel.Dock="Top"
-                           Title="Convert"
-                           Description="Configure conversion inputs and export settings.">
-            <common:Header.RightContent>
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            Spacing="8"
-                            VerticalAlignment="Center">
-                    <shad:Badge Variant="Outline" Content="{Binding SelectedAxisMode.Label}"/>
-                    <shad:Badge Variant="Outline" Content="{Binding SelectedPhysicsMode.Label}"/>
-                </StackPanel>
-            </common:Header.RightContent>
-        </common:Header>
+                       Title="Convert"
+                       Description="Configure conversion inputs and export settings."/>
 
         <controls:ScrollProgress>
             <controls:ScrollProgress.ScrollContent>
@@ -47,24 +37,7 @@
                             <ComboBox ItemsSource="{Binding OutputFormats}"
                                       SelectedItem="{Binding SelectedOutputFormat}"
                                       shad:ControlAssist.Label="Output format"/>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <TextBox x:Name="ConfigPathBox"
-                                         Text="{Binding ConfigPath}"
-                                         shad:ControlAssist.Label="Config file"/>
-                                <Button Grid.Column="1"
-                                        Classes="Outline"
-                                        Content="Browse"
-                                        Click="BrowseConfigPath_Click"
-                                        IsEnabled="{Binding IsIdle}"
-                                        VerticalAlignment="Bottom"/>
-                            </Grid>
                         </StackPanel>
-                        <shad:Card.Footer>
-                            <Button Classes="Outline"
-                                    Content="Load Config"
-                                    Command="{Binding LoadConfigCommand}"
-                                    HorizontalAlignment="Right"/>
-                        </shad:Card.Footer>
                     </shad:Card>
 
                     <shad:Card HasShadow="True">
@@ -96,7 +69,7 @@
                         </StackPanel>
                     </shad:Card.Header>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="16">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Grid.ColumnSpan="2">
                             <TextBox x:Name="InputPathBox"
                                      Text="{Binding InputPath}"
                                      shad:ControlAssist.Label="Input path"/>
@@ -105,18 +78,6 @@
                                     Content="Browse"
                                     Click="BrowseInputPath_Click"
                                     IsEnabled="{Binding IsIdle}"
-                                    VerticalAlignment="Bottom"/>
-                        </Grid>
-                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBox x:Name="AnimationPathBox"
-                                     Text="{Binding AnimationPath}"
-                                     IsEnabled="{Binding CanBrowseAnimation}"
-                                     shad:ControlAssist.Label="Animation path"/>
-                            <Button Grid.Column="1"
-                                    Classes="Outline"
-                                    Content="Browse"
-                                    Click="BrowseAnimationPath_Click"
-                                    IsEnabled="{Binding CanBrowseAnimation}"
                                     VerticalAlignment="Bottom"/>
                         </Grid>
                         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -138,42 +99,6 @@
                 </shad:Card>
 
                 <UniformGrid Columns="2" ColumnSpacing="16">
-                    <shad:Card HasShadow="True" IsEnabled="{Binding IsSourceOutput}">
-                        <shad:Card.Header>
-                            <StackPanel Spacing="4">
-                                <shad:CardTitle>Source Engine</shad:CardTitle>
-                                <shad:CardDescription>MDL compile output and material generation.</shad:CardDescription>
-                            </StackPanel>
-                        </shad:Card.Header>
-                        <StackPanel Spacing="16">
-                            <TextBox Text="{Binding ModelPath}"
-                                     shad:ControlAssist.Label="Model path"/>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <TextBox x:Name="GameDirectoryBox"
-                                         Text="{Binding GameDirectory}"
-                                         shad:ControlAssist.Label="Game directory"/>
-                                <Button Grid.Column="1"
-                                        Classes="Outline"
-                                        Content="Browse"
-                                        Click="BrowseGameDirectory_Click"
-                                        IsEnabled="{Binding IsIdle}"
-                                        VerticalAlignment="Bottom"/>
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <TextBox x:Name="EngineDirectoryBox"
-                                         Text="{Binding EngineDirectory}"
-                                         shad:ControlAssist.Label="Engine directory"/>
-                                <Button Grid.Column="1"
-                                        Classes="Outline"
-                                        Content="Browse"
-                                        Click="BrowseEngineDirectory_Click"
-                                        IsEnabled="{Binding IsIdle}"
-                                        VerticalAlignment="Bottom"/>
-                            </Grid>
-                            <CheckBox Content="Build VTF/VMT materials" IsChecked="{Binding BuildMaterials}"/>
-                        </StackPanel>
-                    </shad:Card>
-
                     <shad:Card HasShadow="True" IsEnabled="{Binding IsSourceOutput}">
                         <shad:Card.Header>
                             <StackPanel Spacing="4">
@@ -219,37 +144,41 @@
                             <CheckBox Content="Generate mesh" IsChecked="{Binding GeneratePhysics}"/>
                         </StackPanel>
                     </shad:Card>
-                </UniformGrid>
 
-                <shad:Card HasShadow="True">
-                    <shad:Card.Header>
-                        <Grid ColumnDefinitions="*,Auto">
+                    <shad:Card HasShadow="True">
+                        <shad:Card.Header>
                             <StackPanel Spacing="4">
-                                <shad:CardTitle>Material Search</shad:CardTitle>
-                                <shad:CardDescription>Optional directory for texture and material lookup.</shad:CardDescription>
+                                <shad:CardTitle>Supporting Files</shad:CardTitle>
+                                <shad:CardDescription>Optional animation and material lookup paths.</shad:CardDescription>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Button Classes="Outline"
-                                        Content="Load Preview"
-                                        Command="{Binding LoadPreviewCommand}"/>
-                                <Button Classes="Primary"
-                                        Content="Run Conversion"
-                                        Command="{Binding RunConversionCommand}"/>
-                            </StackPanel>
-                        </Grid>
-                    </shad:Card.Header>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <TextBox x:Name="MaterialDirectoryBox"
-                                 Text="{Binding MaterialDirectory}"
-                                 shad:ControlAssist.Label="Material directory"/>
-                        <Button Grid.Column="1"
-                                Classes="Outline"
-                                Content="Browse"
-                                Click="BrowseMaterialDirectory_Click"
-                                IsEnabled="{Binding IsIdle}"
-                                VerticalAlignment="Bottom"/>
-                    </Grid>
-                </shad:Card>
+                        </shad:Card.Header>
+                        <StackPanel Spacing="16">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBox x:Name="AnimationPathBox"
+                                         Text="{Binding AnimationPath}"
+                                         IsEnabled="{Binding CanBrowseAnimation}"
+                                         shad:ControlAssist.Label="Animation path"/>
+                                <Button Grid.Column="1"
+                                        Classes="Outline"
+                                        Content="Browse"
+                                        Click="BrowseAnimationPath_Click"
+                                        IsEnabled="{Binding CanBrowseAnimation}"
+                                        VerticalAlignment="Bottom"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBox x:Name="MaterialDirectoryBox"
+                                         Text="{Binding MaterialDirectory}"
+                                         shad:ControlAssist.Label="Material directory"/>
+                                <Button Grid.Column="1"
+                                        Classes="Outline"
+                                        Content="Browse"
+                                        Click="BrowseMaterialDirectory_Click"
+                                        IsEnabled="{Binding IsIdle}"
+                                        VerticalAlignment="Bottom"/>
+                            </Grid>
+                        </StackPanel>
+                    </shad:Card>
+                </UniformGrid>
             </StackPanel>
             </controls:ScrollProgress.ScrollContent>
         </controls:ScrollProgress>

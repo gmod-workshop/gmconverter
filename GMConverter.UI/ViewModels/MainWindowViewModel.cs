@@ -134,10 +134,13 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     public bool IsConsoleWorkspace => SelectedWorkspaceIndex == 2;
 
+    public bool IsSettingsWorkspace => SelectedWorkspaceIndex == 3;
+
     public string CurrentRoute => SelectedWorkspaceIndex switch
     {
         1 => "explorer",
         2 => "console",
+        3 => "settings",
         _ => "convert"
     };
 
@@ -156,6 +159,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsConvertWorkspace));
         OnPropertyChanged(nameof(IsExplorerWorkspace));
         OnPropertyChanged(nameof(IsConsoleWorkspace));
+        OnPropertyChanged(nameof(IsSettingsWorkspace));
         OnPropertyChanged(nameof(CurrentRoute));
     }
 
@@ -210,6 +214,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private void ShowConsole()
     {
         SelectedWorkspaceIndex = 2;
+    }
+
+    [RelayCommand]
+    private void ShowSettings()
+    {
+        SelectedWorkspaceIndex = 3;
     }
 
     private void TryLoadSettings()

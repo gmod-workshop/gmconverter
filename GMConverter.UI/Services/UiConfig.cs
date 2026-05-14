@@ -10,8 +10,8 @@ internal sealed record UiConfig(
     string? OutputPath,
     string? BaseName,
     string? ModelPath,
-    string? GameDirectory,
-    string? EngineDirectory,
+    string? StudioMdlPath,
+    string? VtfCmdPath,
     string? MaterialDirectory,
     string? AnimationPath,
     float? Scale,
@@ -138,8 +138,8 @@ internal sealed record UiConfig(
         public string? OutputPath { get; private set; }
         public string? BaseName { get; private set; }
         public string? ModelPath { get; private set; }
-        public string? GameDirectory { get; private set; }
-        public string? EngineDirectory { get; private set; }
+        public string? StudioMdlPath { get; private set; }
+        public string? VtfCmdPath { get; private set; }
         public string? MaterialDirectory { get; private set; }
         public string? AnimationPath { get; private set; }
         public float? Scale { get; private set; }
@@ -176,13 +176,18 @@ internal sealed record UiConfig(
                 case "modelpath":
                     ModelPath = EmptyToNull(value);
                     break;
+                case "studiomdl":
+                case "studiomdlpath":
+                    StudioMdlPath = EmptyToNull(value);
+                    break;
+                case "vtfcmd":
+                case "vtfcmdpath":
+                    VtfCmdPath = EmptyToNull(value);
+                    break;
                 case "gamedir":
                 case "gamedirectory":
-                    GameDirectory = EmptyToNull(value);
-                    break;
                 case "enginedir":
                 case "enginedirectory":
-                    EngineDirectory = EmptyToNull(value);
                     break;
                 case "materialdir":
                 case "materialdirectory":
@@ -237,8 +242,8 @@ internal sealed record UiConfig(
                 OutputPath,
                 BaseName,
                 ModelPath,
-                GameDirectory,
-                EngineDirectory,
+                StudioMdlPath,
+                VtfCmdPath,
                 MaterialDirectory,
                 AnimationPath,
                 Scale,

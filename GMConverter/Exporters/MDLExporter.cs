@@ -25,7 +25,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         string baseName,
         MDLExportOptions options)
     {
-        var sourceTools = SourceToolPaths.Resolve(options.EngineDirectory, options.GameDirectory);
+        var sourceTools = SourceToolPaths.Resolve(options.StudioMdlPath, options.VtfCmdPath, options.BuildMaterials);
         var physicsOptions = options.Physics;
         var modelPath = options.ModelPath;
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);
@@ -66,15 +66,12 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         {
             if (sourceTools.CanCompileMaterials)
             {
-                var materialCompiler = new SourceMaterialCompiler(sourceTools.VtexPath!, sourceTools.GameDirectory);
-                materialCompiler.Compile(model.Materials, result.MaterialRelativeDirectory);
+                var materialCompiler = new SourceMaterialCompiler(sourceTools.VtfCmdPath!);
+                materialCompiler.Compile(model.Materials, result.MaterialDirectory, result.MaterialRelativeDirectory);
             }
         }
 
-        if (sourceTools.CanCompileModel)
-        {
-            RunStudioMdl(sourceTools.StudioMdlPath!, result.QcPath);
-        }
+        RunStudioMdl(sourceTools.StudioMdlPath, result.QcPath);
     }
 
     private static void RunStudioMdl(string studioMdlPath, string qcPath)
@@ -738,7 +735,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
 internal sealed record MDLExportOptions(
     string ModelPath,
-    string? EngineDirectory,
-    string? GameDirectory,
+    string? StudioMdlPath,
+    string? VtfCmdPath,
     bool BuildMaterials,
     PhysicsOptions? Physics);

@@ -4,87 +4,94 @@ using GMConverter.Geometry;
 
 namespace GMConverter.Source;
 
-internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirectory)
+internal sealed class SourceMaterialCompiler(string vtfCmdPath)
 {
-    private readonly string _vtexPath = Path.GetFullPath(vtexPath);
-    private readonly string _gameDirectory = Path.GetFullPath(gameDirectory);
+    private readonly string _vtfCmdPath = Path.GetFullPath(vtfCmdPath);
     private static readonly UTF8Encoding _utf8NoBom = new(false);
 
-    public void Compile(IEnumerable<Material> materials, string materialRelativeDirectory)
+    public void Compile(IEnumerable<Material> materials, string materialOutputDirectory, string materialRelativeDirectory)
     {
-        if (!File.Exists(_vtexPath))
+        if (!File.Exists(_vtfCmdPath))
         {
-            throw new GMConverterException($"vtex not found: {_vtexPath}");
-        }
-
-        if (!Directory.Exists(_gameDirectory))
-        {
-            throw new GMConverterException($"Game directory not found: {_gameDirectory}");
+            throw new GMConverterException($"VTFCmd not found: {_vtfCmdPath}");
         }
 
         var normalizedMaterialDirectory = NormalizeMaterialDirectory(materialRelativeDirectory);
-        var materialSourceDirectory = Path.Combine(_gameDirectory, "materialsrc", normalizedMaterialDirectory.Replace('/', Path.DirectorySeparatorChar));
-        var materialOutputDirectory = Path.Combine(_gameDirectory, "materials", normalizedMaterialDirectory.Replace('/', Path.DirectorySeparatorChar));
+        var tempDirectory = Path.GetFullPath(Path.GetTempPath());
+        var materialSourceDirectory = Path.Join(tempDirectory, "GMConverter", "materialsrc", Guid.NewGuid().ToString("N"));
 
         Directory.CreateDirectory(materialSourceDirectory);
         Directory.CreateDirectory(materialOutputDirectory);
 
-        foreach (var material in materials)
+        try
         {
-            if (material.DiffuseTexture is null)
+            foreach (var material in materials)
             {
-                continue;
+                if (material.DiffuseTexture is null)
+                {
+                    continue;
+                }
+
+                var baseTexturePath = $"{normalizedMaterialDirectory}/{material.Name}".Replace('\\', '/');
+                var texturePath = GetSourceTexturePath(materialSourceDirectory, material.Name);
+                var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
+
+                if (UseSourcePhong(material))
+                {
+                    material.DiffuseTexture.WritePng(texturePath, material.SpecularTexture!);
+                }
+                else
+                {
+                    material.DiffuseTexture.WritePng(texturePath);
+                }
+
+                RunVtfCmd(texturePath, materialOutputDirectory);
+
+                if (material.NormalTexture is not null)
+                {
+                    var normalName = $"{material.Name}_normal";
+                    var normalPath = GetSourceTexturePath(materialSourceDirectory, normalName);
+
+                    material.NormalTexture.WritePng(normalPath);
+                    RunVtfCmd(normalPath, materialOutputDirectory);
+                }
+
+                if (UseSourcePhong(material))
+                {
+                    var specularName = $"{material.Name}_spec";
+                    var specularPath = GetSourceTexturePath(materialSourceDirectory, specularName);
+
+                    material.SpecularTexture!.WritePng(specularPath);
+                    RunVtfCmd(specularPath, materialOutputDirectory);
+                }
+
+                WriteVmt(vmtPath, baseTexturePath, material);
+
+                if (material.EmissiveTexture is not null)
+                {
+                    var illumName = $"{material.Name}_illum";
+                    var illumPath = GetSourceTexturePath(materialSourceDirectory, illumName);
+
+                    material.EmissiveTexture.WritePng(illumPath);
+                    RunVtfCmd(illumPath, materialOutputDirectory);
+                }
             }
-
-            var baseTexturePath = $"{normalizedMaterialDirectory}/{material.Name}".Replace('\\', '/');
-            var tgaPath = Path.Combine(materialSourceDirectory, $"{material.Name}.tga");
-            var vmtPath = Path.Combine(materialOutputDirectory, $"{material.Name}.vmt");
-
-            if (UseSourcePhong(material))
+        }
+        finally
+        {
+            if (Directory.Exists(materialSourceDirectory))
             {
-                material.DiffuseTexture.WriteTga(tgaPath, material.SpecularTexture!);
-            }
-            else
-            {
-                material.DiffuseTexture.WriteTga(tgaPath);
-            }
-
-            RunVtex(tgaPath);
-
-            if (material.NormalTexture is not null)
-            {
-                var normalName = $"{material.Name}_normal";
-                var normalPath = Path.Combine(materialSourceDirectory, $"{normalName}.tga");
-
-                material.NormalTexture.WriteTga(normalPath);
-                RunVtex(normalPath);
-            }
-
-            if (UseSourcePhong(material))
-            {
-                var specularName = $"{material.Name}_spec";
-                var specularPath = Path.Combine(materialSourceDirectory, $"{specularName}.tga");
-
-                material.SpecularTexture!.WriteTga(specularPath);
-                RunVtex(specularPath);
-            }
-
-            WriteVmt(vmtPath, baseTexturePath, material);
-
-            if (material.EmissiveTexture is not null)
-            {
-                var illumName = $"{material.Name}_illum";
-                var illumPath = Path.Combine(materialSourceDirectory, $"{illumName}.tga");
-
-                material.EmissiveTexture.WriteTga(illumPath);
-                RunVtex(illumPath);
+                Directory.Delete(materialSourceDirectory, recursive: true);
             }
         }
     }
 
-    private void RunVtex(string tgaPath)
+    private void RunVtfCmd(string sourcePath, string outputDirectory)
     {
-        ProcessRunner.Run(_vtexPath, ["-nopause", "-mkdir", tgaPath], Path.GetDirectoryName(_vtexPath));
+        ProcessRunner.Run(
+            _vtfCmdPath,
+            ["-file", sourcePath, "-output", outputDirectory, "-silent"],
+            Path.GetDirectoryName(_vtfCmdPath));
     }
 
     private static void WriteVmt(string vmtPath, string baseTexturePath, Material material)
@@ -145,6 +152,23 @@ internal sealed class SourceMaterialCompiler(string vtexPath, string gameDirecto
         writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
+    }
+
+    private static string GetSourceTexturePath(string materialSourceDirectory, string textureName)
+    {
+        string fileName = GetFileNameOnly($"{textureName}.png");
+        return Path.Join(materialSourceDirectory, fileName);
+    }
+
+    private static string GetFileNameOnly(string path)
+    {
+        string? fileName = Path.GetFileName(path);
+        if (string.IsNullOrWhiteSpace(fileName) || Path.IsPathRooted(fileName))
+        {
+            throw new GMConverterException($"Invalid material file name: {path}");
+        }
+
+        return fileName;
     }
 
     private static string NormalizeMaterialDirectory(string materialRelativeDirectory)

@@ -1,67 +1,191 @@
+using System.IO.Compression;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using GMConverter.Common;
 
 namespace GMConverter.Source;
 
 internal sealed record SourceToolPaths(
-    string? StudioMdlPath,
-    string? VtexPath,
-    string GameDirectory,
-    string? EngineDirectory,
-    GameInfo GameInfo)
+    string StudioMdlPath,
+    string? VtfCmdPath)
 {
-    public bool CanCompileMaterials => !string.IsNullOrWhiteSpace(VtexPath);
+    private const string _vtfEditLatestReleaseApiUrl = "https://api.github.com/repos/Sky-rym/VTFEdit-Reloaded/releases/latest";
+    private const string _studioMdlMainZipUrl = "https://github.com/DeadZoneLuna/StudioMDL-CE/archive/refs/heads/main.zip";
 
-    public bool CanCompileModel => !string.IsNullOrWhiteSpace(StudioMdlPath);
+    public bool CanCompileMaterials => !string.IsNullOrWhiteSpace(VtfCmdPath);
 
-    public static SourceToolPaths Resolve(string? engineDirectory, string? gameDirectory)
+    public static SourceToolPaths Resolve(string? studioMdlPath, string? vtfCmdPath, bool requireVtfCmd)
     {
-        if (string.IsNullOrWhiteSpace(gameDirectory))
-        {
-            throw new GMConverterException("Game directory is required.");
-        }
+        string resolvedStudioMdlPath = ResolveToolPath(
+            studioMdlPath,
+            "cestudiomdl.exe",
+            EnsureStudioMdlAsync);
+        string? resolvedVtfCmdPath = requireVtfCmd
+            ? ResolveToolPath(vtfCmdPath, "VTFCmd.exe", EnsureVtfCmdAsync)
+            : ResolveOptionalToolPath(vtfCmdPath, "VTFCmd.exe");
 
-        GameInfo gameInfo = GameInfo.Load(gameDirectory);
-        string? fullEngineDirectory = string.IsNullOrWhiteSpace(engineDirectory) ? null : Path.GetFullPath(engineDirectory);
-
-        if (fullEngineDirectory is not null && !Directory.Exists(fullEngineDirectory))
-        {
-            throw new GMConverterException($"Engine directory not found: {fullEngineDirectory}");
-        }
-
-        fullEngineDirectory = fullEngineDirectory is null ? gameInfo.InferEngineDirectory() : NormalizeEngineDirectory(fullEngineDirectory);
-        string? fullStudioMdlPath = fullEngineDirectory is null ? null : TryFindEngineTool(fullEngineDirectory, "studiomdl.exe");
-        string? fullVtexPath = fullEngineDirectory is null ? null : TryFindEngineTool(fullEngineDirectory, "vtex.exe");
-
-        return new SourceToolPaths(fullStudioMdlPath, fullVtexPath, gameInfo.GameDirectory, fullEngineDirectory, gameInfo);
+        return new SourceToolPaths(resolvedStudioMdlPath, resolvedVtfCmdPath);
     }
 
-    private static string NormalizeEngineDirectory(string engineDirectory)
+    private static string ResolveToolPath(string? overridePath, string executableName, Func<Task<string>> ensureDefaultToolAsync)
     {
-        var directory = new DirectoryInfo(engineDirectory);
-
-        if (string.Equals(directory.Name, "win64", StringComparison.OrdinalIgnoreCase) && directory.Parent is not null)
+        if (!string.IsNullOrWhiteSpace(overridePath))
         {
-            directory = directory.Parent;
+            return RequireExecutable(overridePath, executableName);
         }
 
-        if (string.Equals(directory.Name, "bin", StringComparison.OrdinalIgnoreCase) && directory.Parent is not null)
-        {
-            directory = directory.Parent;
-        }
-
-        return directory.FullName;
+        return ensureDefaultToolAsync().GetAwaiter().GetResult();
     }
 
-    private static string? TryFindEngineTool(string engineDirectory, string toolName)
+    private static string? ResolveOptionalToolPath(string? overridePath, string executableName)
     {
-        string binPath = Path.Combine(engineDirectory, "bin", toolName);
+        return string.IsNullOrWhiteSpace(overridePath)
+            ? null
+            : RequireExecutable(overridePath, executableName);
+    }
 
-        if (File.Exists(binPath))
+    private static string RequireExecutable(string path, string executableName)
+    {
+        string fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+        if (!File.Exists(fullPath))
         {
-            return binPath;
+            throw new GMConverterException($"{executableName} not found: {fullPath}");
         }
 
-        string win64Path = Path.Combine(engineDirectory, "bin", "win64", toolName);
-        return File.Exists(win64Path) ? win64Path : null;
+        return fullPath;
+    }
+
+    private static async Task<string> EnsureStudioMdlAsync()
+    {
+        string toolDirectory = Path.Combine(GetToolsDirectory(), "studiomdl-ce");
+        string? existingPath = FindStudioMdl(toolDirectory);
+        if (existingPath is not null)
+        {
+            return existingPath;
+        }
+
+        await DownloadAndExtractAsync(_studioMdlMainZipUrl, toolDirectory);
+
+        return FindStudioMdl(toolDirectory) ??
+            throw new GMConverterException($"Downloaded StudioMDL-CE, but cestudiomdl.exe was not found in {toolDirectory}.");
+    }
+
+    private static async Task<string> EnsureVtfCmdAsync()
+    {
+        string toolDirectory = Path.Combine(GetToolsDirectory(), "vtfedit-reloaded");
+        string? existingPath = FindExecutable(toolDirectory, "VTFCmd.exe");
+        if (existingPath is not null)
+        {
+            return existingPath;
+        }
+
+        string archiveUrl = await GetLatestVtfEditArchiveUrlAsync();
+        await DownloadAndExtractAsync(archiveUrl, toolDirectory);
+
+        return FindExecutable(toolDirectory, "VTFCmd.exe") ??
+            throw new GMConverterException($"Downloaded VTFEdit Reloaded, but VTFCmd.exe was not found in {toolDirectory}.");
+    }
+
+    private static string GetToolsDirectory()
+    {
+        return Path.Combine(AppContext.BaseDirectory, "tools");
+    }
+
+    private static string? FindStudioMdl(string rootDirectory)
+    {
+        if (!Directory.Exists(rootDirectory))
+        {
+            return null;
+        }
+
+        string? x86Path = Directory
+            .EnumerateFiles(rootDirectory, "cestudiomdl.exe", SearchOption.AllDirectories)
+            .FirstOrDefault(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) &&
+                !path.Contains($"{Path.DirectorySeparatorChar}x64{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+
+        return x86Path ?? FindExecutable(rootDirectory, "cestudiomdl.exe");
+    }
+
+    private static string? FindExecutable(string rootDirectory, string executableName)
+    {
+        return Directory.Exists(rootDirectory)
+            ? Directory.EnumerateFiles(rootDirectory, executableName, SearchOption.AllDirectories).FirstOrDefault()
+            : null;
+    }
+
+    private static async Task<string> GetLatestVtfEditArchiveUrlAsync()
+    {
+        using HttpClient client = CreateHttpClient();
+        await using Stream stream = await client.GetStreamAsync(_vtfEditLatestReleaseApiUrl);
+        using JsonDocument document = await JsonDocument.ParseAsync(stream);
+
+        foreach (JsonElement asset in document.RootElement.GetProperty("assets").EnumerateArray())
+        {
+            string? name = asset.GetProperty("name").GetString();
+            string? downloadUrl = asset.GetProperty("browser_download_url").GetString();
+            if (name is not null &&
+                downloadUrl is not null &&
+                name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                return downloadUrl;
+            }
+        }
+
+        throw new GMConverterException("The latest VTFEdit Reloaded release does not contain a zip asset.");
+    }
+
+    private static async Task DownloadAndExtractAsync(string archiveUrl, string targetDirectory)
+    {
+        Directory.CreateDirectory(targetDirectory);
+        string archivePath = Path.Combine(targetDirectory, "download.zip");
+        string extractDirectory = Path.Combine(targetDirectory, "extracting");
+
+        if (Directory.Exists(extractDirectory))
+        {
+            Directory.Delete(extractDirectory, recursive: true);
+        }
+
+        Directory.CreateDirectory(extractDirectory);
+
+        using (HttpClient client = CreateHttpClient())
+        await using (Stream archiveStream = await client.GetStreamAsync(archiveUrl))
+        await using (FileStream fileStream = File.Create(archivePath))
+        {
+            await archiveStream.CopyToAsync(fileStream);
+        }
+
+        ZipFile.ExtractToDirectory(archivePath, extractDirectory, overwriteFiles: true);
+        File.Delete(archivePath);
+
+        foreach (string path in Directory.EnumerateFileSystemEntries(extractDirectory))
+        {
+            string destination = Path.Combine(targetDirectory, Path.GetFileName(path));
+            if (Directory.Exists(destination))
+            {
+                Directory.Delete(destination, recursive: true);
+            }
+            else if (File.Exists(destination))
+            {
+                File.Delete(destination);
+            }
+
+            if (Directory.Exists(path))
+            {
+                Directory.Move(path, destination);
+            }
+            else
+            {
+                File.Move(path, destination);
+            }
+        }
+
+        Directory.Delete(extractDirectory, recursive: true);
+    }
+
+    private static HttpClient CreateHttpClient()
+    {
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GMConverter", "1.0"));
+        return client;
     }
 }

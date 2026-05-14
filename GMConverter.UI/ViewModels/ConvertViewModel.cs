@@ -57,10 +57,10 @@ public sealed partial class ConvertViewModel : ViewModelBase
     private string _modelPath = "gmconverter/model.mdl";
 
     [ObservableProperty]
-    private string _gameDirectory = string.Empty;
+    private string _studioMdlPath = string.Empty;
 
     [ObservableProperty]
-    private string _engineDirectory = string.Empty;
+    private string _vtfCmdPath = string.Empty;
 
     [ObservableProperty]
     private string _materialDirectory = string.Empty;
@@ -262,8 +262,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
             string.IsNullOrWhiteSpace(OutputPath) ? null : OutputPath,
             string.IsNullOrWhiteSpace(BaseName) ? null : BaseName,
             IsSourceOutput && !string.IsNullOrWhiteSpace(ModelPath) ? ModelPath : null,
-            IsSourceOutput && !string.IsNullOrWhiteSpace(GameDirectory) ? GameDirectory : null,
-            IsSourceOutput && !string.IsNullOrWhiteSpace(EngineDirectory) ? EngineDirectory : null,
+            IsSourceOutput && !string.IsNullOrWhiteSpace(StudioMdlPath) ? StudioMdlPath : null,
+            IsSourceOutput && !string.IsNullOrWhiteSpace(VtfCmdPath) ? VtfCmdPath : null,
             string.IsNullOrWhiteSpace(MaterialDirectory) ? null : MaterialDirectory,
             IsPskInput && !string.IsNullOrWhiteSpace(AnimationPath) ? AnimationPath : null,
             (float)ScaleFactor,
@@ -302,8 +302,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
         OutputPath = settings.OutputPath ?? OutputPath;
         BaseName = settings.BaseName ?? BaseName;
         ModelPath = settings.ModelPath ?? ModelPath;
-        GameDirectory = settings.GameDirectory ?? GameDirectory;
-        EngineDirectory = settings.EngineDirectory ?? EngineDirectory;
+        StudioMdlPath = settings.StudioMdlPath ?? StudioMdlPath;
+        VtfCmdPath = settings.VtfCmdPath ?? VtfCmdPath;
         MaterialDirectory = settings.MaterialDirectory ?? MaterialDirectory;
         ScaleFactor = settings.ScaleFactor;
         BuildMaterials = settings.BuildMaterials;
@@ -379,8 +379,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
         SetText(config.OutputPath, value => OutputPath = value);
         SetText(config.BaseName, value => BaseName = value);
         SetText(config.ModelPath, value => ModelPath = value);
-        SetText(config.GameDirectory, value => GameDirectory = value);
-        SetText(config.EngineDirectory, value => EngineDirectory = value);
+        SetText(config.StudioMdlPath, value => StudioMdlPath = value);
+        SetText(config.VtfCmdPath, value => VtfCmdPath = value);
         SetText(config.MaterialDirectory, value => MaterialDirectory = value);
         SetText(config.AnimationPath, value => AnimationPath = value);
 

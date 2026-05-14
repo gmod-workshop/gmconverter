@@ -52,31 +52,31 @@
             <shad:Card.Header>
               <StackPanel Spacing="4">
                 <shad:CardTitle>Source Engine</shad:CardTitle>
-                <shad:CardDescription>Defaults for MDL compile output and material generation.</shad:CardDescription>
+                <shad:CardDescription>Leave tool paths empty to download portable defaults beside the app.</shad:CardDescription>
               </StackPanel>
             </shad:Card.Header>
             <StackPanel Spacing="16">
               <TextBox Text="{Binding ModelPath}"
                        shad:ControlAssist.Label="Model path"/>
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox x:Name="GameDirectoryBox"
-                         Text="{Binding GameDirectory}"
-                         shad:ControlAssist.Label="Game directory"/>
+                <TextBox x:Name="StudioMdlPathBox"
+                         Text="{Binding StudioMdlPath}"
+                         shad:ControlAssist.Label="StudioMDL path"/>
                 <Button Grid.Column="1"
                         Classes="Outline"
                         Content="Browse"
-                        Click="BrowseGameDirectory_Click"
+                        Click="BrowseStudioMdlPath_Click"
                         IsEnabled="{Binding IsIdle}"
                         VerticalAlignment="Bottom"/>
               </Grid>
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox x:Name="EngineDirectoryBox"
-                         Text="{Binding EngineDirectory}"
-                         shad:ControlAssist.Label="Engine directory"/>
+                <TextBox x:Name="VtfCmdPathBox"
+                         Text="{Binding VtfCmdPath}"
+                         shad:ControlAssist.Label="VTFCmd path"/>
                 <Button Grid.Column="1"
                         Classes="Outline"
                         Content="Browse"
-                        Click="BrowseEngineDirectory_Click"
+                        Click="BrowseVtfCmdPath_Click"
                         IsEnabled="{Binding IsIdle}"
                         VerticalAlignment="Bottom"/>
               </Grid>

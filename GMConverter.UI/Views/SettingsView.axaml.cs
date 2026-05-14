@@ -23,19 +23,19 @@ public partial class SettingsView : UserControl
             }
         });
 
-        ConfigurePathDrop(GameDirectoryBox, DropPathKind.Folder, path =>
+        ConfigurePathDrop(StudioMdlPathBox, DropPathKind.File, path =>
         {
             if (DataContext is ConvertViewModel viewModel)
             {
-                viewModel.GameDirectory = path;
+                viewModel.StudioMdlPath = path;
             }
         });
 
-        ConfigurePathDrop(EngineDirectoryBox, DropPathKind.Folder, path =>
+        ConfigurePathDrop(VtfCmdPathBox, DropPathKind.File, path =>
         {
             if (DataContext is ConvertViewModel viewModel)
             {
-                viewModel.EngineDirectory = path;
+                viewModel.VtfCmdPath = path;
             }
         });
     }
@@ -74,8 +74,6 @@ public partial class SettingsView : UserControl
         return pathKind switch
         {
             DropPathKind.File when File.Exists(path) => path,
-            DropPathKind.Folder when Directory.Exists(path) => path,
-            DropPathKind.Folder when File.Exists(path) => Path.GetDirectoryName(path),
             _ => null
         };
     }
@@ -89,21 +87,21 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private async void BrowseGameDirectory_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void BrowseStudioMdlPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is ConvertViewModel viewModel &&
-            await BrowseFolderAsync("Select Source game directory") is { } path)
+            await BrowseFileAsync("Select StudioMDL executable", [new FilePickerFileType("StudioMDL") { Patterns = ["*.exe"] }]) is { } path)
         {
-            viewModel.GameDirectory = path;
+            viewModel.StudioMdlPath = path;
         }
     }
 
-    private async void BrowseEngineDirectory_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void BrowseVtfCmdPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is ConvertViewModel viewModel &&
-            await BrowseFolderAsync("Select Source engine directory") is { } path)
+            await BrowseFileAsync("Select VTFCmd executable", [new FilePickerFileType("VTFCmd") { Patterns = ["*.exe"] }]) is { } path)
         {
-            viewModel.EngineDirectory = path;
+            viewModel.VtfCmdPath = path;
         }
     }
 
@@ -125,26 +123,8 @@ public partial class SettingsView : UserControl
         return files.Count == 0 ? null : files[0].Path.LocalPath;
     }
 
-    private async Task<string?> BrowseFolderAsync(string title)
-    {
-        var topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel is null)
-        {
-            return null;
-        }
-
-        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = title,
-            AllowMultiple = false
-        });
-
-        return folders.Count == 0 ? null : folders[0].Path.LocalPath;
-    }
-
     private enum DropPathKind
     {
-        File,
-        Folder
+        File
     }
 }

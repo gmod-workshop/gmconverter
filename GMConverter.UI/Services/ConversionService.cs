@@ -59,8 +59,8 @@ internal sealed class ConversionService(UiLogSink logSink)
                     baseName,
                     new MDLExportOptions(
                         settings.ModelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
-                        settings.EngineDirectory,
-                        settings.GameDirectory,
+                        settings.StudioMdlPath,
+                        settings.VtfCmdPath,
                         settings.BuildMaterials,
                         CreatePhysicsOptions(settings)));
                 return $"Wrote Source compile workspace to {outputPath}";

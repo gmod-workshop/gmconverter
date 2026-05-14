@@ -10,7 +10,7 @@
 
 ## Workflow Hygiene
 
-- Before making changes, check whether the worktree is on a named branch. If the repository is detached or otherwise not on a branch, recommend creating a branch first.
+- Before making changes, check whether the worktree is on a named branch. If the repository is detached or otherwise not on a branch, ALWAYS create a branch first.
 - Keep each change focused on one feature, fix, or maintenance task. Do not bundle unrelated refactors or behavior changes into the same work item.
 - Update `CHANGELOG.md` as user-facing changes are made. Keep changelog entries scoped to the same feature or fix as the code changes.
 - Use Conventional Commits for commit messages and PR titles, such as `feat: add batch export` or `fix: preserve material paths`.

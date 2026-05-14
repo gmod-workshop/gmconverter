@@ -53,13 +53,13 @@ internal static class Program
         {
             Description = "Output MDL path under the game models directory."
         };
-        var gameDirectoryOption = new Option<string>("--game-dir")
+        var studioMdlPathOption = new Option<string>("--studiomdl-path")
         {
-            Description = "Source game directory containing gameinfo.txt."
+            Description = "Optional StudioMDL executable override. Downloads StudioMDL-CE into tools when omitted."
         };
-        var engineDirectoryOption = new Option<string>("--engine-dir")
+        var vtfCmdPathOption = new Option<string>("--vtfcmd-path")
         {
-            Description = "Optional Source engine root override."
+            Description = "Optional VTFCmd executable override. Downloads VTFEdit Reloaded into tools when omitted and materials are built."
         };
         var materialDirectoryOption = new Option<string>("--material-dir")
         {
@@ -124,8 +124,8 @@ internal static class Program
             outputPathOption,
             nameOption,
             modelPathOption,
-            gameDirectoryOption,
-            engineDirectoryOption,
+            studioMdlPathOption,
+            vtfCmdPathOption,
             materialDirectoryOption,
             animationPathOption,
             scaleOption,
@@ -147,8 +147,8 @@ internal static class Program
             outputPath: parseResult.GetValue(outputPathOption),
             baseName: parseResult.GetValue(nameOption),
             modelPath: parseResult.GetValue(modelPathOption),
-            gameDirectory: parseResult.GetValue(gameDirectoryOption),
-            engineDirectory: parseResult.GetValue(engineDirectoryOption),
+            studioMdlPath: parseResult.GetValue(studioMdlPathOption),
+            vtfCmdPath: parseResult.GetValue(vtfCmdPathOption),
             materialDirectory: parseResult.GetValue(materialDirectoryOption),
             animationPath: parseResult.GetValue(animationPathOption),
             scaleFactor: parseResult.GetValue(scaleOption),
@@ -172,8 +172,8 @@ internal static class Program
         string? outputPath,
         string? baseName,
         string? modelPath,
-        string? gameDirectory,
-        string? engineDirectory,
+        string? studioMdlPath,
+        string? vtfCmdPath,
         string? materialDirectory,
         string? animationPath,
         float scaleFactor,
@@ -226,8 +226,8 @@ internal static class Program
                     RequireOutputPath(outputPath, outputFormat),
                     baseName,
                     modelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
-                    engineDirectory,
-                    gameDirectory,
+                    studioMdlPath,
+                    vtfCmdPath,
                     buildMaterials,
                     CreatePhysicsOptions(generatePhysics, physicsModeText, physicsMass, coacdThreshold, maxConvexPieces, maxHullVertices));
                 return 0;
@@ -258,8 +258,8 @@ internal static class Program
         string outputDirectory,
         string baseName,
         string modelPath,
-        string? engineDirectory,
-        string? gameDirectory,
+        string? studioMdlPath,
+        string? vtfCmdPath,
         bool buildMaterials,
         PhysicsOptions? physicsOptions)
     {
@@ -270,7 +270,7 @@ internal static class Program
             model,
             outputDirectory,
             baseName,
-            new MDLExportOptions(modelPath, engineDirectory, gameDirectory, buildMaterials, physicsOptions));
+            new MDLExportOptions(modelPath, studioMdlPath, vtfCmdPath, buildMaterials, physicsOptions));
     }
 
     private static IImporter GetImporter(string inputFormat, ILoggerFactory? loggerFactory = null)

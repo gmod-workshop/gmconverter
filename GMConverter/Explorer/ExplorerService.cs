@@ -9,6 +9,7 @@ internal sealed class ExplorerService
     private readonly IReadOnlyList<IExplorer> _explorers =
     [
         new MOWExplorer(),
+        new UE2Explorer(),
         new GenericExplorer()
     ];
 
@@ -43,6 +44,11 @@ internal sealed class ExplorerService
             throw new GMConverterException($"Explorer path not found: {target.FullPath}");
         }
 
+        if (string.Equals(profileId, AutoProfileId, StringComparison.OrdinalIgnoreCase) && target.IsDirectory)
+        {
+            return ScanAuto(target);
+        }
+
         var explorer = ResolveExplorer(target, profileId);
         var entries = explorer.Scan(target)
             .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
@@ -51,6 +57,23 @@ internal sealed class ExplorerService
         return new ExplorerScanResult(
             new ExplorerProfile(explorer.Id, explorer.DisplayName),
             entries);
+    }
+
+    private ExplorerScanResult ScanAuto(ExplorerTarget target)
+    {
+        var entries = _explorers
+            .Where(explorer => explorer.Supports(target))
+            .SelectMany(explorer => explorer.Scan(target))
+            .DistinctBy(entry => $"{entry.ExplorerId}|{entry.DisplayPath}|{entry.FilePath}", StringComparer.OrdinalIgnoreCase)
+            .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (entries.Length == 0)
+        {
+            throw new GMConverterException($"No explorer supports: {target.FullPath}");
+        }
+
+        return new ExplorerScanResult(new ExplorerProfile(AutoProfileId, "Auto-detect"), entries);
     }
 
     private IExplorer ResolveExplorer(ExplorerTarget target, string profileId)

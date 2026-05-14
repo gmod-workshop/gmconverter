@@ -70,7 +70,7 @@
                             <shad:CardTitle>Assets</shad:CardTitle>
                             <shad:CardDescription Content="{Binding SelectedExplorerDetails}"/>
                         </StackPanel>
-                        <shad:Badge Grid.Column="1" Variant="Secondary" Content="Double-click to preview" VerticalAlignment="Center"/>
+                        <shad:Badge Grid.Column="1" Variant="Secondary" Content="Double-click to preview" VerticalAlignment="Center" IsVisible="{Binding HasConvertibleExplorerEntry}"/>
                     </Grid>
                 </shad:Card.Header>
 
@@ -100,8 +100,8 @@
                         HorizontalAlignment="Right"
                         Spacing="8"
                         Margin="48,12,48,24">
-                <Button Classes="Outline" Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}"/>
-                <Button Classes="Primary" Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}"/>
+                <Button Classes="Outline" Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
+                <Button Classes="Primary" Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
             </StackPanel>
         </Grid>
     </DockPanel>

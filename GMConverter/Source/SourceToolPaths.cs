@@ -57,7 +57,7 @@ internal sealed record SourceToolPaths(
 
     private static async Task<string> EnsureStudioMdlAsync()
     {
-        string toolDirectory = Path.Combine(GetToolsDirectory(), "studiomdl-ce");
+        string toolDirectory = GetToolDirectory("studiomdl-ce");
         string? existingPath = FindStudioMdl(toolDirectory);
         if (existingPath is not null)
         {
@@ -72,7 +72,7 @@ internal sealed record SourceToolPaths(
 
     private static async Task<string> EnsureVtfCmdAsync()
     {
-        string toolDirectory = Path.Combine(GetToolsDirectory(), "vtfedit-reloaded");
+        string toolDirectory = GetToolDirectory("vtfedit-reloaded");
         string? existingPath = FindExecutable(toolDirectory, "VTFCmd.exe");
         if (existingPath is not null)
         {
@@ -88,7 +88,13 @@ internal sealed record SourceToolPaths(
 
     private static string GetToolsDirectory()
     {
-        return Path.Combine(AppContext.BaseDirectory, "tools");
+        string baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+        return Path.Combine(baseDirectory, "tools");
+    }
+
+    private static string GetToolDirectory(string toolName)
+    {
+        return Path.Combine(GetToolsDirectory(), Path.GetFileName(toolName));
     }
 
     private static string? FindStudioMdl(string rootDirectory)

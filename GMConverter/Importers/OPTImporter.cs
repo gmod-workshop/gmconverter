@@ -3,7 +3,8 @@ using System.Numerics;
 using System.Text;
 using GMConverter.Common;
 using GMConverter.Geometry;
-using ImageMagick;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using JeremyAnsel.Xwa.Opt;
 using Mesh = GMConverter.Geometry.Mesh;
 using OptTexture = JeremyAnsel.Xwa.Opt.Texture;
@@ -122,7 +123,7 @@ internal sealed class OPTImporter : IImporter
         ];
     }
 
-    private static MagickImage CreateTextureImage(OptTexture texture)
+    private static Image<Rgba32> CreateTextureImage(OptTexture texture)
     {
         var converted = texture.Clone();
 
@@ -139,7 +140,7 @@ internal sealed class OPTImporter : IImporter
         return CreateImageFromBgra(converted.Width, converted.Height, converted.ImageData);
     }
 
-    private static MagickImage CreateIlluminationImage(OptTexture texture)
+    private static Image<Rgba32> CreateIlluminationImage(OptTexture texture)
     {
         var illum = texture.GetIllumMap(0, out var width, out var height) ?? throw new GMConverterException($"Texture has no illumination map: {texture.Name}");
         var bgra = new byte[width * height * 4];
@@ -156,7 +157,7 @@ internal sealed class OPTImporter : IImporter
         return CreateImageFromBgra(width, height, bgra);
     }
 
-    private static MagickImage CreateImageFromBgra(int width, int height, byte[] bgra)
+    private static Image<Rgba32> CreateImageFromBgra(int width, int height, byte[] bgra)
     {
         if (width <= 0 || height <= 0)
         {
@@ -168,8 +169,22 @@ internal sealed class OPTImporter : IImporter
             throw new GMConverterException("Not enough texture image data.");
         }
 
-        var settings = new PixelReadSettings((uint)width, (uint)height, StorageType.Char, "BGRA");
-        return new MagickImage(bgra.AsSpan(), settings);
+        var image = new Image<Rgba32>(width, height);
+        image.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                var sourceRow = y * width * 4;
+                for (var x = 0; x < row.Length; x++)
+                {
+                    var i = sourceRow + x * 4;
+                    // Source is BGRA, our pixel format is RGBA — swap B and R.
+                    row[x] = new Rgba32(bgra[i + 2], bgra[i + 1], bgra[i], bgra[i + 3]);
+                }
+            }
+        });
+        return image;
     }
 }
 

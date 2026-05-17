@@ -3,7 +3,8 @@ using System.Numerics;
 using GMConverter.Common;
 using GMConverter.Formats.MOW;
 using GMConverter.Geometry;
-using ImageMagick;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -608,20 +609,32 @@ internal sealed class MOWImporter : IImporter
             foreach (var texturePath in ResolveTexturePaths(textureName))
             {
                 foundCandidate = true;
-                MagickImage image;
+                Image<Rgba32> image;
                 try
                 {
-                    image = new MagickImage(texturePath);
+                    image = Image.Load<Rgba32>(texturePath);
                 }
-                catch (Exception ex) when (ex is MagickException or IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is ImageFormatException or NotSupportedException or IOException or UnauthorizedAccessException)
                 {
                     Logger.UnreadableTextureReference(textureName, texturePath, ex.Message);
                     continue;
                 }
 
-                if (!hasAlpha && image.HasAlpha)
+                if (!hasAlpha)
                 {
-                    image.Alpha(AlphaOption.Opaque);
+                    image.ProcessPixelRows(accessor =>
+                    {
+                        for (var y = 0; y < accessor.Height; y++)
+                        {
+                            var row = accessor.GetRowSpan(y);
+                            for (var x = 0; x < row.Length; x++)
+                            {
+                                var pixel = row[x];
+                                pixel.A = byte.MaxValue;
+                                row[x] = pixel;
+                            }
+                        }
+                    });
                 }
 
                 return new Texture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);

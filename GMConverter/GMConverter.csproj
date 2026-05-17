@@ -35,16 +35,28 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="CUE4Parse" Version="1.2.2" ExcludeAssets="all" GeneratePathProperty="true" PrivateAssets="all" />
       <PackageReference Include="JeremyAnsel.Xwa.Opt" Version="3.0.54" />
-      <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="14.13.0" />
       <PackageReference Include="MdlCrowbar" Version="0.74.1" />
+      <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.4" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
       <PackageReference Include="ObjParser" Version="0.1.0" />
       <PackageReference Include="SharpGLTF.Toolkit" Version="1.0.6" />
+      <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     </ItemGroup>
 
     <ItemGroup>
       <Folder Include="Exporters\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse\CUE4Parse.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+      <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+      <None Include="$(NuGetPackageRoot)cue4parse\1.2.2\lib\net8.0\CUE4Parse-Natives.dll">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <Visible>false</Visible>
+      </None>
     </ItemGroup>
 
     <ItemGroup Condition="'$(DownloadCoacdNative)' == 'true' and '$(CoacdNativeLibraryName)' != ''">

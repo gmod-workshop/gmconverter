@@ -298,18 +298,130 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
     private static MaterialBuilder BuildMaterial(Material material)
     {
+        // Diagnostic: dump what GLTFExporter sees on the incoming Material object. Cross-reference
+        // with the corresponding .resolve.log to detect whether textures are getting corrupted in
+        // SharpGLTF's image deduplication or somewhere between PSKImporter and the .glb writer.
+        try
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var logRoot = Path.Combine(Path.GetTempPath(), "GMConverter.UI", "GltfBuild");
+            Directory.CreateDirectory(logRoot);
+            var logPath = Path.Combine(logRoot, $"{NameHelpers.SanitizeFileName(material.Name)}.gltfbuild.log");
+            var sb = new System.Text.StringBuilder();
+            sb.Append("materialName=").AppendLine(material.Name);
+            sb.Append("diffuse=").AppendLine(material.DiffuseTexture?.Name ?? "<null>");
+            sb.Append("normal=").AppendLine(material.NormalTexture?.Name ?? "<null>");
+            sb.Append("specular=").AppendLine(material.SpecularTexture?.Name ?? "<null>");
+            sb.Append("emissive=").AppendLine(material.EmissiveTexture?.Name ?? "<null>");
+            sb.Append("normalTextureConvention=").AppendLine(material.NormalTextureConvention.ToString());
+            sb.Append("specularTexturePacking=").AppendLine(material.SpecularTexturePacking.ToString());
+            sb.Append("hasAlpha=").AppendLine(material.HasAlpha.ToString(inv));
+            sb.Append("instance.diffuse.HashCode=").AppendLine(
+                (material.DiffuseTexture?.GetHashCode() ?? 0).ToString(inv));
+            sb.Append("instance.normal.HashCode=").AppendLine(
+                (material.NormalTexture?.GetHashCode() ?? 0).ToString(inv));
+            sb.Append("instance.specular.HashCode=").AppendLine(
+                (material.SpecularTexture?.GetHashCode() ?? 0).ToString(inv));
+            string Sha(byte[] b)
+                => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b))[..16];
+            if (material.DiffuseTexture is not null)
+            {
+                var bytes = material.DiffuseTexture.ToPngBytes();
+                sb.Append("bytes.diffuse.len=").Append(bytes.Length.ToString(inv))
+                    .Append(" sha=").AppendLine(Sha(bytes));
+            }
+            if (material.NormalTexture is not null)
+            {
+                var tex = material.NormalTextureConvention == MaterialNormalTextureConvention.DirectX
+                    ? material.NormalTexture.WithOpenGlNormalMap()
+                    : material.NormalTexture;
+                var bytes = tex.ToPngBytes();
+                sb.Append("bytes.normal.outName=").AppendLine(tex.Name);
+                sb.Append("bytes.normal.len=").Append(bytes.Length.ToString(inv))
+                    .Append(" sha=").AppendLine(Sha(bytes));
+                sb.Append("bytes.normal.dim=").Append(tex.DebugDimensions).AppendLine();
+                sb.Append("source.normal.dim=").Append(material.NormalTexture.DebugDimensions).AppendLine();
+            }
+            if (material.SpecularTexture is not null)
+            {
+                var bytes = material.SpecularTexture.ToPngBytes();
+                sb.Append("bytes.specularRaw.len=").Append(bytes.Length.ToString(inv))
+                    .Append(" sha=").AppendLine(Sha(bytes));
+                if (material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+                {
+                    var mr = material.SpecularTexture.ToGltfMetallicRoughness().ToPngBytes();
+                    sb.Append("bytes.metallicRoughness.len=").Append(mr.Length.ToString(inv))
+                        .Append(" sha=").AppendLine(Sha(mr));
+                    var sf = material.SpecularTexture.ToSpecularFactorMask().ToPngBytes();
+                    sb.Append("bytes.specularFactor.len=").Append(sf.Length.ToString(inv))
+                        .Append(" sha=").AppendLine(Sha(sf));
+                }
+            }
+            File.WriteAllText(logPath, sb.ToString());
+        }
+        catch
+        {
+            // diagnostics must not break export
+        }
+
         var builder = BuildDefaultMaterial(material.Name);
+
+        // KHR_texture_transform scale, set when MultiLayerBaker emitted a tile-extended texture
+        // and we need to remap the mesh's tiled UV0 into the texture's [0,1] sample range.
+        var uvScale = material.BakedUv0Scale;
 
         if (material.DiffuseTexture is not null)
         {
             var image = ImageBuilder.From(new MemoryImage(material.DiffuseTexture.ToPngBytes()), material.DiffuseTexture.Name);
             builder.WithBaseColor(image, Vector4.One);
+            ApplyUvScale(builder.UseChannel(KnownChannel.BaseColor), uvScale);
         }
 
         if (material.NormalTexture is not null)
         {
-            var image = ImageBuilder.From(new MemoryImage(material.NormalTexture.ToPngBytes()), material.NormalTexture.Name);
+            var normalTexture = material.NormalTextureConvention == MaterialNormalTextureConvention.DirectX
+                ? material.NormalTexture.WithOpenGlNormalMap()
+                : material.NormalTexture;
+            var image = ImageBuilder.From(new MemoryImage(normalTexture.ToPngBytes()), normalTexture.Name);
             builder.WithNormal(image, 1.0f);
+            ApplyUvScale(builder.UseChannel(KnownChannel.Normal), uvScale);
+        }
+
+        if (material.SpecularTexture is not null &&
+            material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+        {
+            var metallicRoughnessTexture = material.SpecularTexture.ToGltfMetallicRoughness();
+            var metallicRoughnessImage = ImageBuilder.From(
+                new MemoryImage(metallicRoughnessTexture.ToPngBytes()),
+                metallicRoughnessTexture.Name);
+            // BuildDefaultMaterial sets factor 0/1 for the matte-dielectric default. We must
+            // override both to 1.0 here so glTF multiplies texture channels by 1 instead of 0 —
+            // otherwise the metallic channel is nullified and every Fortnite metal surface renders
+            // as smooth plastic (= extremely shiny).
+            builder.WithMetallicRoughness(metallicRoughnessImage, metallic: 1.0f, roughness: 1.0f);
+            ApplyUvScale(builder.UseChannel(KnownChannel.MetallicRoughness), uvScale);
+
+            // KHR_materials_specular — feed the Fortnite SpecularMasks R channel into glTF's
+            // specularFactor texture so renderers (Blender, three.js, model-viewer) use the same
+            // dielectric reflectance value FortnitePorting routes into Principled BSDF's
+            // "Specular IOR Level". Without this, non-metallic surfaces use the glTF default
+            // (0.5 = IOR 1.5) and look uniformly more reflective than Fortnite intends.
+            var specularFactorTexture = material.SpecularTexture.ToSpecularFactorMask();
+            var specularFactorImage = ImageBuilder.From(
+                new MemoryImage(specularFactorTexture.ToPngBytes()),
+                specularFactorTexture.Name);
+            builder.UseChannel(KnownChannel.SpecularFactor)
+                .UseTexture()
+                .WithPrimaryImage(specularFactorImage);
+            builder.UseChannel(KnownChannel.SpecularFactor).Parameters["SpecularFactor"] = 1.0f;
+            ApplyUvScale(builder.UseChannel(KnownChannel.SpecularFactor), uvScale);
+        }
+
+        if (material.EmissiveTexture is not null)
+        {
+            var image = ImageBuilder.From(new MemoryImage(material.EmissiveTexture.ToPngBytes()), material.EmissiveTexture.Name);
+            builder.WithEmissive(image, Vector3.One);
+            ApplyUvScale(builder.UseChannel(KnownChannel.Emissive), uvScale);
         }
 
         if (material.HasAlpha)
@@ -318,6 +430,27 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         }
 
         return builder;
+    }
+
+    // Applies KHR_texture_transform's `scale` to the given channel's texture sampler. When the
+    // baker emits a tile-extended texture (e.g. 3*W wide because the mesh's UV0 spans [0,3]), we
+    // multiply mesh UVs by (1/3, 1) so they sample the correct tile region of the baked texture.
+    // Without this, the mesh's tiled UVs would wrap via the default REPEAT sampler and read from
+    // the wrong tile of the bake.
+    private static void ApplyUvScale(ChannelBuilder channel, Vector2? scale)
+    {
+        if (!scale.HasValue)
+        {
+            return;
+        }
+
+        var texture = channel.Texture;
+        if (texture is null)
+        {
+            return;
+        }
+
+        texture.WithTransform(Vector2.Zero, scale.Value);
     }
 
     private static MaterialBuilder BuildDefaultMaterial(string name)

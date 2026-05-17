@@ -597,10 +597,11 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             var pngPath = Path.Combine(materialDirectory, $"{material.Name}.png");
             var vmtPath = Path.Combine(materialDirectory, $"{material.Name}.vmt");
             var sourceTexturePath = $"{materialRelativeDirectory}/{material.Name}".Replace('\\', '/');
+            var phongMask = GetSourcePhongMask(material);
 
             if (UseSourcePhong(material))
             {
-                material.DiffuseTexture.WritePng(pngPath, material.SpecularTexture!);
+                material.DiffuseTexture.WritePng(pngPath, phongMask!);
             }
             else
             {
@@ -608,7 +609,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             }
 
             material.NormalTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
-            material.SpecularTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
+            GetSourcePhongExponent(material)?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
 
             using var writer = new StreamWriter(vmtPath, false, _utf8NoBom);
             writer.WriteLine("\"VertexLitGeneric\"");
@@ -657,6 +658,20 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         return material.DiffuseTexture is not null &&
             material.SpecularTexture is not null &&
             !material.HasAlpha;
+    }
+
+    private static Texture? GetSourcePhongMask(Material material)
+    {
+        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+            ? material.SpecularTexture?.ToSpecularFactorMask()
+            : material.SpecularTexture;
+    }
+
+    private static Texture? GetSourcePhongExponent(Material material)
+    {
+        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+            ? material.SpecularTexture?.ToSourcePhongExponent()
+            : material.SpecularTexture;
     }
 
     private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)

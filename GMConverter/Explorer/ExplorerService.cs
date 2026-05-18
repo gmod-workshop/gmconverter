@@ -8,6 +8,7 @@ internal sealed class ExplorerService
 
     private readonly IReadOnlyList<IExplorer> _explorers =
     [
+        new UE4Explorer(),
         new MOWExplorer(),
         new UE2Explorer(),
         new GenericExplorer()
@@ -61,10 +62,8 @@ internal sealed class ExplorerService
 
     private ExplorerScanResult ScanAuto(ExplorerTarget target)
     {
-        var entries = _explorers
-            .Where(explorer => explorer.Supports(target))
-            .SelectMany(explorer => explorer.Scan(target))
-            .DistinctBy(entry => $"{entry.ExplorerId}|{entry.DisplayPath}|{entry.FilePath}", StringComparer.OrdinalIgnoreCase)
+        var explorer = ResolveExplorer(target, AutoProfileId);
+        var entries = explorer.Scan(target)
             .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -73,7 +72,7 @@ internal sealed class ExplorerService
             throw new GMConverterException($"No explorer supports: {target.FullPath}");
         }
 
-        return new ExplorerScanResult(new ExplorerProfile(AutoProfileId, "Auto-detect"), entries);
+        return new ExplorerScanResult(new ExplorerProfile(explorer.Id, explorer.DisplayName), entries);
     }
 
     private IExplorer ResolveExplorer(ExplorerTarget target, string profileId)

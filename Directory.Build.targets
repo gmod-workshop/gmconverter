@@ -1,0 +1,12 @@
+<Project>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'CUE4Parse'">
+    <Content Remove="..\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.dll" />
+    <Content Remove="..\CUE4Parse-Natives\bin\$(Configuration)\CUE4Parse-Natives.pdb" />
+    <Content Remove="$(CMakeBuildDir)\CUE4Parse-Natives.so" />
+    <Content Remove="$(CMakeBuildDir)\CUE4Parse-Natives.dylib" />
+  </ItemGroup>
+
+  <Target Name="Build-Natives" Condition="'$(MSBuildProjectName)' == 'CUE4Parse'">
+    <Message Text="Skipping CUE4Parse CMake native build; GMConverter copies the prebuilt native runtime dependency." Importance="Low" />
+  </Target>
+</Project>

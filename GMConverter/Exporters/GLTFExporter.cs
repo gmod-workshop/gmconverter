@@ -40,15 +40,21 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         for (var meshIndex = 0; meshIndex < model.Meshes.Count; meshIndex++)
         {
             var mesh = model.Meshes[meshIndex];
+            var nodeName = string.IsNullOrWhiteSpace(mesh.Name)
+                ? FormattableString.Invariant($"mesh_{meshIndex}")
+                : mesh.Name;
+            // The scene node — not the mesh data block — is what Blender uses as the object name
+            // on import, so build it explicitly with a name and attach the mesh to it.
+            var node = new NodeBuilder(nodeName);
             if (isSkinned)
             {
                 var meshBuilder = BuildSkinnedMesh(mesh, meshIndex, materialBuilders, model.Skeleton!.Bones.Count);
-                scene.AddSkinnedMesh(meshBuilder, Matrix4x4.Identity, jointNodes!);
+                scene.AddSkinnedMesh(meshBuilder, node.WorldMatrix, jointNodes!);
             }
             else
             {
                 var meshBuilder = BuildMesh(mesh, meshIndex, materialBuilders);
-                scene.AddRigidMesh(meshBuilder, new AffineTransform(Matrix4x4.Identity));
+                scene.AddRigidMesh(meshBuilder, node);
             }
         }
 
@@ -108,7 +114,10 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         int meshIndex,
         Dictionary<string, MaterialBuilder> materialBuilders)
     {
-        var meshBuilder = new GltfMeshBuilder(FormattableString.Invariant($"mesh_{meshIndex}"));
+        var meshBuilder = new GltfMeshBuilder(
+            string.IsNullOrWhiteSpace(mesh.Name)
+                ? FormattableString.Invariant($"mesh_{meshIndex}")
+                : mesh.Name);
 
         foreach (var submesh in mesh.Submeshes)
         {
@@ -133,7 +142,10 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         Dictionary<string, MaterialBuilder> materialBuilders,
         int boneCount)
     {
-        var meshBuilder = new GltfSkinnedMeshBuilder(FormattableString.Invariant($"mesh_{meshIndex}"));
+        var meshBuilder = new GltfSkinnedMeshBuilder(
+            string.IsNullOrWhiteSpace(mesh.Name)
+                ? FormattableString.Invariant($"mesh_{meshIndex}")
+                : mesh.Name);
 
         foreach (var submesh in mesh.Submeshes)
         {
@@ -401,20 +413,25 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
             builder.WithMetallicRoughness(metallicRoughnessImage, metallic: 1.0f, roughness: 1.0f);
             ApplyUvScale(builder.UseChannel(KnownChannel.MetallicRoughness), uvScale);
 
-            // KHR_materials_specular — feed the Fortnite SpecularMasks R channel into glTF's
-            // specularFactor texture so renderers (Blender, three.js, model-viewer) use the same
-            // dielectric reflectance value FortnitePorting routes into Principled BSDF's
-            // "Specular IOR Level". Without this, non-metallic surfaces use the glTF default
-            // (0.5 = IOR 1.5) and look uniformly more reflective than Fortnite intends.
-            var specularFactorTexture = material.SpecularTexture.ToSpecularFactorMask();
-            var specularFactorImage = ImageBuilder.From(
-                new MemoryImage(specularFactorTexture.ToPngBytes()),
-                specularFactorTexture.Name);
-            builder.UseChannel(KnownChannel.SpecularFactor)
-                .UseTexture()
-                .WithPrimaryImage(specularFactorImage);
-            builder.UseChannel(KnownChannel.SpecularFactor).Parameters["SpecularFactor"] = 1.0f;
-            ApplyUvScale(builder.UseChannel(KnownChannel.SpecularFactor), uvScale);
+            // KHR_materials_specular: per-pixel modulator (Fortnite's SpecularMasks.R, placed in
+            // texture.A by ToSpecularFactorMask) scaled by Material.SpecularFactor. The scalar is
+            // set by the importer based on the source format's specular convention — formats whose
+            // values already line up with glTF's dielectric F0=0.04 default leave it at 1.0; ones
+            // that need damping (e.g. Fortnite, where the in-game look is far more matte than the
+            // raw values imply) lower it. Skip the extension entirely when SpecularFactor=1.0 so
+            // we don't bloat the glTF with a no-op extension write.
+            if (Math.Abs(material.SpecularFactor - 1.0f) > 0.0001f)
+            {
+                var specularFactorTexture = material.SpecularTexture.ToSpecularFactorMask();
+                var specularFactorImage = ImageBuilder.From(
+                    new MemoryImage(specularFactorTexture.ToPngBytes()),
+                    specularFactorTexture.Name);
+                builder.UseChannel(KnownChannel.SpecularFactor)
+                    .UseTexture()
+                    .WithPrimaryImage(specularFactorImage);
+                builder.UseChannel(KnownChannel.SpecularFactor).Parameters["SpecularFactor"] = material.SpecularFactor;
+                ApplyUvScale(builder.UseChannel(KnownChannel.SpecularFactor), uvScale);
+            }
         }
 
         if (material.EmissiveTexture is not null)

@@ -378,18 +378,44 @@ internal static class MultiLayerBaker
         int baseWidth,
         int effectiveLayers)
     {
-        // With UV0-based layer selection, column index === layer index by definition
-        // (floor(uv0.x) for a pixel in column N is exactly N), so this is just a straight
-        // tile-stamp mapping. Kept as a function so the bake-channel call site is symmetric
-        // and so any future formula change can be localized here.
+        // Background fill for pixels no triangle covers. With UV1-based layer selection the
+        // column index doesn't tell us the layer (a pixel in UV0 column 2 might still pick
+        // Layer 1 if the triangle's UV1.x is < 1 there), so we vote per column from triangle
+        // centroids: bucket each triangle by (column = floor(UV0.x), layer = floor(UV1.x))
+        // and fill each background column with whichever layer dominated. This stops the
+        // Layer-1 fallback texture (e.g. MI_NobleCrest_LAATRear_A's FrontLaser slot) from
+        // bleeding into UV-gutter pixels across a triangle edge.
         var tileX = Math.Max(1, width / baseWidth);
-        _ = triangles;
-        _ = baseWidth;
+        var histogram = new int[tileX, effectiveLayers];
+
+        foreach (var t in triangles)
+        {
+            var uv0x = (t.Uv0A.X + t.Uv0B.X + t.Uv0C.X) / 3f;
+            var uv1x = (t.Uv1A.X + t.Uv1B.X + t.Uv1C.X) / 3f;
+            var column = Math.Clamp((int)MathF.Floor(uv0x), 0, tileX - 1);
+            var layer = Math.Clamp((int)MathF.Floor(uv1x), 0, effectiveLayers - 1);
+            histogram[column, layer]++;
+        }
+
         var dominant = new int[tileX];
         for (var c = 0; c < tileX; c++)
         {
-            dominant[c] = Math.Min(c, effectiveLayers - 1);
+            var best = 0;
+            var bestCount = histogram[c, 0];
+            for (var l = 1; l < effectiveLayers; l++)
+            {
+                if (histogram[c, l] > bestCount)
+                {
+                    bestCount = histogram[c, l];
+                    best = l;
+                }
+            }
+
+            // No triangles covered this column? Fall back to column-index = layer-index (the
+            // natural layout for aligned UV0/UV1 multi-tile parts).
+            dominant[c] = bestCount > 0 ? best : Math.Min(c, effectiveLayers - 1);
         }
+
         return dominant;
     }
 
@@ -439,15 +465,17 @@ internal static class MultiLayerBaker
                     continue;
                 }
 
-                // FortnitePorting FPv4 Layer formula (per the Blender shader dump for
-                // MI_NobleCrest_LAATRear_A): `(UV.x > Layer-1) * UseLayer` where UV comes from
-                // a ShaderNodeUVMap with empty uv_map = mesh's active render UV layer = UV0
-                // (Blender's default since FP creates UV layers in order UV0, UV1, ...). Stacking
-                // multiple FPv4 Layer instances collapses to "highest layer N such that UV0.x > N-1"
-                // → floor(UV0.x) (zero-indexed). Sampling textures also defaults to UV0.
+                // FortnitePorting FPv4 Layer formula: `(UV.x > Layer-1) * UseLayer` where the UV
+                // Map node inside the FPv4 Layer node group has `uv_map='UV1'` explicitly set
+                // (confirmed by introspecting FP's Blender output — earlier shader-text dumps hid
+                // the property because the default-printer skipped it). Stacking multiple FPv4
+                // Layer instances collapses to "highest layer N such that UV1.x > N-1" →
+                // floor(UV1.x) (zero-indexed). Sampling textures uses the active render UV,
+                // which FP leaves as UV0 → `verts[i].UV` in our CUE4Parse data.
                 var uv0x = u * t.Uv0A.X + v * t.Uv0B.X + w * t.Uv0C.X;
                 var uv0y = u * t.Uv0A.Y + v * t.Uv0B.Y + w * t.Uv0C.Y;
-                var layerIndex = Math.Clamp((int)MathF.Floor(uv0x), 0, effectiveLayers - 1);
+                var uv1x = u * t.Uv1A.X + v * t.Uv1B.X + w * t.Uv1C.X;
+                var layerIndex = Math.Clamp((int)MathF.Floor(uv1x), 0, effectiveLayers - 1);
 
                 // Source sample at (uv0 mod 1) so multi-tile UV0 wraps per-tile back into the
                 // source texture's [0,1] range.

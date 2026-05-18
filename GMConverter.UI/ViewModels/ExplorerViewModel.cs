@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GMConverter.Common;
 using GMConverter.Explorer;
 using GMConverter.UI.Models;
 using GMConverter.UI.Services;
@@ -11,6 +10,55 @@ namespace GMConverter.UI.ViewModels;
 
 public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 {
+    private const int _maxDisplayedExplorerEntries = 2500;
+
+    private static readonly char[] _searchTokenSeparators =
+    [
+        '/',
+        '\\',
+        '.',
+        '_',
+        '-',
+        ' ',
+        ':',
+        '|',
+        '(',
+        ')',
+        '[',
+        ']'
+    ];
+
+    private static readonly HashSet<string> _relatedAnimationStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "anim",
+        "animation",
+        "animations",
+        "assets",
+        "blueprint",
+        "bp",
+        "class",
+        "comp",
+        "content",
+        "fortnite",
+        "fortplaysetitemdefinition",
+        "fortplaysetpropitemdefinition",
+        "game",
+        "map",
+        "maps",
+        "object",
+        "pid",
+        "ppid",
+        "ppids",
+        "props",
+        "registry",
+        "setupassets",
+        "skeletalmesh",
+        "sk",
+        "sm",
+        "staticmesh",
+        "uasset"
+    };
+
     private readonly UiLogSink _logSink;
     private readonly ExplorerService _explorerService;
     private readonly ConversionService _conversionService;
@@ -77,7 +125,16 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     public bool HasConvertibleExplorerEntry => SelectedExplorerNode?.Entry?.IsConvertible is true;
 
+    public bool HasAnimationExplorerEntry =>
+        SelectedExplorerNode?.Entry is { } entry &&
+        entry.InputFormat.Equals("ueanim", StringComparison.OrdinalIgnoreCase) &&
+        IsExportableAnimationEntryClass(entry.AssetClass);
+
     public bool HasExplorerFilter => !string.IsNullOrWhiteSpace(ExplorerFilter);
+
+    public bool HasExplorerEntries => _explorerEntries.Count > 0;
+
+    public bool CanFindRelatedExplorerAnimations => HasSelectedExplorerEntry && HasAnimationExplorerEntries();
 
     public bool IsIdle => !_getIsBusy();
 
@@ -85,8 +142,12 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(HasSelectedExplorerEntry));
         OnPropertyChanged(nameof(HasConvertibleExplorerEntry));
+        OnPropertyChanged(nameof(HasAnimationExplorerEntry));
+        OnPropertyChanged(nameof(CanFindRelatedExplorerAnimations));
+        FindRelatedExplorerAnimationsCommand.NotifyCanExecuteChanged();
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
+        UseSelectionAsAnimationCommand.NotifyCanExecuteChanged();
 
         if (value?.Entry is { } entry)
         {
@@ -112,6 +173,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         RefreshExplorerCommand.NotifyCanExecuteChanged();
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
+        UseSelectionAsAnimationCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRunCommand))]
@@ -141,11 +203,11 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             await ApplyExplorerSelectionAsync(entry);
             await _convert.LoadPreviewCoreAsync();
         }
-        catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex)
         {
             _setStatusMessage("Explorer preview failed.");
             ExplorerStatus = "Preview failed.";
-            _logSink.Append($"Explorer preview failed. {ex.Message}");
+            _logSink.Append($"Explorer preview failed. {ex}");
         }
         finally
         {
@@ -172,16 +234,70 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             _logSink.Append(result);
             _setStatusMessage("Done.");
         }
-        catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex)
         {
             _setStatusMessage("Explorer export failed.");
             ExplorerStatus = "Export failed.";
-            _logSink.Append($"Explorer export failed. {ex.Message}");
+            _logSink.Append($"Explorer export failed. {ex}");
         }
         finally
         {
             _setIsBusy(false);
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseSelectionAsAnimation))]
+    private async Task UseSelectionAsAnimationAsync()
+    {
+        if (_getIsBusy() ||
+            SelectedExplorerNode?.Entry is not { } entry)
+        {
+            return;
+        }
+
+        _setIsBusy(true);
+        try
+        {
+            _setStatusMessage("Exporting animation...");
+            ExplorerStatus = "Exporting animation...";
+            _logSink.Append("Exporting animation...");
+
+            var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
+            var animPath = resolvedEntry.AnimationPath ?? resolvedEntry.InputPath;
+            _convert.AnimationPath = animPath;
+
+            if (!string.IsNullOrWhiteSpace(resolvedEntry.Details))
+            {
+                _logSink.Append(resolvedEntry.Details);
+            }
+
+            ExplorerStatus = $"Set animation: {Path.GetFileName(animPath)}.";
+            _logSink.Append($"Set animation: {animPath}");
+            _setStatusMessage("Animation set.");
+        }
+        catch (Exception ex)
+        {
+            _setStatusMessage("Animation export failed.");
+            ExplorerStatus = "Animation export failed.";
+            _logSink.Append($"Animation export failed. {ex.Message}");
+        }
+        finally
+        {
+            _setIsBusy(false);
+        }
+    }
+
+    private bool CanUseSelectionAsAnimation()
+    {
+        return HasAnimationExplorerEntry && !_getIsBusy();
+    }
+
+    private static bool IsExportableAnimationEntryClass(string? assetClass)
+    {
+        return assetClass is not null &&
+            (assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) ||
+             assetClass.Equals("AnimMontage", StringComparison.OrdinalIgnoreCase) ||
+             assetClass.Equals("AnimComposite", StringComparison.OrdinalIgnoreCase));
     }
 
     [RelayCommand(CanExecute = nameof(HasExplorerFilter))]
@@ -190,6 +306,27 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         ExplorerFilter = string.Empty;
         _explorerFilterCts?.Cancel();
         RebuildExplorerNodes();
+    }
+
+    [RelayCommand(CanExecute = nameof(HasExplorerEntries))]
+    private void ShowExplorerAnimations()
+    {
+        ApplyExplorerFilter("class:Anim");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanFindRelatedExplorerAnimations))]
+    private void FindRelatedExplorerAnimations()
+    {
+        if (SelectedExplorerNode?.Entry is not { } entry)
+        {
+            return;
+        }
+
+        var tokens = CreateRelatedAnimationTokens(entry);
+        var filter = tokens.Length == 0
+            ? "class:Anim"
+            : $"class:Anim any:{string.Join(',', tokens)}";
+        ApplyExplorerFilter(filter);
     }
 
     internal void ApplySettings(UiSettings settings)
@@ -238,15 +375,19 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             _explorerEntries.Clear();
             _explorerEntries.AddRange(result.Entries);
             _explorerProfileName = result.Profile.DisplayName;
+            OnPropertyChanged(nameof(HasExplorerEntries));
+            OnPropertyChanged(nameof(CanFindRelatedExplorerAnimations));
+            ShowExplorerAnimationsCommand.NotifyCanExecuteChanged();
+            FindRelatedExplorerAnimationsCommand.NotifyCanExecuteChanged();
             RebuildExplorerNodes();
             _setStatusMessage(clearCaches ? "Explorer refresh complete." : "Explorer scan complete.");
-            _logSink.Append($"Explorer found {result.Entries.Count} supported model file(s) using {result.Profile.DisplayName}.");
+            _logSink.Append($"Explorer found {result.Entries.Count} supported asset(s) using {result.Profile.DisplayName}.");
         }
-        catch (Exception ex) when (ex is GMConverterException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex)
         {
             ExplorerStatus = "Scan failed.";
             _setStatusMessage("Explorer scan failed.");
-            _logSink.Append(ex.Message);
+            _logSink.Append($"Explorer scan failed. {ex.Message}");
         }
         finally
         {
@@ -275,6 +416,11 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
         var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
         PopulateExplorerSelection(entry, resolvedEntry);
+        if (!string.IsNullOrWhiteSpace(resolvedEntry.Details))
+        {
+            _logSink.Append(resolvedEntry.Details);
+        }
+
         if (!string.IsNullOrWhiteSpace(resolvedEntry.AnimationPath))
         {
             _logSink.Append($"Resolved animation sidecar: {resolvedEntry.AnimationPath}");
@@ -335,28 +481,39 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         ExplorerNodes.Clear();
         SelectedExplorerNode = null;
 
-        var filteredEntries = FilterExplorerEntries().ToArray();
-        foreach (var entry in filteredEntries)
+        var filteredEntries = BuildFilteredExplorerEntries();
+        foreach (var entry in filteredEntries.Entries)
         {
             AddExplorerEntry(entry);
         }
 
         ExplorerStatus = string.IsNullOrWhiteSpace(ExplorerFilter)
-            ? $"{_explorerProfileName}: {_explorerEntries.Count} supported model file(s)."
-            : $"{_explorerProfileName}: {filteredEntries.Length} of {_explorerEntries.Count} supported model file(s).";
+            ? FormatUnfilteredExplorerStatus(filteredEntries)
+            : FormatFilteredExplorerStatus(filteredEntries);
     }
 
-    private IEnumerable<ExplorerFileEntry> FilterExplorerEntries()
+    private FilteredExplorerEntries BuildFilteredExplorerEntries()
     {
         var terms = ExplorerFilter
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (terms.Length == 0)
+        List<ExplorerFileEntry> entries = [];
+        var matchCount = 0;
+
+        foreach (var entry in _explorerEntries)
         {
-            return _explorerEntries;
+            if (terms.Length > 0 && !terms.All(term => MatchesExplorerFilterTerm(entry, term)))
+            {
+                continue;
+            }
+
+            matchCount++;
+            if (entries.Count < _maxDisplayedExplorerEntries)
+            {
+                entries.Add(entry);
+            }
         }
 
-        return _explorerEntries.Where(entry => terms.All(term =>
-            entry.DisplayPath.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        return new FilteredExplorerEntries(entries, matchCount, matchCount > entries.Count);
     }
 
     private void QueueExplorerFilterRebuild()
@@ -391,6 +548,13 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void ApplyExplorerFilter(string filter)
+    {
+        ExplorerFilter = filter;
+        _explorerFilterCts?.Cancel();
+        RebuildExplorerNodes();
+    }
+
     private static string FormatExplorerDetails(ExplorerFileEntry fileEntry)
     {
         var location = fileEntry.ArchivePath is null
@@ -400,6 +564,153 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         var details = string.IsNullOrWhiteSpace(fileEntry.Details) ? string.Empty : $" | {fileEntry.Details}";
         return $"{fileEntry.InputFormat.ToUpperInvariant()}{conversionStatus} | {location}{details}";
     }
+
+    private static string FormatExplorerEntryCount(IEnumerable<ExplorerFileEntry> entries)
+    {
+        var entriesArray = entries as ExplorerFileEntry[] ?? [.. entries];
+        var animationCount = entriesArray.Count(IsAnimationEntry);
+        var modelCount = entriesArray.Length - animationCount;
+        return animationCount == 0
+            ? $"{entriesArray.Length} supported model file(s)"
+            : $"{modelCount} supported model file(s), {animationCount} animation asset(s)";
+    }
+
+    private static string FormatFilteredExplorerStatus(FilteredExplorerEntries filteredEntries)
+    {
+        return filteredEntries.IsTruncated
+            ? $"{filteredEntries.Entries.Count:N0} of {filteredEntries.MatchCount:N0} matching asset(s) displayed. Narrow the filter to show fewer results."
+            : $"{filteredEntries.Entries.Count:N0} matching asset(s).";
+    }
+
+    private string FormatUnfilteredExplorerStatus(FilteredExplorerEntries filteredEntries)
+    {
+        var countDetails = $"{_explorerProfileName}: {FormatExplorerEntryCount(_explorerEntries)}.";
+        return filteredEntries.IsTruncated
+            ? $"{countDetails} Showing first {filteredEntries.Entries.Count:N0}; use the filter to narrow results."
+            : countDetails;
+    }
+
+    private static bool MatchesExplorerFilterTerm(ExplorerFileEntry entry, string term)
+    {
+        if (TryMatchPrefixedFilter(entry, term, "class:", value => entry.AssetClass?.Contains(value, StringComparison.OrdinalIgnoreCase) is true))
+        {
+            return true;
+        }
+
+        if (TryMatchPrefixedFilter(entry, term, "format:", value => entry.InputFormat.Contains(value, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (TryMatchPrefixedFilter(entry, term, "type:", value => entry.InputFormat.Contains(value, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (term.StartsWith("any:", StringComparison.OrdinalIgnoreCase))
+        {
+            var values = term["any:".Length..]
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return values.Any(value => ContainsExplorerSearchText(entry, value));
+        }
+
+        return ContainsExplorerSearchText(entry, term);
+    }
+
+    private static bool TryMatchPrefixedFilter(ExplorerFileEntry entry, string term, string prefix, Func<string, bool> matcher)
+    {
+        return term.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+            matcher(term[prefix.Length..]);
+    }
+
+    private static bool ContainsExplorerSearchText(ExplorerFileEntry entry, string value)
+    {
+        return entry.DisplayPath.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+            entry.ArchiveEntryPath?.Contains(value, StringComparison.OrdinalIgnoreCase) is true ||
+            entry.AssetClass?.Contains(value, StringComparison.OrdinalIgnoreCase) is true ||
+            entry.Details?.Contains(value, StringComparison.OrdinalIgnoreCase) is true ||
+            entry.InputFormat.Contains(value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string[] CreateRelatedAnimationTokens(ExplorerFileEntry entry)
+    {
+        return
+        [
+            .. EnumerateRelatedAnimationTokens(entry)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(token => token.Length)
+            .ThenBy(token => token, StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+        ];
+    }
+
+    private static IEnumerable<string> EnumerateRelatedAnimationTokens(ExplorerFileEntry entry)
+    {
+        var text = $"{entry.DisplayPath} {entry.ArchiveEntryPath} {entry.FilePath}";
+        foreach (var token in text.Split(_searchTokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            foreach (var normalizedToken in NormalizeRelatedAnimationToken(token))
+            {
+                yield return normalizedToken;
+            }
+        }
+    }
+
+    private static IEnumerable<string> NormalizeRelatedAnimationToken(string token)
+    {
+        var trimmed = token.Trim();
+        if (IsUsefulRelatedAnimationToken(trimmed))
+        {
+            yield return trimmed;
+        }
+
+        foreach (var segment in SplitCamelCaseToken(trimmed))
+        {
+            if (IsUsefulRelatedAnimationToken(segment))
+            {
+                yield return segment;
+            }
+        }
+    }
+
+    private static IEnumerable<string> SplitCamelCaseToken(string token)
+    {
+        var start = 0;
+        for (var i = 1; i < token.Length; i++)
+        {
+            if (char.IsUpper(token[i]) && (char.IsLower(token[i - 1]) || i + 1 < token.Length && char.IsLower(token[i + 1])))
+            {
+                yield return token[start..i];
+                start = i;
+            }
+        }
+
+        yield return token[start..];
+    }
+
+    private static bool IsUsefulRelatedAnimationToken(string token)
+    {
+        return token.Length >= 3 &&
+            !_relatedAnimationStopWords.Contains(token) &&
+            !token.All(Uri.IsHexDigit);
+    }
+
+    private bool HasAnimationExplorerEntries()
+    {
+        return _explorerEntries.Any(IsAnimationEntry);
+    }
+
+    private static bool IsAnimationEntry(ExplorerFileEntry entry)
+    {
+        return entry.InputFormat.Equals("ueanim", StringComparison.OrdinalIgnoreCase) ||
+            entry.AssetClass?.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) is true ||
+            entry.AssetClass?.Equals("AnimMontage", StringComparison.OrdinalIgnoreCase) is true;
+    }
+
+    private sealed record FilteredExplorerEntries(
+        IReadOnlyList<ExplorerFileEntry> Entries,
+        int MatchCount,
+        bool IsTruncated);
 
     private static ExplorerNodeKind GetExplorerNodeKind(string segment, bool isLastSegment)
     {
@@ -415,7 +726,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private static bool IsArchiveSegment(string segment)
     {
-        return Path.GetExtension(segment).ToLowerInvariant() is ".pak" or ".ukx" or ".usx" or ".utx" or ".uax" or ".u" or ".umx" or ".unr" or ".ctm" or ".upx";
+        return Path.GetExtension(segment).ToLowerInvariant() is ".pak" or ".utoc" or ".ukx" or ".usx" or ".utx" or ".uax" or ".u" or ".umx" or ".unr" or ".ctm" or ".upx";
     }
 
 }

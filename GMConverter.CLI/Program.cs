@@ -316,7 +316,7 @@ internal static class Program
         var extension = Path.GetExtension(fullPath);
         var allowedExtensions = inputFormat switch
         {
-            "psk" => [".psk", ".pskx"],
+            "psk" => [".psk", ".pskx", ".ue4scene"],
             "mow" => [".def", ".mdl"],
             _ => new[] { $".{inputFormat}" }
         };

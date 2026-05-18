@@ -34,14 +34,18 @@ internal sealed class PSKImporter : IImporter
     private static Model ParseScene(string inputPath, ModelParseOptions options)
     {
         var manifest = ReadSceneManifest(inputPath);
-        var materialResolver = PSKMaterialResolver.Create(options.Materials);
+        // UE/Fortnite source assets are authored in centimeters, but glTF/standard mesh formats use
+        // meters — so a scene that imports with default ScaleFactor=1.0 lands 100× too large. Fold
+        // a cm→m factor into ScaleFactor for UE scenes specifically, on top of any user override.
+        var sceneOptions = options with { ScaleFactor = options.ScaleFactor * 0.01f };
+        var materialResolver = PSKMaterialResolver.Create(sceneOptions.Materials);
         List<Mesh> meshes = [];
         Dictionary<string, Material> materials = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in manifest.Entries)
         {
             var entryPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(inputPath) ?? string.Empty, entry.Path));
-            var model = ParseSingle(entryPath, options, entry.Transform, materialResolver);
+            var model = ParseSingle(entryPath, sceneOptions, entry.Transform, materialResolver);
             meshes.AddRange(model.Meshes);
 
             foreach (var material in model.Materials)
@@ -139,7 +143,8 @@ internal sealed class PSKImporter : IImporter
 
         var mesh = new Mesh(
             vertices,
-            trianglesByMaterial.Select(pair => new Submesh(pair.Key, pair.Value)).ToArray());
+            trianglesByMaterial.Select(pair => new Submesh(pair.Key, pair.Value)).ToArray(),
+            Name: modelName);
         var materials = resolvedMaterials.Length > 0
             ? resolvedMaterials
             : [new Material("default")];
@@ -645,8 +650,16 @@ internal sealed class PSKImporter : IImporter
                 normalTextureConvention: usesCueMaterial
                     ? MaterialNormalTextureConvention.DirectX
                     : MaterialNormalTextureConvention.OpenGl,
-                bakedUv0Scale: bakedUv0Scale);
+                bakedUv0Scale: bakedUv0Scale,
+                specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f);
         }
+
+        // Fortnite's SpecularMasks.R doesn't drive specular intensity in the in-game renderer (FP's
+        // shader.frag reads it into a local but never uses it). The Blender FPv4 graph wires R
+        // straight into Principled BSDF's Specular IOR Level which produces visibly too-shiny
+        // output; the user empirically calibrated ≈0.01 to match Fortnite's in-game look. Damping
+        // here at the import boundary keeps the exporters format-agnostic.
+        private const float _fortniteSpecularFactor = 0.01f;
 
         private static bool TryGetLocalSidecar(
             PSKMaterial material,

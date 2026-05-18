@@ -74,7 +74,25 @@ internal sealed class Texture : IDisposable
 
     public Texture ToSpecularFactorMask(string? textureName = null)
     {
-        return ToSingleChannelTexture(textureName ?? $"{Name}_specular_factor", channelIndex: 0);
+        // KHR_materials_specular reads the strength multiplier from the texture's ALPHA channel
+        // (per the spec: `specular = specularFactor * sample(specularTexture).a`). Fortnite's
+        // SpecularMasks store the specular strength in R, so move R -> A and leave RGB at 255 so
+        // any consumer that fetches RGB still sees a neutral white. Writing R = G = B = R-value
+        // and A = 255 (the old behavior) silently maxed every pixel's specular factor to 1.0,
+        // which is why every Fortnite material rendered uniformly glossy.
+        var output = _image.Clone(_ => { });
+        output.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                for (var x = 0; x < row.Length; x++)
+                {
+                    row[x] = new Rgba32(byte.MaxValue, byte.MaxValue, byte.MaxValue, row[x].R);
+                }
+            }
+        });
+        return new Texture(textureName ?? $"{Name}_specular_factor", output);
     }
 
     public Texture ToSourcePhongExponent(string? textureName = null)

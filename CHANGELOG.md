@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-05-19
+
 ### Added
 
 - Added a persistent on-disk scan cache for Unreal Engine 4/5 archives keyed by a fingerprint of `*.pak`, `*.utoc`, `*.ucas`, `*.sig`, and `Manifest_*.txt` sizes and modification times. Subsequent scans of an unchanged install skip the CUE4Parse mount and `AssetRegistry.bin` parse and return in milliseconds; the cache is invalidated automatically when the archive set changes and is wiped by the existing Refresh action.
@@ -220,7 +222,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.1...v1.4.0

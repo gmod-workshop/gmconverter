@@ -4,10 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-05-19
+
 ### Added
 
 - Added an Unreal Engine 4/5 Explorer profile backed by CUE4Parse for browsing archive meshes and resolving them into the existing conversion workflow.
 - Added Fortnite archive bootstrap support that fetches current AES keys and mappings metadata from UEDB when scanning an installed Fortnite content folder.
+- Added a multi-layer texture bake for Fortnite materials (`Use 2/3/4 Layers`) that rasterizes each part's UV1 mask into flat composite Diffuse, Normals, and SpecularMasks textures, with per-part output hashes so sibling mesh variants that share a material name do not collide on a single bake.
+- Added Source MDL real-world scale conversion (meters to Source units) at SMD write time so UE-derived models import at their authored physical size instead of inch-tall miniatures.
+- Added Source MDL environment-map reflection emission for materials with specular data, with the per-pixel mask packed into the normal-map alpha (`$normalmapalphaenvmapmask`) when a bump map is present so opaque glass-like surfaces are reflective without needing `$translucent`.
 
 ### Changed
 
@@ -35,7 +40,9 @@ All notable changes to this project will be documented in this file.
 - Improved Fortnite scene diagnostics with per-part transform and texture slot details in the resolve log.
 - Cleared stale UE4/UE5 per-asset export cache folders before resolving a selection so old material override sidecars cannot bleed into refreshed previews.
 - Improved CUE4Parse material texture selection by scoring texture candidates against the material name, which avoids choosing unrelated Fortnite layer, decal, snow, or global fallback textures from large material JSON sidecars.
-- Removed the glTF specular texture extension output for UE packed masks because the preview renderer does not support it and the metallic/roughness texture already carries the useful packed export data.
+- Reworked the glTF specular texture extension for UE packed masks to carry the per-pixel mask value in both RGB and alpha channels so glTF (which reads alpha for KHR_materials_specular) and Source MDL (which reads red for `$phong*`) both see the same value, and added a `Material.SpecularFactor` scalar that the PSK importer dampens for Fortnite materials so the dielectric specular response matches the subtle in-game look.
+- Migrated the texture pipeline from Magick.NET to SixLabors.ImageSharp to fix a Magick.NET encoder bug that produced 282-byte stub PNGs for baked textures, which SharpGLTF was then deduplicating across every Fortnite material.
+- Switched the CUE4Parse-Natives build to compile from the submodule's CMake target rather than vendoring a NuGet-packaged DLL, matching FortnitePorting's setup. Builds now require CMake and a C++ compiler on PATH; CI images already include both.
 - Resolved Unreal simple construction script mesh parts through the component hierarchy so child mesh transforms inherit parent scene component transforms.
 - Avoided duplicate Unreal blueprint scene parts by treating resolved simple construction script meshes as authoritative before falling back to CDO or superclass scraping.
 - Filtered origin-only duplicate Unreal scene parts when the same mesh/material/scale also resolves with a more specific component transform.
@@ -47,6 +54,9 @@ All notable changes to this project will be documented in this file.
 - Improved UE4/UE5 material import reliability by writing per-mesh resolved material sidecars with exact texture slots and preferring local sidecars during PSK import.
 - Added UE animation PSA export for `AnimSequence`, `AnimMontage`, and `AnimComposite` assets via a new Set Animation action in the Explorer that exports the animation to a PSA sidecar and sets it as the active animation on the Convert page.
 - Resolved `UBuildingTextureData.OverrideMaterial` when writing Fortnite PPID texture data sidecars so material slots that replace their base material via `OverrideMaterial` use the correct override material textures instead of the original mesh material textures.
+- Added per-part Y-axis mirror correction for Fortnite SCS root-level components (negate translation Y plus the rotation's X/Z imaginary parts so children inherit through normal composition) so wing-side, side-door, and rear-door variants land on the side of the actor pivot that matches the in-game LAAT.
+- Added PSK-level mirror handling for negative-determinant scene transforms: reverse the triangle winding so post-mirror front faces are still front, and apply the inverse-transpose of the scale to normals so mirrored meshes are lit from the correct side instead of inverted.
+- Bake the per-material `BakedUv0Scale` into SMD wedge UVs at MDL export time so tile-extended multi-layer textures sample within `[0,1]` of their baked PNG instead of running off the edge in Source (which has no equivalent of glTF's `KHR_texture_transform`).
 
 ## [1.5.0] - 2026-05-14
 
@@ -178,7 +188,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/gmod-workshop/gmconverter/compare/v1.3.0...v1.3.1

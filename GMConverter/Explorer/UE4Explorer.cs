@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using CUE4Parse.FileProvider;
@@ -90,18 +91,47 @@ internal sealed class UE4Explorer : IExplorer
 
     public IReadOnlyList<ExplorerFileEntry> Scan(ExplorerTarget target)
     {
+        using var scanScope = PerfTimer.Measure("ue4.scan", "Scan", target.FullPath);
+
         var root = Cue4ParseProviderFactory.ResolveArchiveDirectory(target.FullPath);
-        var providerContext = GetProvider(root);
-        var provider = providerContext.Provider;
-        var assetRegistryEntries = EnumerateAssetRegistryEntries(providerContext, out var assetRegistryStats).ToArray();
-        if (assetRegistryEntries.Length > 0)
+
+        // The fingerprint enumerates PAK/IoStore files and their mtimes — cheap directory IO, no
+        // provider mount, no AES, no AssetRegistry parse. If the on-disk cache matches we can skip
+        // the heavy 30s startup entirely and only pay the cost again when the game updates.
+        var fingerprint = UE4ScanCache.ComputeFingerprint(root);
+        if (UE4ScanCache.TryRead(fingerprint, out var cachedEntries))
         {
-            return assetRegistryEntries
-                .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            return cachedEntries;
         }
 
+        var providerContext = GetProvider(root);
+        var provider = providerContext.Provider;
+
+        ExplorerFileEntry[] assetRegistryEntries;
+        AssetRegistryScanStats assetRegistryStats;
+        using (PerfTimer.Measure("ue4.scan", "EnumerateAssetRegistryEntries"))
+        {
+            assetRegistryEntries = [.. EnumerateAssetRegistryEntries(providerContext, out assetRegistryStats)];
+        }
+        PerfTimer.Log("ue4.scan",
+            $"asset-registry entries={assetRegistryEntries.Length} found={assetRegistryStats.FoundCount} " +
+            $"readable={assetRegistryStats.ReadableCount} unreadable={assetRegistryStats.UnreadableCount} " +
+            $"parseFailed={assetRegistryStats.ParseFailureCount} supported={assetRegistryStats.SupportedAssetCount}");
+
+        if (assetRegistryEntries.Length > 0)
+        {
+            ExplorerFileEntry[] sorted;
+            using (PerfTimer.Measure("ue4.scan", "SortAssetRegistry"))
+            {
+                sorted = [.. assetRegistryEntries.OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)];
+            }
+            UE4ScanCache.Write(fingerprint, root, sorted);
+            return sorted;
+        }
+
+        PerfTimer.Log("ue4.scan", "fallback to per-package mesh enumeration");
         var packageFiles = provider.Files.Values.Where(IsPackageFile).Take(_maxPackageProbeCount + 1).ToArray();
+        PerfTimer.Log("ue4.scan", $"package-file candidates={packageFiles.Length}");
         if (packageFiles.Length > _maxPackageProbeCount)
         {
             var lockDetails = providerContext.Profile.GetUnavailableEncryptedArchiveMessage(provider);
@@ -122,30 +152,78 @@ internal sealed class UE4Explorer : IExplorer
                 unavailableArchiveMessage);
         }
 
-        return packageFiles
-            .SelectMany(file => EnumerateMeshEntries(provider, root, file))
-            .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        ExplorerFileEntry[] meshEntries;
+        using (PerfTimer.Measure("ue4.scan", "EnumerateMeshEntries", $"packages={packageFiles.Length}"))
+        {
+            meshEntries = [.. packageFiles
+                .SelectMany(file => EnumerateMeshEntries(provider, root, file))
+                .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)];
+        }
+        UE4ScanCache.Write(fingerprint, root, meshEntries);
+        return meshEntries;
+    }
+
+    // Conservative default: half the logical cores, capped at 4. Cold export work is a mix of
+    // CUE4Parse texture decode (CPU + native heap), our PNG writes (disk-bound), and the multi-
+    // layer baker's pixel raster (CPU). Beyond ~4 threads the wins flatten because CUE4Parse
+    // SkiaSharp allocations and disk IO start to contend. The env var lets power users tune up
+    // or down without rebuilding — set to 1 to disable parts parallelism entirely if a future
+    // regression points at a race we missed.
+    private static int ResolvePartsParallelism(int partCount)
+    {
+        var raw = Environment.GetEnvironmentVariable("GMCONVERTER_PARTS_PARALLELISM");
+        if (!string.IsNullOrEmpty(raw) &&
+            int.TryParse(raw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsed) &&
+            parsed > 0)
+        {
+            return Math.Clamp(parsed, 1, partCount);
+        }
+        var defaultDegree = Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2));
+        return Math.Min(defaultDegree, partCount);
     }
 
     public ExplorerResolvedEntry ResolveEntry(ExplorerFileEntry fileEntry)
     {
+        using var resolveScope = PerfTimer.Measure("ue4.resolve", "ResolveEntry", fileEntry.ArchiveEntryPath);
+
         if (fileEntry.ArchivePath is null || fileEntry.ArchiveEntryPath is null)
         {
             throw new GMConverterException("UE4/5 archive entry is missing asset metadata.");
         }
 
-        var provider = GetProvider(fileEntry.ArchivePath).Provider;
         var exportRoot = GetExportRoot(fileEntry);
-        ResetExportRoot(fileEntry, exportRoot);
+        var archiveRoot = Cue4ParseProviderFactory.ResolveArchiveDirectory(fileEntry.ArchivePath);
+        var archiveFingerprint = UE4ScanCache.ComputeFingerprint(archiveRoot).Hash;
 
-        var sourceExport = provider.LoadPackageObject(fileEntry.ArchiveEntryPath);
+        // Check the on-disk export cache before mounting the provider or doing any extraction.
+        // A matching sentinel means the previous resolve wrote a complete tree for this exact
+        // asset under this exact archive set; we can return the existing manifest directly and
+        // skip the minutes-long CUE4Parse export + multi-layer bake.
+        if (UE4ExportCache.TryRead(exportRoot, archiveFingerprint, out var cached))
+        {
+            return cached;
+        }
 
+        var provider = GetProvider(fileEntry.ArchivePath).Provider;
+        using (PerfTimer.Measure("ue4.resolve", "ResetExportRoot", exportRoot))
+        {
+            ResetExportRoot(fileEntry, exportRoot);
+        }
+
+        UObject sourceExport;
+        using (PerfTimer.Measure("ue4.resolve", "LoadPackageObject", fileEntry.ArchiveEntryPath))
+        {
+            sourceExport = provider.LoadPackageObject(fileEntry.ArchiveEntryPath);
+        }
+        PerfTimer.Log("ue4.resolve", $"sourceExport type={sourceExport.ExportType}");
+
+        ExplorerResolvedEntry resolvedEntry;
         if (IsExportableAnimationObject(sourceExport))
         {
+            using var animScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedAnimation");
             try
             {
-                return ExportResolvedAnimation(fileEntry, exportRoot, sourceExport);
+                resolvedEntry = ExportResolvedAnimation(fileEntry, exportRoot, sourceExport);
             }
             catch (Exception ex)
             {
@@ -153,24 +231,39 @@ internal sealed class UE4Explorer : IExplorer
                     $"UE4/5 animation export failed for {fileEntry.ArchiveEntryPath}. {ex}");
             }
         }
-
-        ResolvedUnrealMesh[] resolvedExports;
-        try
+        else
         {
-            resolvedExports = ResolveMeshExports(sourceExport, provider);
-        }
-        catch (Exception ex)
-        {
-            throw new GMConverterException(
-                $"UE4/5 archive scene resolution failed for {fileEntry.ArchiveEntryPath}. {ex}");
+            ResolvedUnrealMesh[] resolvedExports;
+            try
+            {
+                using (PerfTimer.Measure("ue4.resolve", "ResolveMeshExports"))
+                {
+                    resolvedExports = ResolveMeshExports(sourceExport, provider);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new GMConverterException(
+                    $"UE4/5 archive scene resolution failed for {fileEntry.ArchiveEntryPath}. {ex}");
+            }
+
+            PerfTimer.Log("ue4.resolve", $"resolved mesh parts={resolvedExports.Length}");
+
+            if (resolvedExports.Length == 0)
+            {
+                throw new GMConverterException(CreateUnsupportedMeshMessage(sourceExport, fileEntry.ArchiveEntryPath));
+            }
+
+            resolvedEntry = ExportResolvedScene(fileEntry, exportRoot, resolvedExports);
         }
 
-        if (resolvedExports.Length == 0)
-        {
-            throw new GMConverterException(CreateUnsupportedMeshMessage(sourceExport, fileEntry.ArchiveEntryPath));
-        }
-
-        return ExportResolvedScene(fileEntry, exportRoot, resolvedExports);
+        UE4ExportCache.Write(
+            exportRoot,
+            archiveFingerprint,
+            fileEntry.ArchivePath,
+            fileEntry.ArchiveEntryPath,
+            resolvedEntry);
+        return resolvedEntry;
     }
 
     private static bool IsExportableAnimationObject(UObject export)
@@ -195,8 +288,14 @@ internal sealed class UE4Explorer : IExplorer
             _ => throw new GMConverterException($"Unsupported animation type for PSA export: {animExport.ExportType}")
         };
 
-        animExporter.TryWriteToDir(new DirectoryInfo(animRoot), out _, out _);
-        WaitForExportTree(animRoot);
+        using (PerfTimer.Measure("ue4.export", "AnimExporter.TryWriteToDir", animExport.ExportType))
+        {
+            animExporter.TryWriteToDir(new DirectoryInfo(animRoot), out _, out _);
+        }
+        using (PerfTimer.Measure("ue4.export", "WaitForExportTree", animRoot))
+        {
+            WaitForExportTree(animRoot);
+        }
 
         var psaPath = Directory
             .EnumerateFiles(animRoot, "*.psa", SearchOption.AllDirectories)
@@ -215,36 +314,114 @@ internal sealed class UE4Explorer : IExplorer
         string exportRoot,
         IReadOnlyList<ResolvedUnrealMesh> resolvedExports)
     {
-        List<UnrealSceneManifestEntry> manifestEntries = [];
-        List<UnrealScenePartSummary> partSummaries = [];
+        using var sceneScope = PerfTimer.Measure(
+            "ue4.export",
+            "ExportResolvedScene",
+            $"parts={resolvedExports.Count}");
 
-        for (var i = 0; i < resolvedExports.Count; i++)
+        // One cache per scene. Parts within a scene heavily reuse the same source textures, so a
+        // texture decoded for part 1 is also wanted by parts 2..N. The cache is thread-safe so it
+        // handles the concurrent-parts case below.
+        var sessionCache = new ExportSessionCache();
+
+        // Per-UObject lock map: MaterialOverrideScope mutates state on the underlying UStaticMesh
+        // / USkeletalMesh while its using-scope is open, and CUE4Parse's Exporter reads from the
+        // same UObject during TryWriteToDir. Both are unsafe to run concurrently for parts that
+        // share a UObject (e.g. a Fortnite playset prop placed multiple times with different
+        // transforms). Locking on a per-UObject sentinel object means parts on distinct UObjects
+        // parallelize freely while same-UObject parts serialize. ConditionalWeakTable would let
+        // the locks GC with the UObjects, but the scene lives for the duration of this method so
+        // a plain ConcurrentDictionary is fine and simpler.
+        var perUObjectLocks = new ConcurrentDictionary<UObject, object>();
+
+        // Capture per-part outputs by index so the final manifest stays in deterministic order
+        // regardless of which thread finishes which part first.
+        var manifestEntriesByIndex = new UnrealSceneManifestEntry[resolvedExports.Count];
+        var partSummariesByIndex = new UnrealScenePartSummary[resolvedExports.Count];
+
+        var parallelism = ResolvePartsParallelism(resolvedExports.Count);
+        PerfTimer.Log(
+            "ue4.export",
+            $"parts parallelism degree={parallelism} unique-uobjects={resolvedExports.Select(e => e.Export).Distinct().Count()}");
+
+        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = parallelism };
+        try
         {
-            var resolvedExport = resolvedExports[i];
-            var partRoot = Path.Combine(exportRoot, "__parts", i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
-            var exportedPart = ExportResolvedMeshPart(fileEntry, resolvedExport, partRoot);
-            try
+            Parallel.For(0, resolvedExports.Count, parallelOptions, i =>
             {
-                WriteResolvedMaterialOverrides(resolvedExport, exportedPart.MeshPath);
-                WriteTextureDataOverrides(resolvedExport, exportedPart.MeshPath, exportRoot);
-            }
-            catch (Exception ex)
-            {
-                throw new GMConverterException(
-                    $"UE4/5 archive material override export failed for {fileEntry.ArchiveEntryPath}. " +
-                    $"Resolved export type: {resolvedExport.Export.ExportType}. {ex}");
-            }
+                var resolvedExport = resolvedExports[i];
+                var partDetail = $"part {i + 1}/{resolvedExports.Count} type={resolvedExport.Export.ExportType}";
+                using var partScope = PerfTimer.Measure("ue4.export", "Part", partDetail);
 
-            manifestEntries.Add(new UnrealSceneManifestEntry(
-                Path.GetRelativePath(exportRoot, exportedPart.MeshPath),
-                resolvedExport.Transform));
-            partSummaries.Add(CreatePartSummary(resolvedExport, exportedPart));
+                var partRoot = Path.Combine(exportRoot, "__parts", i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
+
+                // Serialize all UObject-touching work for parts that share a UObject. The lock
+                // scope is intentionally coarse: ApplyMaterialOverrides, CUE4Parse Exporter, and
+                // GetResolvedMaterialInterfaces all read or mutate the same UObject's material
+                // arrays. Splitting the lock finer would require coordinating multiple critical
+                // sections per part, which is not worth the complexity for the cost saved.
+                var uObjectLock = perUObjectLocks.GetOrAdd(resolvedExport.Export, _ => new object());
+                lock (uObjectLock)
+                {
+                    UnrealMeshExportResult exportedPart;
+                    using (PerfTimer.Measure("ue4.export", "ExportResolvedMeshPart", partDetail))
+                    {
+                        exportedPart = ExportResolvedMeshPart(fileEntry, resolvedExport, partRoot);
+                    }
+
+                    try
+                    {
+                        using (PerfTimer.Measure("ue4.export", "WriteResolvedMaterialOverrides", partDetail))
+                        {
+                            WriteResolvedMaterialOverrides(resolvedExport, exportedPart.MeshPath, sessionCache);
+                        }
+                        using (PerfTimer.Measure("ue4.export", "WriteTextureDataOverrides", partDetail))
+                        {
+                            WriteTextureDataOverrides(resolvedExport, exportedPart.MeshPath, exportRoot, sessionCache);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new GMConverterException(
+                            $"UE4/5 archive material override export failed for {fileEntry.ArchiveEntryPath}. " +
+                            $"Resolved export type: {resolvedExport.Export.ExportType}. {ex}");
+                    }
+
+                    manifestEntriesByIndex[i] = new UnrealSceneManifestEntry(
+                        Path.GetRelativePath(exportRoot, exportedPart.MeshPath),
+                        resolvedExport.Transform);
+                    partSummariesByIndex[i] = CreatePartSummary(resolvedExport, exportedPart);
+                }
+            });
         }
+        catch (AggregateException ex)
+        {
+            // Parallel.For wraps body exceptions in an AggregateException. Unwrap to the first
+            // domain-meaningful exception so callers see the same error shape they got from the
+            // prior sequential implementation.
+            var inner = ex.Flatten().InnerExceptions.OfType<GMConverterException>().FirstOrDefault()
+                ?? ex.Flatten().InnerException
+                ?? ex;
+            throw inner;
+        }
+
+        List<UnrealSceneManifestEntry> manifestEntries = [.. manifestEntriesByIndex];
+        List<UnrealScenePartSummary> partSummaries = [.. partSummariesByIndex];
+
+        PerfTimer.Log(
+            "ue4.export",
+            $"session cache entries={sessionCache.Count} hits={sessionCache.HitCount} misses={sessionCache.MissCount}");
 
         var manifestPath = Path.Combine(exportRoot, SanitizeObjectPath(fileEntry.ArchiveEntryPath ?? "UnrealScene") + ".ue4scene");
         var manifest = new UnrealSceneManifest(1, Path.GetFileNameWithoutExtension(manifestPath), manifestEntries);
-        File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, _sceneManifestJsonOptions));
-        WaitForExportTree(exportRoot);
+        using (PerfTimer.Measure("ue4.export", "WriteManifest"))
+        {
+            File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, _sceneManifestJsonOptions));
+        }
+        using (PerfTimer.Measure("ue4.export", "WaitForExportTree"))
+        {
+            WaitForExportTree(exportRoot);
+        }
         return new ExplorerResolvedEntry(manifestPath, exportRoot, Details: CreateResolveDetails(exportRoot, partSummaries));
     }
 
@@ -274,10 +451,23 @@ internal sealed class UE4Explorer : IExplorer
         Directory.CreateDirectory(partRoot);
         using (ApplyMaterialOverrides(resolvedExport.Export, resolvedExport.OverrideMaterials))
         {
-            var exporter = new Exporter(resolvedExport.Export, CreateExporterOptions(exportMaterials));
+            Exporter exporter;
+            using (PerfTimer.Measure(
+                "ue4.export",
+                "CUE4Parse.Exporter.ctor",
+                $"exportMaterials={exportMaterials} type={resolvedExport.Export.ExportType}"))
+            {
+                exporter = new Exporter(resolvedExport.Export, CreateExporterOptions(exportMaterials));
+            }
             try
             {
-                exporter.TryWriteToDir(new DirectoryInfo(partRoot), out _, out _);
+                using (PerfTimer.Measure(
+                    "ue4.export",
+                    "CUE4Parse.Exporter.TryWriteToDir",
+                    $"exportMaterials={exportMaterials} type={resolvedExport.Export.ExportType}"))
+                {
+                    exporter.TryWriteToDir(new DirectoryInfo(partRoot), out _, out _);
+                }
             }
             catch (Exception ex)
             {
@@ -287,8 +477,15 @@ internal sealed class UE4Explorer : IExplorer
             }
         }
 
-        var meshPath = WaitForExportedMesh(partRoot)
-            ?? throw new GMConverterException($"CUE4Parse did not export a PSK/PSKX mesh for: {fileEntry.ArchiveEntryPath}");
+        string? meshPath;
+        using (PerfTimer.Measure("ue4.export", "WaitForExportedMesh", partRoot))
+        {
+            meshPath = WaitForExportedMesh(partRoot);
+        }
+        if (meshPath is null)
+        {
+            throw new GMConverterException($"CUE4Parse did not export a PSK/PSKX mesh for: {fileEntry.ArchiveEntryPath}");
+        }
         return new UnrealMeshExportResult(meshPath, usedMeshOnlyFallback);
     }
 
@@ -368,7 +565,11 @@ internal sealed class UE4Explorer : IExplorer
             $"{textureFiles} texture file(s), {meshOnlyFallbacks} mesh-only fallback(s). Parts: {string.Join("; ", previewParts)}{suffix}.";
     }
 
-    private static void WriteTextureDataOverrides(ResolvedUnrealMesh resolvedExport, string meshPath, string exportRoot)
+    private static void WriteTextureDataOverrides(
+        ResolvedUnrealMesh resolvedExport,
+        string meshPath,
+        string exportRoot,
+        ExportSessionCache sessionCache)
     {
         if (resolvedExport.TextureData is not { Count: > 0 })
         {
@@ -397,7 +598,6 @@ internal sealed class UE4Explorer : IExplorer
                 continue;
             }
             Dictionary<string, string> textures = new(StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, string> textureCache = new(StringComparer.OrdinalIgnoreCase);
 
             // When OverrideMaterial is set it replaces the base material at this slot. Resolve its
             // textures first so the direct Diffuse/Normal/Specular fields can overlay them below.
@@ -413,15 +613,15 @@ internal sealed class UE4Explorer : IExplorer
                     materialName,
                     Path.GetFileNameWithoutExtension(meshPath),
                     textures,
-                    textureCache);
+                    sessionCache);
             }
 
             // Direct texture references from the TextureData entry are explicit UE assignments and
             // take precedence — record them under canonical channel keys so the importer's direct
             // slot lookup picks them before falling through to the parameter-name scoring path.
-            AddTextureReference(textures, "Diffuse", textureData.Diffuse, overrideDirectory);
-            AddTextureReference(textures, "Normal", textureData.Normal, overrideDirectory);
-            AddTextureReference(textures, "Specular", textureData.Specular, overrideDirectory);
+            AddTextureReference(textures, "Diffuse", textureData.Diffuse, overrideDirectory, sessionCache);
+            AddTextureReference(textures, "Normal", textureData.Normal, overrideDirectory, sessionCache);
+            AddTextureReference(textures, "Specular", textureData.Specular, overrideDirectory, sessionCache);
 
             if (textures.Count == 0)
             {
@@ -435,7 +635,10 @@ internal sealed class UE4Explorer : IExplorer
         }
     }
 
-    private static void WriteResolvedMaterialOverrides(ResolvedUnrealMesh resolvedExport, string meshPath)
+    private static void WriteResolvedMaterialOverrides(
+        ResolvedUnrealMesh resolvedExport,
+        string meshPath,
+        ExportSessionCache sessionCache)
     {
         var outputDirectory = Path.GetDirectoryName(meshPath);
         if (string.IsNullOrWhiteSpace(outputDirectory))
@@ -452,6 +655,7 @@ internal sealed class UE4Explorer : IExplorer
             // by material name, so duplicate sections sharing a material just rewrite the same file.
             var materialInterfaces = GetResolvedMaterialInterfaces(resolvedExport.Export);
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var material in materialInterfaces)
             {
                 if (material is null || !written.Add(material.Name))
@@ -459,18 +663,25 @@ internal sealed class UE4Explorer : IExplorer
                     continue;
                 }
 
+                using var materialScope = PerfTimer.Measure("ue4.export", "Material", material.Name);
+
                 var parameters = new CMaterialParams2();
-                material.GetParams(parameters, EMaterialFormat.AllLayers);
+                using (PerfTimer.Measure("ue4.export", "Material.GetParams", material.Name))
+                {
+                    material.GetParams(parameters, EMaterialFormat.AllLayers);
+                }
 
                 Dictionary<string, string> textures = new(StringComparer.OrdinalIgnoreCase);
-                Dictionary<string, string> textureCache = new(StringComparer.OrdinalIgnoreCase);
-                DumpMaterialTextureParameters(
-                    parameters,
-                    outputDirectory,
-                    material.Name,
-                    Path.GetFileNameWithoutExtension(meshPath),
-                    textures,
-                    textureCache);
+                using (PerfTimer.Measure("ue4.export", "DumpMaterialTextureParameters", material.Name))
+                {
+                    DumpMaterialTextureParameters(
+                        parameters,
+                        outputDirectory,
+                        material.Name,
+                        Path.GetFileNameWithoutExtension(meshPath),
+                        textures,
+                        sessionCache);
+                }
 
                 var colors = SelectMaterialColors(parameters, material.Name);
                 if (textures.Count == 0 && colors.Count == 0)
@@ -494,12 +705,16 @@ internal sealed class UE4Explorer : IExplorer
             // skipped (no-op).
             try
             {
-                var materialInterfacesForBake = GetResolvedMaterialInterfaces(resolvedExport.Export);
-                MultiLayerBaker.BakeMultiLayerMaterials(
-                    resolvedExport.Export,
-                    materialInterfacesForBake,
-                    outputDirectory,
-                    _sceneManifestJsonOptions);
+                using (PerfTimer.Measure("ue4.export", "BakeMultiLayerMaterials"))
+                {
+                    var materialInterfacesForBake = GetResolvedMaterialInterfaces(resolvedExport.Export);
+                    MultiLayerBaker.BakeMultiLayerMaterials(
+                        resolvedExport.Export,
+                        materialInterfacesForBake,
+                        outputDirectory,
+                        _sceneManifestJsonOptions,
+                        sessionCache);
+                }
             }
             catch
             {
@@ -605,7 +820,7 @@ internal sealed class UE4Explorer : IExplorer
         string materialName,
         string meshName,
         Dictionary<string, string> textures,
-        Dictionary<string, string> writtenTextureCache)
+        ExportSessionCache sessionCache)
     {
         foreach (var (paramName, unrealMaterial) in parameters.Textures)
         {
@@ -614,7 +829,7 @@ internal sealed class UE4Explorer : IExplorer
                 continue;
             }
 
-            if (TryGetOrWriteTexture(texture2D, outputDirectory, writtenTextureCache, out var textureName))
+            if (TryGetOrWriteTexture(texture2D, outputDirectory, sessionCache, out var textureName))
             {
                 textures[paramName] = textureName;
             }
@@ -810,40 +1025,84 @@ internal sealed class UE4Explorer : IExplorer
         return score;
     }
 
+    // Cache category for memoized UE texture decodes. The cache now stores DecodedImage records
+    // (raw RGBA pixels + dimensions + lazy PNG) instead of the prior PNG-bytes-only payload. This
+    // lets the multi-layer baker skip the encode-then-decode roundtrip when loading layers, while
+    // consumers that still need PNG bytes on disk (TryGetOrWriteTexture) just call GetOrEncodePng
+    // on the cached instance — encoded exactly once per unique source texture for the session.
+    internal const string TextureDecodeCacheCategory = "ue4.texture-decode";
+
+    // PNG encoder used when a consumer asks DecodedImage to lazily produce PNG bytes for disk
+    // output. PngCompressionLevel.Level1 is the same setting Texture.ToPngBytes uses — it's the
+    // sweet spot between encode speed and file size for transient export-cache artifacts.
+    private static readonly SixLabors.ImageSharp.Formats.Png.PngEncoder _exportPngEncoder = new()
+    {
+        CompressionLevel = SixLabors.ImageSharp.Formats.Png.PngCompressionLevel.Level1
+    };
+
+    internal static byte[] EncodePngFromDecodedImage(DecodedImage image)
+    {
+        if (!image.IsValid)
+        {
+            return [];
+        }
+
+        // Format is normalized to Rgba8888 by Cue4ParseImageDecoder, so a direct LoadPixelData is
+        // safe. If a future producer feeds Bgra8888 we'd swap before encoding here.
+        using var sharpImage = SixLabors.ImageSharp.Image.LoadPixelData<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+            image.Pixels,
+            image.Width,
+            image.Height);
+        using var ms = new MemoryStream();
+        sharpImage.Save(ms, _exportPngEncoder);
+        return ms.ToArray();
+    }
+
     private static bool TryGetOrWriteTexture(
         UTexture2D texture,
         string outputDirectory,
-        Dictionary<string, string> cache,
+        ExportSessionCache sessionCache,
         out string textureName)
     {
         var cacheKey = texture.GetPathName();
-        if (cache.TryGetValue(cacheKey, out var cached))
-        {
-            textureName = cached;
-            return true;
-        }
+        var decoded = sessionCache.GetOrCompute(
+            TextureDecodeCacheCategory,
+            cacheKey,
+            () => Cue4ParseImageDecoder.Decode(texture));
 
-        try
+        if (!decoded.IsValid)
         {
-            if (texture.Decode(ETexturePlatform.DesktopMobile) is not { } bitmap)
-            {
-                textureName = string.Empty;
-                return false;
-            }
-
-            var name = CreateTextureOverrideName(texture);
-            var imageData = bitmap.Encode(ETextureFormat.Png, true, out var extension);
-            File.WriteAllBytes(Path.Combine(outputDirectory, name + "." + extension), imageData);
-            cache[cacheKey] = name;
-            textureName = name;
-            return true;
-        }
-        catch
-        {
-            // Missing optional texture bulk data should not prevent the mesh from previewing.
             textureName = string.Empty;
             return false;
         }
+
+        // PNG encode runs at most once per unique source texture for the session (lazy memoized on
+        // the DecodedImage instance). Subsequent parts that need this same texture's PNG bytes
+        // pick up the cached encode result immediately.
+        var pngBytes = decoded.GetOrEncodePng(EncodePngFromDecodedImage);
+        if (pngBytes.Length == 0)
+        {
+            textureName = string.Empty;
+            return false;
+        }
+
+        var name = CreateTextureOverrideName(texture);
+        var outputPath = Path.Combine(outputDirectory, name + ".png");
+        try
+        {
+            // File.WriteAllBytes is idempotent on overwrite; an existing identical-content file
+            // simply gets rewritten. We could add a File.Exists short-circuit but the cost of the
+            // probe roughly equals the cost of the write for a 1-4 MB PNG.
+            File.WriteAllBytes(outputPath, pngBytes);
+        }
+        catch
+        {
+            textureName = string.Empty;
+            return false;
+        }
+
+        textureName = name;
+        return true;
     }
 
     private static Dictionary<string, UnrealMaterialColorOverride> SelectMaterialColors(
@@ -888,7 +1147,8 @@ internal sealed class UE4Explorer : IExplorer
         Dictionary<string, string> textures,
         string channel,
         FPackageIndex textureIndex,
-        string outputDirectory)
+        string outputDirectory,
+        ExportSessionCache sessionCache)
     {
         if (textureIndex.IsNull ||
             !TryLoadPackageIndex(textureIndex, out var export) ||
@@ -899,7 +1159,7 @@ internal sealed class UE4Explorer : IExplorer
 
         try
         {
-            AddTextureReference(textures, channel, texture, outputDirectory);
+            AddTextureReference(textures, channel, texture, outputDirectory, sessionCache);
         }
         catch
         {
@@ -911,24 +1171,17 @@ internal sealed class UE4Explorer : IExplorer
         Dictionary<string, string> textures,
         string channel,
         UTexture2D texture,
-        string outputDirectory)
+        string outputDirectory,
+        ExportSessionCache sessionCache)
     {
-        try
+        // Reuse the same decode-memoization path as TryGetOrWriteTexture so a texture referenced
+        // both as a material parameter and as a direct TextureData channel pays the decode cost
+        // once for the whole scene.
+        if (!TryGetOrWriteTexture(texture, outputDirectory, sessionCache, out var textureName))
         {
-            if (texture.Decode(ETexturePlatform.DesktopMobile) is not { } bitmap)
-            {
-                return;
-            }
-
-            var textureName = CreateTextureOverrideName(texture);
-            var imageData = bitmap.Encode(ETextureFormat.Png, true, out var extension);
-            File.WriteAllBytes(Path.Combine(outputDirectory, textureName + "." + extension), imageData);
-            textures[channel] = textureName;
+            return;
         }
-        catch
-        {
-            // Missing optional texture bulk data should not prevent the mesh from previewing.
-        }
+        textures[channel] = textureName;
     }
 
     private static string CreateTextureOverrideName(UTexture texture)
@@ -950,6 +1203,7 @@ internal sealed class UE4Explorer : IExplorer
         {
             _providerCache.Clear();
         }
+        UE4ScanCache.Clear();
     }
 
     private IEnumerable<ExplorerFileEntry> EnumerateMeshEntries(DefaultFileProvider provider, string root, GameFile file)
@@ -1089,15 +1343,19 @@ internal sealed class UE4Explorer : IExplorer
 
     private Cue4ParseProviderContext GetProvider(string root)
     {
+        using var scope = PerfTimer.Measure("ue4.provider", "GetProvider", root);
+
         var cacheKey = ProviderCacheKey(root);
         lock (_cacheLock)
         {
             if (_providerCache.TryGetValue(cacheKey, out var provider))
             {
+                PerfTimer.Log("ue4.provider", "GetProvider cache HIT");
                 return provider;
             }
         }
 
+        PerfTimer.Log("ue4.provider", "GetProvider cache MISS — building");
         var loadedProvider = Cue4ParseProviderFactory.Create(root);
         lock (_cacheLock)
         {
@@ -2399,12 +2657,19 @@ internal sealed class UE4Explorer : IExplorer
         }
     }
 
+    // CUE4Parse's Exporter.TryWriteToDir is synchronous, so the PSK should be on disk and flushed
+    // by the time it returns. The poll-until-stable pattern is defensive against any internal
+    // buffering, but a 100 ms cadence dominates a 22-part resolve (≈5 s of pure sleep). 10 ms
+    // preserves the two-iteration stability check while reducing the per-part floor by an order
+    // of magnitude.
+    private const int _exportPollMillis = 10;
+
     private static string? WaitForExportedMesh(string exportRoot)
     {
         string? previousPath = null;
         long previousLength = -1;
 
-        for (var attempt = 0; attempt < 50; attempt++)
+        for (var attempt = 0; attempt < 500; attempt++)
         {
             var meshPath = Directory
                 .EnumerateFiles(exportRoot, "*", SearchOption.AllDirectories)
@@ -2426,7 +2691,7 @@ internal sealed class UE4Explorer : IExplorer
                 previousLength = length;
             }
 
-            Thread.Sleep(100);
+            Thread.Sleep(_exportPollMillis);
         }
 
         return null;
@@ -2435,7 +2700,7 @@ internal sealed class UE4Explorer : IExplorer
     private static void WaitForExportTree(string exportRoot)
     {
         long previousTotalLength = -1;
-        for (var attempt = 0; attempt < 10; attempt++)
+        for (var attempt = 0; attempt < 100; attempt++)
         {
             var files = Directory.EnumerateFiles(exportRoot, "*", SearchOption.AllDirectories).ToArray();
             var totalLength = files.Sum(path => new FileInfo(path).Length);
@@ -2445,7 +2710,7 @@ internal sealed class UE4Explorer : IExplorer
             }
 
             previousTotalLength = totalLength;
-            Thread.Sleep(100);
+            Thread.Sleep(_exportPollMillis);
         }
     }
 
@@ -2466,17 +2731,11 @@ internal sealed class UE4Explorer : IExplorer
             throw new GMConverterException($"Refusing to clear unexpected UE4/5 export cache path: {fullExportRoot}");
         }
 
-        // Opt-in cache reuse: setting `GMCONVERTER_KEEP_EXPORT_CACHE=1` skips the wipe so
-        // subsequent re-exports of the same asset reuse the previously-extracted PSK and source
-        // textures. CUE4Parse pak mounting + texture decoding is the slow part of the pipeline;
-        // sidecars, bakes, and the .glb writer overwrite their outputs in place. Cuts iteration
-        // time from minutes to seconds when only the bake/exporter code has changed.
-        var keepCache = Environment.GetEnvironmentVariable("GMCONVERTER_KEEP_EXPORT_CACHE");
-        var shouldKeep = !string.IsNullOrEmpty(keepCache) &&
-            !keepCache.Equals("0", StringComparison.Ordinal) &&
-            !keepCache.Equals("false", StringComparison.OrdinalIgnoreCase);
-
-        if (!shouldKeep && Directory.Exists(fullExportRoot))
+        // Always wipe on a cache miss. Reuse is now governed by UE4ExportCache: ResolveEntry only
+        // reaches this point when the sentinel was absent or mismatched, which means anything
+        // already in this directory is stale (different archive fingerprint or tool version) and
+        // must not be allowed to bleed into the fresh export.
+        if (Directory.Exists(fullExportRoot))
         {
             Directory.Delete(fullExportRoot, recursive: true);
         }

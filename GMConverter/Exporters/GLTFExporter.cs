@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using GMConverter.Common;
 using GMConverter.Geometry;
 using SharpGLTF.Geometry.VertexTypes;
@@ -26,10 +28,27 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
     public void Export(Model model, string outputDirectory, string baseName, GLTFExportOptions options)
     {
+        using var exportScope = PerfTimer.Measure(
+            "gltf.export",
+            "Export",
+            $"meshes={model.Meshes.Count} materials={model.Materials.Count} textures={model.Textures.Count}");
+
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);
         var extension = options.Binary ? ".glb" : ".gltf";
         var outputPath = Path.Combine(outputDirectory, $"{safeBaseName}{extension}");
-        var materialBuilders = BuildMaterials(model);
+
+        // Per-Export memoization: the same source Texture instance can appear in multiple Materials
+        // (e.g. a normal map shared across body and arms). Calling Texture.ToPngBytes() re-runs an
+        // ImageSharp PNG encode each time — for a 2K-4K texture that's 50-200 ms each. Cache by
+        // reference identity so each unique Texture pays the encode once per Export call. Cleared
+        // when this method returns so we don't leak references across exports.
+        var encodeCache = new ConditionalWeakTable<Texture, byte[]>();
+        Dictionary<string, MaterialBuilder> materialBuilders;
+        using (PerfTimer.Measure("gltf.export", "BuildMaterials"))
+        {
+            materialBuilders = BuildMaterials(model, encodeCache);
+        }
+
         var scene = new SceneBuilder(model.Name);
         var hasSkeleton = model.Skeleton is { Bones.Count: > 0 };
         var isSkinned = CanExportSkin(model);
@@ -37,33 +56,40 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
         Directory.CreateDirectory(outputDirectory);
 
-        for (var meshIndex = 0; meshIndex < model.Meshes.Count; meshIndex++)
+        using (PerfTimer.Measure("gltf.export", "BuildScene", $"meshes={model.Meshes.Count}"))
         {
-            var mesh = model.Meshes[meshIndex];
-            var nodeName = string.IsNullOrWhiteSpace(mesh.Name)
-                ? FormattableString.Invariant($"mesh_{meshIndex}")
-                : mesh.Name;
-            // The scene node — not the mesh data block — is what Blender uses as the object name
-            // on import, so build it explicitly with a name and attach the mesh to it.
-            var node = new NodeBuilder(nodeName);
-            if (isSkinned)
+            for (var meshIndex = 0; meshIndex < model.Meshes.Count; meshIndex++)
             {
-                var meshBuilder = BuildSkinnedMesh(mesh, meshIndex, materialBuilders, model.Skeleton!.Bones.Count);
-                scene.AddSkinnedMesh(meshBuilder, node.WorldMatrix, jointNodes!);
+                var mesh = model.Meshes[meshIndex];
+                var nodeName = string.IsNullOrWhiteSpace(mesh.Name)
+                    ? FormattableString.Invariant($"mesh_{meshIndex}")
+                    : mesh.Name;
+                // The scene node — not the mesh data block — is what Blender uses as the object
+                // name on import, so build it explicitly with a name and attach the mesh to it.
+                var node = new NodeBuilder(nodeName);
+                if (isSkinned)
+                {
+                    var meshBuilder = BuildSkinnedMesh(mesh, meshIndex, materialBuilders, model.Skeleton!.Bones.Count);
+                    scene.AddSkinnedMesh(meshBuilder, node.WorldMatrix, jointNodes!);
+                }
+                else
+                {
+                    var meshBuilder = BuildMesh(mesh, meshIndex, materialBuilders);
+                    scene.AddRigidMesh(meshBuilder, node);
+                }
             }
-            else
+
+            if (jointNodes is not null)
             {
-                var meshBuilder = BuildMesh(mesh, meshIndex, materialBuilders);
-                scene.AddRigidMesh(meshBuilder, node);
+                AddAnimations(model, jointNodes);
             }
         }
 
-        if (jointNodes is not null)
+        SharpGLTF.Schema2.ModelRoot gltf;
+        using (PerfTimer.Measure("gltf.export", "scene.ToGltf2"))
         {
-            AddAnimations(model, jointNodes);
+            gltf = scene.ToGltf2();
         }
-
-        var gltf = scene.ToGltf2();
         ApplyTextureSamplerDefaults(gltf);
 
         var settings = new WriteSettings
@@ -72,13 +98,16 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
             MergeBuffers = true
         };
 
-        if (options.Binary)
+        using (PerfTimer.Measure("gltf.export", options.Binary ? "SaveGLB" : "SaveGLTF", outputPath))
         {
-            gltf.SaveGLB(outputPath, settings);
-        }
-        else
-        {
-            gltf.SaveGLTF(outputPath, settings);
+            if (options.Binary)
+            {
+                gltf.SaveGLB(outputPath, settings);
+            }
+            else
+            {
+                gltf.SaveGLTF(outputPath, settings);
+            }
         }
     }
 
@@ -291,14 +320,39 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         return keyframes.Any(keyframe => Vector3.DistanceSquared(keyframe.Transform.Scale, Vector3.One) > 0.000001f);
     }
 
-    private static Dictionary<string, MaterialBuilder> BuildMaterials(Model model)
+    private static Dictionary<string, MaterialBuilder> BuildMaterials(
+        Model model,
+        ConditionalWeakTable<Texture, byte[]> encodeCache)
     {
-        Dictionary<string, MaterialBuilder> materialBuilders = new(StringComparer.OrdinalIgnoreCase);
+        // Derived-texture caches: WithOpenGlNormalMap / ToGltfMetallicRoughness / ToSpecularFactorMask
+        // each produce a new Texture instance per call (Clone + pixel walk). When the same source
+        // texture is referenced by N materials, the naive path runs that work N times and the
+        // encodeCache can't dedup the encoded PNGs either (different Texture identity per call).
+        // Caching by source texture identity collapses each derived variant to one Clone+walk per
+        // unique source, which then memoizes through encodeCache on subsequent material lookups.
+        // ConditionalWeakTable.GetValue is documented as thread-safe — multiple parallel materials
+        // racing for the same source texture all see a single derivation.
+        var normalGlCache = new ConditionalWeakTable<Texture, Texture>();
+        var metallicRoughnessCache = new ConditionalWeakTable<Texture, Texture>();
+        var specularFactorCache = new ConditionalWeakTable<Texture, Texture>();
 
-        foreach (var material in model.Materials)
+        // Parallelize across materials: each BuildMaterial constructs an independent MaterialBuilder
+        // and only reads the shared texture/derived caches, so there's no write-write contention.
+        // The 4.5s sequential cost on a 14-material Fortnite scene collapses to roughly the slowest
+        // single material (~800 ms) once the work is spread across cores.
+        var concurrent = new ConcurrentDictionary<string, MaterialBuilder>(StringComparer.OrdinalIgnoreCase);
+        Parallel.ForEach(model.Materials, material =>
         {
-            materialBuilders[material.Name] = BuildMaterial(material);
-        }
+            var builder = BuildMaterial(
+                material,
+                encodeCache,
+                normalGlCache,
+                metallicRoughnessCache,
+                specularFactorCache);
+            concurrent[material.Name] = builder;
+        });
+
+        var materialBuilders = new Dictionary<string, MaterialBuilder>(concurrent, StringComparer.OrdinalIgnoreCase);
 
         if (!materialBuilders.ContainsKey("default"))
         {
@@ -308,11 +362,118 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         return materialBuilders;
     }
 
-    private static MaterialBuilder BuildMaterial(Material material)
+    // Gated behind GMCONVERTER_GLTF_DEBUG_DUMP=1. The dump re-encodes every material's textures to
+    // PNG and SHA-hashes them, which dominates Export time on multi-part Fortnite scenes — a
+    // full-resolution texture re-encode is 50-200 ms each, and BuildMaterial gets called per part.
+    // The diagnostic is only useful when chasing texture corruption between PSKImporter and the
+    // .glb writer; off by default.
+    private static readonly bool _emitDebugDump =
+        Environment.GetEnvironmentVariable("GMCONVERTER_GLTF_DEBUG_DUMP") is { Length: > 0 } flag &&
+        !flag.Equals("0", StringComparison.Ordinal) &&
+        !flag.Equals("false", StringComparison.OrdinalIgnoreCase);
+
+    private static byte[] EncodeOnce(Texture texture, ConditionalWeakTable<Texture, byte[]> encodeCache)
     {
-        // Diagnostic: dump what GLTFExporter sees on the incoming Material object. Cross-reference
-        // with the corresponding .resolve.log to detect whether textures are getting corrupted in
-        // SharpGLTF's image deduplication or somewhere between PSKImporter and the .glb writer.
+        if (encodeCache.TryGetValue(texture, out var cached))
+        {
+            return cached;
+        }
+        var bytes = texture.ToPngBytes();
+        encodeCache.Add(texture, bytes);
+        return bytes;
+    }
+
+    private static MaterialBuilder BuildMaterial(
+        Material material,
+        ConditionalWeakTable<Texture, byte[]> encodeCache,
+        ConditionalWeakTable<Texture, Texture> normalGlCache,
+        ConditionalWeakTable<Texture, Texture> metallicRoughnessCache,
+        ConditionalWeakTable<Texture, Texture> specularFactorCache)
+    {
+        if (_emitDebugDump)
+        {
+            WriteDebugDump(material);
+        }
+
+        var builder = BuildDefaultMaterial(material.Name);
+
+        // KHR_texture_transform scale, set when MultiLayerBaker emitted a tile-extended texture
+        // and we need to remap the mesh's tiled UV0 into the texture's [0,1] sample range.
+        var uvScale = material.BakedUv0Scale;
+
+        if (material.DiffuseTexture is not null)
+        {
+            var image = ImageBuilder.From(new MemoryImage(EncodeOnce(material.DiffuseTexture, encodeCache)), material.DiffuseTexture.Name);
+            builder.WithBaseColor(image, Vector4.One);
+            ApplyUvScale(builder.UseChannel(KnownChannel.BaseColor), uvScale);
+        }
+
+        if (material.NormalTexture is not null)
+        {
+            var normalTexture = material.NormalTextureConvention == MaterialNormalTextureConvention.DirectX
+                ? normalGlCache.GetValue(material.NormalTexture, static source => source.WithOpenGlNormalMap())
+                : material.NormalTexture;
+            var image = ImageBuilder.From(new MemoryImage(EncodeOnce(normalTexture, encodeCache)), normalTexture.Name);
+            builder.WithNormal(image, 1.0f);
+            ApplyUvScale(builder.UseChannel(KnownChannel.Normal), uvScale);
+        }
+
+        if (material.SpecularTexture is not null &&
+            material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+        {
+            var metallicRoughnessTexture = metallicRoughnessCache.GetValue(
+                material.SpecularTexture,
+                static source => source.ToGltfMetallicRoughness());
+            var metallicRoughnessImage = ImageBuilder.From(
+                new MemoryImage(EncodeOnce(metallicRoughnessTexture, encodeCache)),
+                metallicRoughnessTexture.Name);
+            // BuildDefaultMaterial sets factor 0/1 for the matte-dielectric default. We must
+            // override both to 1.0 here so glTF multiplies texture channels by 1 instead of 0 —
+            // otherwise the metallic channel is nullified and every Fortnite metal surface renders
+            // as smooth plastic (= extremely shiny).
+            builder.WithMetallicRoughness(metallicRoughnessImage, metallic: 1.0f, roughness: 1.0f);
+            ApplyUvScale(builder.UseChannel(KnownChannel.MetallicRoughness), uvScale);
+
+            // KHR_materials_specular: per-pixel modulator (Fortnite's SpecularMasks.R, placed in
+            // texture.A by ToSpecularFactorMask) scaled by Material.SpecularFactor. The scalar is
+            // set by the importer based on the source format's specular convention — formats whose
+            // values already line up with glTF's dielectric F0=0.04 default leave it at 1.0; ones
+            // that need damping (e.g. Fortnite, where the in-game look is far more matte than the
+            // raw values imply) lower it. Skip the extension entirely when SpecularFactor=1.0 so
+            // we don't bloat the glTF with a no-op extension write.
+            if (Math.Abs(material.SpecularFactor - 1.0f) > 0.0001f)
+            {
+                var specularFactorTexture = specularFactorCache.GetValue(
+                    material.SpecularTexture,
+                    static source => source.ToSpecularFactorMask());
+                var specularFactorImage = ImageBuilder.From(
+                    new MemoryImage(EncodeOnce(specularFactorTexture, encodeCache)),
+                    specularFactorTexture.Name);
+                builder.UseChannel(KnownChannel.SpecularFactor)
+                    .UseTexture()
+                    .WithPrimaryImage(specularFactorImage);
+                builder.UseChannel(KnownChannel.SpecularFactor).Parameters["SpecularFactor"] = material.SpecularFactor;
+                ApplyUvScale(builder.UseChannel(KnownChannel.SpecularFactor), uvScale);
+            }
+        }
+
+        if (material.EmissiveTexture is not null)
+        {
+            var image = ImageBuilder.From(new MemoryImage(EncodeOnce(material.EmissiveTexture, encodeCache)), material.EmissiveTexture.Name);
+            builder.WithEmissive(image, Vector3.One);
+            ApplyUvScale(builder.UseChannel(KnownChannel.Emissive), uvScale);
+        }
+
+        if (material.HasAlpha)
+        {
+            builder.WithAlpha(AlphaMode.BLEND, 0.5f);
+        }
+
+        return builder;
+    }
+
+    private static void WriteDebugDump(Material material)
+    {
         try
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -375,78 +536,6 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         {
             // diagnostics must not break export
         }
-
-        var builder = BuildDefaultMaterial(material.Name);
-
-        // KHR_texture_transform scale, set when MultiLayerBaker emitted a tile-extended texture
-        // and we need to remap the mesh's tiled UV0 into the texture's [0,1] sample range.
-        var uvScale = material.BakedUv0Scale;
-
-        if (material.DiffuseTexture is not null)
-        {
-            var image = ImageBuilder.From(new MemoryImage(material.DiffuseTexture.ToPngBytes()), material.DiffuseTexture.Name);
-            builder.WithBaseColor(image, Vector4.One);
-            ApplyUvScale(builder.UseChannel(KnownChannel.BaseColor), uvScale);
-        }
-
-        if (material.NormalTexture is not null)
-        {
-            var normalTexture = material.NormalTextureConvention == MaterialNormalTextureConvention.DirectX
-                ? material.NormalTexture.WithOpenGlNormalMap()
-                : material.NormalTexture;
-            var image = ImageBuilder.From(new MemoryImage(normalTexture.ToPngBytes()), normalTexture.Name);
-            builder.WithNormal(image, 1.0f);
-            ApplyUvScale(builder.UseChannel(KnownChannel.Normal), uvScale);
-        }
-
-        if (material.SpecularTexture is not null &&
-            material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
-        {
-            var metallicRoughnessTexture = material.SpecularTexture.ToGltfMetallicRoughness();
-            var metallicRoughnessImage = ImageBuilder.From(
-                new MemoryImage(metallicRoughnessTexture.ToPngBytes()),
-                metallicRoughnessTexture.Name);
-            // BuildDefaultMaterial sets factor 0/1 for the matte-dielectric default. We must
-            // override both to 1.0 here so glTF multiplies texture channels by 1 instead of 0 —
-            // otherwise the metallic channel is nullified and every Fortnite metal surface renders
-            // as smooth plastic (= extremely shiny).
-            builder.WithMetallicRoughness(metallicRoughnessImage, metallic: 1.0f, roughness: 1.0f);
-            ApplyUvScale(builder.UseChannel(KnownChannel.MetallicRoughness), uvScale);
-
-            // KHR_materials_specular: per-pixel modulator (Fortnite's SpecularMasks.R, placed in
-            // texture.A by ToSpecularFactorMask) scaled by Material.SpecularFactor. The scalar is
-            // set by the importer based on the source format's specular convention — formats whose
-            // values already line up with glTF's dielectric F0=0.04 default leave it at 1.0; ones
-            // that need damping (e.g. Fortnite, where the in-game look is far more matte than the
-            // raw values imply) lower it. Skip the extension entirely when SpecularFactor=1.0 so
-            // we don't bloat the glTF with a no-op extension write.
-            if (Math.Abs(material.SpecularFactor - 1.0f) > 0.0001f)
-            {
-                var specularFactorTexture = material.SpecularTexture.ToSpecularFactorMask();
-                var specularFactorImage = ImageBuilder.From(
-                    new MemoryImage(specularFactorTexture.ToPngBytes()),
-                    specularFactorTexture.Name);
-                builder.UseChannel(KnownChannel.SpecularFactor)
-                    .UseTexture()
-                    .WithPrimaryImage(specularFactorImage);
-                builder.UseChannel(KnownChannel.SpecularFactor).Parameters["SpecularFactor"] = material.SpecularFactor;
-                ApplyUvScale(builder.UseChannel(KnownChannel.SpecularFactor), uvScale);
-            }
-        }
-
-        if (material.EmissiveTexture is not null)
-        {
-            var image = ImageBuilder.From(new MemoryImage(material.EmissiveTexture.ToPngBytes()), material.EmissiveTexture.Name);
-            builder.WithEmissive(image, Vector3.One);
-            ApplyUvScale(builder.UseChannel(KnownChannel.Emissive), uvScale);
-        }
-
-        if (material.HasAlpha)
-        {
-            builder.WithAlpha(AlphaMode.BLEND, 0.5f);
-        }
-
-        return builder;
     }
 
     // Applies KHR_texture_transform's `scale` to the given channel's texture sampler. When the

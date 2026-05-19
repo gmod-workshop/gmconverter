@@ -229,7 +229,7 @@ internal static class UE4ExportCache
         long totalBytes = 0;
         foreach (var directory in Directory.EnumerateDirectories(archiveExportsRoot))
         {
-            var sentinelPath = Path.Combine(directory, _sentinelFileName);
+            var sentinelPath = Path.Join(directory, _sentinelFileName);
             if (!File.Exists(sentinelPath))
             {
                 continue;

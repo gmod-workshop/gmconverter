@@ -357,7 +357,7 @@ internal sealed class UE4Explorer : IExplorer
                 var partDetail = $"part {i + 1}/{resolvedExports.Count} type={resolvedExport.Export.ExportType}";
                 using var partScope = PerfTimer.Measure("ue4.export", "Part", partDetail);
 
-                var partRoot = Path.Combine(exportRoot, "__parts", i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
+                var partRoot = Path.Join(exportRoot, "__parts", i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
 
                 // Serialize all UObject-touching work for parts that share a UObject. The lock
                 // scope is intentionally coarse: ApplyMaterialOverrides, CUE4Parse Exporter, and
@@ -1094,7 +1094,12 @@ internal sealed class UE4Explorer : IExplorer
         }
 
         var name = CreateTextureOverrideName(texture);
-        var outputPath = Path.Combine(outputDirectory, name + ".png");
+        // CreateTextureOverrideName produces `<SanitizeMaterialName>_<sha8>` so it's already a
+        // leaf file name by construction, but routing through Path.GetFileName + Path.Join keeps
+        // the join analyzer-clean and prevents any future change in the name generator from
+        // accidentally producing a rooted or path-shaped string.
+        var outputFileName = Path.GetFileName(name + ".png");
+        var outputPath = Path.Join(outputDirectory, outputFileName);
         try
         {
             // File.WriteAllBytes is idempotent on overwrite; an existing identical-content file

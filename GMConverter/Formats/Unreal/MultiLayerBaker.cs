@@ -260,6 +260,14 @@ internal static class MultiLayerBaker
         var bakedNormalsName = $"{aliasName}_baked_normals";
         var bakedSpecularName = $"{aliasName}_baked_specular";
 
+        // Baked names come from `$"{sanitizedName}__p{partHash}_baked_*"` so they're leaf file
+        // names by construction. Path.GetFileName + Path.Join keeps the joins analyzer-clean and
+        // prevents a future name-generator change from producing a rooted string that would let
+        // Path.Combine silently drop outputDirectory.
+        var diffusePath = Path.Join(outputDirectory, Path.GetFileName(bakedDiffuseName + ".png"));
+        var normalsPath = Path.Join(outputDirectory, Path.GetFileName(bakedNormalsName + ".png"));
+        var specularPath = Path.Join(outputDirectory, Path.GetFileName(bakedSpecularName + ".png"));
+
         // Each channel writes to its own output buffer and its own PNG file, so the three bakes
         // are fully independent. Parallel.Invoke runs them concurrently — on a 4+ core machine
         // the ~3 channel × ~350 ms BakeChannel cost compresses into roughly the slowest channel.
@@ -269,7 +277,7 @@ internal static class MultiLayerBaker
             {
                 using (PerfTimer.Measure("ue4.bake", "BakeChannel.Diffuse", $"{width}x{height}"))
                 {
-                    BakeChannel(diffuseLayers, triangles, width, height, baseWidth, baseHeight, layerCount, Path.Combine(outputDirectory, bakedDiffuseName + ".png"));
+                    BakeChannel(diffuseLayers, triangles, width, height, baseWidth, baseHeight, layerCount, diffusePath);
                 }
             },
             () =>
@@ -280,7 +288,7 @@ internal static class MultiLayerBaker
                 }
                 using (PerfTimer.Measure("ue4.bake", "BakeChannel.Normals", $"{width}x{height}"))
                 {
-                    BakeChannel(normalLayers, triangles, width, height, baseWidth, baseHeight, layerCount, Path.Combine(outputDirectory, bakedNormalsName + ".png"));
+                    BakeChannel(normalLayers, triangles, width, height, baseWidth, baseHeight, layerCount, normalsPath);
                 }
             },
             () =>
@@ -291,7 +299,7 @@ internal static class MultiLayerBaker
                 }
                 using (PerfTimer.Measure("ue4.bake", "BakeChannel.SpecularMasks", $"{width}x{height}"))
                 {
-                    BakeChannel(specularLayers, triangles, width, height, baseWidth, baseHeight, layerCount, Path.Combine(outputDirectory, bakedSpecularName + ".png"));
+                    BakeChannel(specularLayers, triangles, width, height, baseWidth, baseHeight, layerCount, specularPath);
                 }
             });
 

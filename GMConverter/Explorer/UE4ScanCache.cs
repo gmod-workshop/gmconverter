@@ -38,7 +38,7 @@ internal static class UE4ScanCache
             .WithResolver(ContractlessStandardResolver.Instance)
             .WithCompression(MessagePackCompression.Lz4BlockArray);
 
-    public static string CacheDirectory { get; } = Path.Combine(
+    public static string CacheDirectory { get; } = Path.Join(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "GMConverter",
         "cache",
@@ -267,7 +267,12 @@ internal static class UE4ScanCache
 
     private static string GetCachePath(ArchiveFingerprint fingerprint)
     {
-        return Path.Combine(CacheDirectory, $"{fingerprint.Hash}.msgpack");
+        // fingerprint.Hash is a 16-char lowercase hex SHA-256 prefix we computed ourselves, so
+        // it's never rooted in practice — but routing through Path.GetFileName keeps the call
+        // analyzer-clean and defends against a future refactor that lets non-hex content into the
+        // Hash field.
+        var fileName = Path.GetFileName($"{fingerprint.Hash}.msgpack");
+        return Path.Join(CacheDirectory, fileName);
     }
 }
 

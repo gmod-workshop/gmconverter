@@ -477,9 +477,13 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         try
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
-            var logRoot = Path.Combine(Path.GetTempPath(), "GMConverter.UI", "GltfBuild");
+            var logRoot = Path.Join(Path.GetTempPath(), "GMConverter.UI", "GltfBuild");
             Directory.CreateDirectory(logRoot);
-            var logPath = Path.Combine(logRoot, $"{NameHelpers.SanitizeFileName(material.Name)}.gltfbuild.log");
+            // Path.GetFileName strips any directory components if SanitizeFileName ever lets one
+            // through; combined with Path.Join (no rooted-second-arg reset) the log path can't
+            // escape logRoot even on pathological material names.
+            var logFileName = Path.GetFileName($"{NameHelpers.SanitizeFileName(material.Name)}.gltfbuild.log");
+            var logPath = Path.Join(logRoot, logFileName);
             var sb = new System.Text.StringBuilder();
             sb.Append("materialName=").AppendLine(material.Name);
             sb.Append("diffuse=").AppendLine(material.DiffuseTexture?.Name ?? "<null>");

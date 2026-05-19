@@ -218,11 +218,13 @@ internal static class UE4ScanCache
         {
             Directory.Delete(CacheDirectory, recursive: true);
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            PerfTimer.Log("ue4.scan-cache", $"Clear failed (IO) {CacheDirectory}: {ex.Message}");
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            PerfTimer.Log("ue4.scan-cache", $"Clear failed (access) {CacheDirectory}: {ex.Message}");
         }
     }
 

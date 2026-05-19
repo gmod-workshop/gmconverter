@@ -73,10 +73,10 @@ internal static class UE4ExportCache
 
         // Sentinel data comes from a JSON file we wrote, but a tampered or corrupted cache could
         // contain a rooted path that would let Path.Combine silently drop exportRoot and let
-        // File.Exists probe arbitrary filesystem locations. TryResolveUnderRoot rejects rooted
-        // relatives and verifies the resolved full path is still inside exportRoot before we
-        // trust it as a manifest reference.
-        if (!TryResolveUnderRoot(exportRoot, sentinel.ManifestRelativePath, out var manifestPath) ||
+        // File.Exists probe arbitrary filesystem locations. PathHelpers.TryResolveUnderRoot
+        // rejects rooted relatives and verifies the resolved full path is still inside
+        // exportRoot before we trust it as a manifest reference.
+        if (!PathHelpers.TryResolveUnderRoot(exportRoot, sentinel.ManifestRelativePath, out var manifestPath) ||
             !File.Exists(manifestPath))
         {
             return false;
@@ -90,11 +90,13 @@ internal static class UE4ExportCache
             sentinel = sentinel with { LastUsedUtc = DateTimeOffset.UtcNow };
             File.WriteAllText(sentinelPath, JsonSerializer.Serialize(sentinel, _jsonOptions));
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            PerfTimer.Log("ue4.export-cache", $"LastUsedUtc refresh skipped (IO): {ex.Message}");
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            PerfTimer.Log("ue4.export-cache", $"LastUsedUtc refresh skipped (access): {ex.Message}");
         }
 
         // AnimationRelativePath gets the same rooted-and-escape validation as the manifest path.
@@ -102,7 +104,7 @@ internal static class UE4ExportCache
         // AnimationPath on the resolved entry, which the downstream pipeline already handles.
         string? animationPath = null;
         if (!string.IsNullOrEmpty(sentinel.AnimationRelativePath) &&
-            TryResolveUnderRoot(exportRoot, sentinel.AnimationRelativePath, out var resolvedAnimationPath))
+            PathHelpers.TryResolveUnderRoot(exportRoot, sentinel.AnimationRelativePath, out var resolvedAnimationPath))
         {
             animationPath = resolvedAnimationPath;
         }
@@ -140,13 +142,21 @@ internal static class UE4ExportCache
                 {
                     totalBytes += new FileInfo(file).Length;
                 }
-                catch (IOException)
+                catch (IOException ex)
                 {
+                    // Best-effort size accounting: a transient FileInfo read failure on a single
+                    // entry just leaves it out of totalBytes. Logged so it's diagnosable but never
+                    // blocks the cache write.
+                    PerfTimer.Log("ue4.export-cache", $"size probe skipped {file}: {ex.Message}");
                 }
             }
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            // Outer enumerate-files failure (e.g. directory disappeared mid-walk). The cache
+            // write below still proceeds with the partial totalBytes, which is fine for the LRU
+            // sweeper's purposes.
+            PerfTimer.Log("ue4.export-cache", $"size walk failed: {ex.Message}");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -198,11 +208,13 @@ internal static class UE4ExportCache
         {
             Directory.Delete(archiveExportsRoot, recursive: true);
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            PerfTimer.Log("ue4.export-cache", $"Clear failed (IO) {archiveExportsRoot}: {ex.Message}");
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            PerfTimer.Log("ue4.export-cache", $"Clear failed (access) {archiveExportsRoot}: {ex.Message}");
         }
     }
 
@@ -287,11 +299,13 @@ internal static class UE4ExportCache
                     "ue4.export-cache",
                     $"LRU evict {Path.GetFileName(directory)} bytes={sentinel.TotalBytes}");
             }
-            catch (IOException)
+            catch (IOException ex)
             {
+                PerfTimer.Log("ue4.export-cache", $"LRU evict failed (IO) {Path.GetFileName(directory)}: {ex.Message}");
             }
-            catch (UnauthorizedAccessException)
+            catch (UnauthorizedAccessException ex)
             {
+                PerfTimer.Log("ue4.export-cache", $"LRU evict failed (access) {Path.GetFileName(directory)}: {ex.Message}");
             }
         }
     }
@@ -308,46 +322,6 @@ internal static class UE4ExportCache
         return _defaultCacheCapBytes;
     }
 
-    // Resolve a sentinel-supplied relative path against the cache directory it lives in, rejecting
-    // rooted inputs and verifying that the resolved full path stays inside the root. The sentinel
-    // file is written by Write() with paths produced by Path.GetRelativePath, so well-formed
-    // entries always succeed; this guard is defense in depth against a corrupted or tampered
-    // cache file pointing at arbitrary filesystem locations.
-    private static bool TryResolveUnderRoot(string root, string relative, out string resolved)
-    {
-        resolved = string.Empty;
-        if (string.IsNullOrEmpty(relative) || Path.IsPathRooted(relative))
-        {
-            return false;
-        }
-
-        string rootFull;
-        string candidate;
-        try
-        {
-            rootFull = Path.GetFullPath(root);
-            candidate = Path.GetFullPath(Path.Join(rootFull, relative));
-        }
-        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
-        {
-            return false;
-        }
-
-        // Accept exact equality with the root and any descendant via the directory separator
-        // prefix. Case-insensitive on the platforms we run on (Windows is the primary target;
-        // Linux is fine because the comparison degenerates to a normal substring match when the
-        // sentinel paths are themselves case-correct).
-        var separator = Path.DirectorySeparatorChar;
-        var rootWithSep = rootFull.EndsWith(separator) ? rootFull : rootFull + separator;
-        if (!candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase) &&
-            !candidate.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        resolved = candidate;
-        return true;
-    }
 }
 
 internal sealed record ExportSentinel(

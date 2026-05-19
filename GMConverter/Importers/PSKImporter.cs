@@ -53,7 +53,16 @@ internal sealed class PSKImporter : IImporter
         Parallel.For(0, manifest.Entries.Count, entryIndex =>
         {
             var entry = manifest.Entries[entryIndex];
-            var entryPath = Path.GetFullPath(Path.Combine(sceneDirectory, entry.Path));
+            // Manifest entry paths are produced by ExportResolvedScene via Path.GetRelativePath,
+            // so a well-formed manifest only ever contains relative paths under sceneDirectory.
+            // Run them through PathHelpers.TryResolveUnderRoot anyway — a tampered or corrupted
+            // manifest could otherwise let a rooted entry.Path silently replace sceneDirectory
+            // and walk the importer through arbitrary filesystem locations.
+            if (!PathHelpers.TryResolveUnderRoot(sceneDirectory, entry.Path, out var entryPath))
+            {
+                throw new GMConverterException(
+                    $"Unreal scene manifest entry references a path outside the scene directory: '{entry.Path}'.");
+            }
             using var entryScope = PerfTimer.Measure(
                 "psk.import",
                 "ParseScene.Entry",

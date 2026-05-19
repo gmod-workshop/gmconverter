@@ -50,8 +50,11 @@ internal static class Cue4ParseImageDecoder
 
             return new DecodedImage(bytes, normalized.Width, normalized.Height, DecodedImagePixelFormat.Rgba8888);
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // Decode failures are intentionally non-fatal — fall back to Empty so the caller
+            // can use a placeholder or skip the texture. Process-fatal exceptions (OOM)
+            // propagate so a real memory crisis isn't disguised as a benign decode miss.
             return DecodedImage.Empty;
         }
     }

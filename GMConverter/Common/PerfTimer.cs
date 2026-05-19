@@ -10,8 +10,11 @@ namespace GMConverter.Common;
 // never blocks a user-visible operation.
 internal static class PerfTimer
 {
+    // Path.Join (vs Path.Combine) does not silently reset to a rooted second argument. Both file
+    // name and base directory are trusted constants here, so the practical difference is nil, but
+    // Path.Join is the right default for "append a known file name to a directory" pairings.
     public static string LogPath { get; } =
-        Path.Combine(Path.GetTempPath(), "GMConverter.Perf.log");
+        Path.Join(Path.GetTempPath(), "GMConverter.Perf.log");
 
     private static readonly object _writeLock = new();
     private static readonly Stopwatch _processClock = Stopwatch.StartNew();

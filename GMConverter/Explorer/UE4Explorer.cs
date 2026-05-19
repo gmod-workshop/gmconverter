@@ -384,8 +384,11 @@ internal sealed class UE4Explorer : IExplorer
                             WriteTextureDataOverrides(resolvedExport, exportedPart.MeshPath, exportRoot, sessionCache);
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
                     {
+                        // Wrap any normal material/texture write failure with the archive entry
+                        // and export-type context so the caller can pin the blame on the part. OOM
+                        // bypasses the wrap so process-fatal exceptions surface unwrapped.
                         throw new GMConverterException(
                             $"UE4/5 archive material override export failed for {fileEntry.ArchiveEntryPath}. " +
                             $"Resolved export type: {resolvedExport.Export.ExportType}. {ex}");

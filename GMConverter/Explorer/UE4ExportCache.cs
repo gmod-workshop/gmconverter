@@ -39,7 +39,9 @@ internal static class UE4ExportCache
             return false;
         }
 
-        var sentinelPath = Path.Combine(exportRoot, _sentinelFileName);
+        // Path.Join over Path.Combine so a rooted sentinel name (impossible here since it's a
+        // const, but defensive against future refactors) can't silently replace exportRoot.
+        var sentinelPath = Path.Join(exportRoot, _sentinelFileName);
         if (!File.Exists(sentinelPath))
         {
             return false;
@@ -69,8 +71,13 @@ internal static class UE4ExportCache
             return false;
         }
 
-        var manifestPath = Path.GetFullPath(Path.Combine(exportRoot, sentinel.ManifestRelativePath));
-        if (!File.Exists(manifestPath))
+        // Sentinel data comes from a JSON file we wrote, but a tampered or corrupted cache could
+        // contain a rooted path that would let Path.Combine silently drop exportRoot and let
+        // File.Exists probe arbitrary filesystem locations. TryResolveUnderRoot rejects rooted
+        // relatives and verifies the resolved full path is still inside exportRoot before we
+        // trust it as a manifest reference.
+        if (!TryResolveUnderRoot(exportRoot, sentinel.ManifestRelativePath, out var manifestPath) ||
+            !File.Exists(manifestPath))
         {
             return false;
         }
@@ -90,12 +97,20 @@ internal static class UE4ExportCache
         {
         }
 
+        // AnimationRelativePath gets the same rooted-and-escape validation as the manifest path.
+        // A failed resolution (rooted, traversal-attempt, or just absent) becomes a null
+        // AnimationPath on the resolved entry, which the downstream pipeline already handles.
+        string? animationPath = null;
+        if (!string.IsNullOrEmpty(sentinel.AnimationRelativePath) &&
+            TryResolveUnderRoot(exportRoot, sentinel.AnimationRelativePath, out var resolvedAnimationPath))
+        {
+            animationPath = resolvedAnimationPath;
+        }
+
         resolved = new ExplorerResolvedEntry(
             manifestPath,
             exportRoot,
-            AnimationPath: string.IsNullOrEmpty(sentinel.AnimationRelativePath)
-                ? null
-                : Path.GetFullPath(Path.Combine(exportRoot, sentinel.AnimationRelativePath)),
+            AnimationPath: animationPath,
             Details: sentinel.Details);
 
         PerfTimer.Log("ue4.export-cache", $"cache HIT manifest={manifestPath}");
@@ -151,7 +166,7 @@ internal static class UE4ExportCache
             now,
             now);
 
-        var sentinelPath = Path.Combine(exportRoot, _sentinelFileName);
+        var sentinelPath = Path.Join(exportRoot, _sentinelFileName);
         var tempPath = sentinelPath + ".tmp";
         try
         {
@@ -291,6 +306,47 @@ internal static class UE4ExportCache
             return parsed;
         }
         return _defaultCacheCapBytes;
+    }
+
+    // Resolve a sentinel-supplied relative path against the cache directory it lives in, rejecting
+    // rooted inputs and verifying that the resolved full path stays inside the root. The sentinel
+    // file is written by Write() with paths produced by Path.GetRelativePath, so well-formed
+    // entries always succeed; this guard is defense in depth against a corrupted or tampered
+    // cache file pointing at arbitrary filesystem locations.
+    private static bool TryResolveUnderRoot(string root, string relative, out string resolved)
+    {
+        resolved = string.Empty;
+        if (string.IsNullOrEmpty(relative) || Path.IsPathRooted(relative))
+        {
+            return false;
+        }
+
+        string rootFull;
+        string candidate;
+        try
+        {
+            rootFull = Path.GetFullPath(root);
+            candidate = Path.GetFullPath(Path.Join(rootFull, relative));
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException or NotSupportedException)
+        {
+            return false;
+        }
+
+        // Accept exact equality with the root and any descendant via the directory separator
+        // prefix. Case-insensitive on the platforms we run on (Windows is the primary target;
+        // Linux is fine because the comparison degenerates to a normal substring match when the
+        // sentinel paths are themselves case-correct).
+        var separator = Path.DirectorySeparatorChar;
+        var rootWithSep = rootFull.EndsWith(separator) ? rootFull : rootFull + separator;
+        if (!candidate.Equals(rootFull, StringComparison.OrdinalIgnoreCase) &&
+            !candidate.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        resolved = candidate;
+        return true;
     }
 }
 

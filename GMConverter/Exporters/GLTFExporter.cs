@@ -532,9 +532,11 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
             }
             File.WriteAllText(logPath, sb.ToString());
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // diagnostics must not break export
+            // Diagnostics must not break export. Anything short of process-fatal (OOM)
+            // is swallowed — the dump runs ToPngBytes / SHA / file IO and each step has
+            // several plausible failure modes, none of which should fail the export.
         }
     }
 

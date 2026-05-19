@@ -192,7 +192,9 @@ public partial class PreviewPane : UserControl, IDisposable
 
         _previewModelNodes = modelNodes;
         PreviewSceneView.Scene.RootNode.Add(modelNodes);
+        EnsurePreviewBackMaterials(modelNodes);
         CapturePreviewModelMaterials();
+        AppendLog($"Preview render imported {_previewOriginalMaterials.Count} render node(s).");
 
         if (modelNodes.WorldBoundingBox.IsUndefined)
         {
@@ -231,7 +233,8 @@ public partial class PreviewPane : UserControl, IDisposable
     {
         var importer = new glTFImporter(null, PreviewSceneView.Scene.GpuDevice)
         {
-            UsePbrMaterial = true,
+            UsePbrMaterial = false,
+            UseGpuDeviceCache = false,
             LoggerCallback = (_, message) =>
             {
                 AppendLog(message);
@@ -357,6 +360,18 @@ public partial class PreviewPane : UserControl, IDisposable
         }
     }
 
+    private static void EnsurePreviewBackMaterials(GroupNode modelNodes)
+    {
+        foreach (var modelNode in modelNodes.GetAllChildren<ModelNode>("*", int.MaxValue))
+        {
+            if (modelNode.BackMaterial is null && modelNode.Material is not null)
+            {
+                modelNode.BackMaterial = modelNode.Material;
+                modelNode.NotifyChange(SceneNodeDirtyFlags.MaterialChanged);
+            }
+        }
+    }
+
     private void ApplyPreviewShadingMode()
     {
         if (_previewModelNodes is null)
@@ -381,11 +396,7 @@ public partial class PreviewPane : UserControl, IDisposable
         foreach (var (modelNode, originalMaterials) in _previewOriginalMaterials)
         {
             modelNode.Material = _previewSolidMaterial;
-            if (originalMaterials.BackMaterial is not null)
-            {
-                modelNode.BackMaterial = _previewSolidMaterial;
-            }
-
+            modelNode.BackMaterial = _previewSolidMaterial;
             modelNode.NotifyChange(SceneNodeDirtyFlags.MaterialChanged);
         }
     }

@@ -33,6 +33,23 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
 
             texture.WritePng(texturePath);
         }
+
+        foreach (var material in model.Materials)
+        {
+            if (material.NormalTexture is not null &&
+                material.NormalTextureConvention == MaterialNormalTextureConvention.DirectX)
+            {
+                var normalTexture = material.NormalTexture.WithOpenGlNormalMap();
+                normalTexture.WritePng(Path.Combine(outputDirectory, $"{normalTexture.Name}.png"));
+            }
+
+            if (material.SpecularTexture is not null &&
+                material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+            {
+                var specularFactorTexture = material.SpecularTexture.ToSpecularFactorMask();
+                specularFactorTexture.WritePng(Path.Combine(outputDirectory, $"{specularFactorTexture.Name}.png"));
+            }
+        }
     }
 
     private static void WriteMaterials(Model model, string materialPath)
@@ -57,12 +74,18 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
 
             if (material.SpecularTexture is not null)
             {
-                writer.WriteLine(FormattableString.Invariant($"map_Ks {material.SpecularTexture.Name}.png"));
+                var specularTextureName = material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+                    ? material.SpecularTexture.ToSpecularFactorMask().Name
+                    : material.SpecularTexture.Name;
+                writer.WriteLine(FormattableString.Invariant($"map_Ks {specularTextureName}.png"));
             }
 
             if (material.NormalTexture is not null)
             {
-                writer.WriteLine(FormattableString.Invariant($"map_Bump {material.NormalTexture.Name}.png"));
+                var normalTextureName = material.NormalTextureConvention == MaterialNormalTextureConvention.DirectX
+                    ? material.NormalTexture.WithOpenGlNormalMap().Name
+                    : material.NormalTexture.Name;
+                writer.WriteLine(FormattableString.Invariant($"map_Bump {normalTextureName}.png"));
             }
 
             if (material.EmissiveTexture is not null)

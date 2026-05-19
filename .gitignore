@@ -5,6 +5,7 @@ riderModule.iml
 /_ReSharper.Caches/
 test-output/
 ### core template
+.claude/
 *.swp
 *.*~
 project.lock.json

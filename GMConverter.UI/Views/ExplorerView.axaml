@@ -48,15 +48,27 @@
                                 IsEnabled="{Binding IsIdle}"
                                 VerticalAlignment="Bottom"/>
                     </Grid>
-                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                    <Grid ColumnDefinitions="*,*,Auto,Auto" ColumnSpacing="8">
                         <ComboBox ItemsSource="{Binding ExplorerProfiles}"
                                   SelectedItem="{Binding SelectedExplorerProfile}"
                                   shad:ControlAssist.Label="Profile"/>
                         <TextBox Grid.Column="1"
                                  Text="{Binding ExplorerFilter}"
                                  Classes="Clearable"
-                                 PlaceholderText="arc republic vehicle"
+                                 PlaceholderText="class:Anim any:holo,strongarm"
                                  shad:ControlAssist.Label="Filter"/>
+                        <Button Grid.Column="2"
+                                Classes="Outline"
+                                Content="Animations"
+                                Command="{Binding ShowExplorerAnimationsCommand}"
+                                ToolTip.Tip="Show animation assets"
+                                VerticalAlignment="Bottom"/>
+                        <Button Grid.Column="3"
+                                Classes="Outline"
+                                Content="Related"
+                                Command="{Binding FindRelatedExplorerAnimationsCommand}"
+                                ToolTip.Tip="Find animation assets with names related to the selected asset"
+                                VerticalAlignment="Bottom"/>
                     </Grid>
                 </StackPanel>
             </shad:Card>
@@ -99,6 +111,11 @@
                         HorizontalAlignment="Right"
                         Spacing="8"
                         Margin="0,12,0,0">
+                <Button Classes="Outline"
+                        Content="Set Animation"
+                        Command="{Binding UseSelectionAsAnimationCommand}"
+                        IsEnabled="{Binding HasAnimationExplorerEntry}"
+                        ToolTip.Tip="Export this animation and set it as the active animation on the Convert page"/>
                 <Button Classes="Outline" Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
                 <Button Classes="Primary" Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
             </StackPanel>

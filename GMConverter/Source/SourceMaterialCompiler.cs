@@ -36,32 +36,34 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
                 var texturePath = GetSourceTexturePath(materialSourceDirectory, material.Name);
                 var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
 
-                if (UseSourcePhong(material))
-                {
-                    material.DiffuseTexture.WritePng(texturePath, material.SpecularTexture!);
-                }
-                else
-                {
-                    material.DiffuseTexture.WritePng(texturePath);
-                }
-
+                // Diffuse stays clean — phong mask now lives in the spec texture's alpha, freeing
+                // the basetexture alpha for $translucent so glass parts can be transparent and
+                // phong-lit simultaneously.
+                material.DiffuseTexture.WritePng(texturePath);
                 RunVtfCmd(texturePath, materialOutputDirectory);
+
+                var specForMask = UseSourcePhong(material) ? GetSourcePhongExponent(material) : null;
 
                 if (material.NormalTexture is not null)
                 {
                     var normalName = $"{material.Name}_normal";
                     var normalPath = GetSourceTexturePath(materialSourceDirectory, normalName);
 
-                    material.NormalTexture.WritePng(normalPath);
+                    // Pack the envmap mask into the normal map's alpha channel — Source requires
+                    // `$normalmapalphaenvmapmask` when both bumpmap and envmap masking are used.
+                    var normalTextureForWrite = specForMask is not null
+                        ? material.NormalTexture.WithMaskInAlpha(specForMask)
+                        : material.NormalTexture;
+                    normalTextureForWrite.WritePng(normalPath);
                     RunVtfCmd(normalPath, materialOutputDirectory);
                 }
 
-                if (UseSourcePhong(material))
+                if (specForMask is not null)
                 {
                     var specularName = $"{material.Name}_spec";
                     var specularPath = GetSourceTexturePath(materialSourceDirectory, specularName);
 
-                    material.SpecularTexture!.WritePng(specularPath);
+                    specForMask.WritePng(specularPath);
                     RunVtfCmd(specularPath, materialOutputDirectory);
                 }
 
@@ -108,13 +110,18 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
             writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{baseTexturePath}_normal\""));
         }
 
+        if (material.HasAlpha)
+        {
+            writer.WriteLine("    \"$translucent\" \"1\"");
+        }
+
         if (UseSourcePhong(material))
         {
             WritePhongParameters(writer, $"{baseTexturePath}_spec", material);
-        }
-        else if (material.HasAlpha)
-        {
-            writer.WriteLine("    \"$translucent\" \"1\"");
+            WriteEnvmapParameters(
+                writer,
+                standaloneMaskPath: material.NormalTexture is null ? $"{baseTexturePath}_spec" : null,
+                normalMapAlphaMask: material.NormalTexture is not null);
         }
 
         if (material.IsIlluminated)
@@ -137,9 +144,14 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
 
     private static bool UseSourcePhong(Material material)
     {
-        return material.DiffuseTexture is not null &&
-            material.SpecularTexture is not null &&
-            !material.HasAlpha;
+        return material.DiffuseTexture is not null && material.SpecularTexture is not null;
+    }
+
+    private static Texture? GetSourcePhongExponent(Material material)
+    {
+        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+            ? material.SpecularTexture?.ToSourcePhongExponent()
+            : material.SpecularTexture;
     }
 
     private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
@@ -147,11 +159,29 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
         var settings = SourcePhongSettings.For(material);
 
         writer.WriteLine("    \"$phong\" \"1\"");
-        writer.WriteLine("    \"$basemapalphaphongmask\" \"1\"");
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
+    }
+
+    // See MDLExporter.WriteEnvmapParameters for rationale.
+    private static void WriteEnvmapParameters(
+        StreamWriter writer,
+        string? standaloneMaskPath = null,
+        bool normalMapAlphaMask = false)
+    {
+        writer.WriteLine("    \"$envmap\" \"env_cubemap\"");
+        writer.WriteLine("    \"$envmapfresnel\" \"1\"");
+        writer.WriteLine("    \"$envmaptint\" \"[0.5 0.5 0.5]\"");
+        if (normalMapAlphaMask)
+        {
+            writer.WriteLine("    \"$normalmapalphaenvmapmask\" \"1\"");
+        }
+        else if (standaloneMaskPath is not null)
+        {
+            writer.WriteLine(FormattableString.Invariant($"    \"$envmapmask\" \"{standaloneMaskPath}\""));
+        }
     }
 
     private static string GetSourceTexturePath(string materialSourceDirectory, string textureName)

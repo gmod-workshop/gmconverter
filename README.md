@@ -16,6 +16,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `OPT`                 | Yes | No | Read       | Read                 | -               | - |
 | `MDL`                 | Yes* | Yes* | Read/Write | Read*/Write          | Write           | Write |
 | `PSK` / `PSKX`        | Yes* | No | Read       | Read*                | Read            | Read* |
+| `UE4` / `UE5` archives | Yes* | No | Read       | Read*                | Read            | - |
 | `MOW` (`DEF` / `MDL`) | Yes* | No | Read | Read* | Read* | Read* |
 | `OBJ` / `MTL`         | No | Yes | Write      | Write                | -               | - |
 | `glTF` / `GLB`        | No | Yes | Write      | Write                | Write           | Write |
@@ -68,6 +69,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 `GMConverter.UI` provides a frontend for the same conversion library, with some extra features.
 
 ```powershell
+git submodule update --init --recursive
 ./GMConverter.UI
 ```
 
@@ -140,6 +142,15 @@ PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA 
   --output-path "out\bacta-glb" `
   --material-dir "E:\Tools\umodel\UmodelExport"
 ```
+
+</details>
+
+<details>
+<summary>Unreal Engine 4 / 5 Archives</summary>
+
+The Explorer can scan Unreal Engine 4 and 5 `.pak` / `.utoc` archives through CUE4Parse and resolve `StaticMesh` and `SkeletalMesh` assets into the normal conversion workflow. Select either the archive directory or a game `Content` directory that contains a `Paks` folder.
+
+Fortnite installations use a dedicated Unreal profile. When detected, GMConverter uses the Fortnite package version, fetches current AES keys and mappings from UEDB, downloads the mapping file to the local app-data cache, and submits those keys to CUE4Parse before scanning. Other UE4/UE5 archives use the generic profile and may require future game-specific key or version support.
 
 </details>
 

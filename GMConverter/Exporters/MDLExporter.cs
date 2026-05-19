@@ -15,6 +15,11 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
     private static readonly UTF8Encoding _utf8NoBom = new(false);
     private const int _sourceMaxConvexPieces = 1024;
 
+    // Source's "1 unit" = 1 inch. Our importer pipeline produces models in meters (Unreal cm is
+    // scaled by 0.01 in PSKImporter.ParseScene). Multiply by 39.3700787 (in/m) when writing SMD
+    // so the exported MDL renders at its real-world size in-engine.
+    private const float _metersToSourceUnits = 39.3700787f;
+
     public string OutputFormat => "mdl";
 
     public string OutputName => "Source Engine";
@@ -109,18 +114,29 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         WriteReferenceSkeleton(writer, model.Skeleton);
         writer.WriteLine("triangles");
 
+        // Source's VMT has no equivalent of glTF's KHR_texture_transform, so when the MultiLayerBaker
+        // produced a tile-extended texture for multi-layer parts the wedge UVs that go beyond [0,1]
+        // sample off the end of the baked PNG in Source. We bake the per-material BakedUv0Scale
+        // into the SMD wedge UVs here so each submesh's UVs map directly into [0,1] of its texture.
+        var uvScales = new Dictionary<string, Vector2>(StringComparer.OrdinalIgnoreCase);
+        foreach (var material in model.Materials.Where(m => m.BakedUv0Scale is not null))
+        {
+            uvScales[material.Name] = material.BakedUv0Scale!.Value;
+        }
+
         foreach (var mesh in model.Meshes)
         {
             foreach (var submesh in mesh.Submeshes)
             {
                 var materialName = submesh.MaterialName ?? "default";
+                var uvScale = uvScales.GetValueOrDefault(materialName, Vector2.One);
 
                 foreach (var triangle in submesh.Triangles)
                 {
                     writer.WriteLine(materialName);
-                    WriteSmdVertex(writer, mesh.Vertices[triangle.A]);
-                    WriteSmdVertex(writer, mesh.Vertices[triangle.C]);
-                    WriteSmdVertex(writer, mesh.Vertices[triangle.B]);
+                    WriteSmdVertex(writer, mesh.Vertices[triangle.A], uvScale);
+                    WriteSmdVertex(writer, mesh.Vertices[triangle.C], uvScale);
+                    WriteSmdVertex(writer, mesh.Vertices[triangle.B], uvScale);
                 }
             }
         }
@@ -128,11 +144,11 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         writer.WriteLine("end");
     }
 
-    private static void WriteSmdVertex(StreamWriter writer, Vertex vertex)
+    private static void WriteSmdVertex(StreamWriter writer, Vertex vertex, Vector2 uvScale)
     {
-        var position = vertex.Position;
+        var position = vertex.Position * _metersToSourceUnits;
         var normal = vertex.Normal;
-        var uv = vertex.TextureCoordinate;
+        var uv = vertex.TextureCoordinate * uvScale;
         var weights = NormalizeSmdWeights(vertex.BoneWeights);
         var parentBoneIndex = weights.Length == 0 ? 0 : weights[0].BoneIndex;
         var weightText = weights.Length == 0
@@ -307,8 +323,9 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
     private static void WritePhysicsVertex(StreamWriter writer, Vector3 vertex, Vector3 normal)
     {
+        var scaled = vertex * _metersToSourceUnits;
         writer.WriteLine(FormattableString.Invariant(
-            $"0 {vertex.X:0.######} {vertex.Y:0.######} {vertex.Z:0.######} {normal.X:0.######} {normal.Y:0.######} {normal.Z:0.######} 0 0"));
+            $"0 {scaled.X:0.######} {scaled.Y:0.######} {scaled.Z:0.######} {normal.X:0.######} {normal.Y:0.######} {normal.Z:0.######} 0 0"));
     }
 
     private static void WriteQc(
@@ -545,7 +562,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
     private static void WriteSmdBoneTransform(StreamWriter writer, int boneIndex, Transform transform)
     {
         var rotation = ToEulerRadians(transform.Rotation);
-        var translation = transform.Translation;
+        var translation = transform.Translation * _metersToSourceUnits;
         writer.WriteLine(FormattableString.Invariant(
             $"{boneIndex} {translation.X:0.######} {translation.Y:0.######} {translation.Z:0.######} {rotation.X:0.######} {rotation.Y:0.######} {rotation.Z:0.######}"));
     }
@@ -598,17 +615,22 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             var vmtPath = Path.Combine(materialDirectory, $"{material.Name}.vmt");
             var sourceTexturePath = $"{materialRelativeDirectory}/{material.Name}".Replace('\\', '/');
 
-            if (UseSourcePhong(material))
-            {
-                material.DiffuseTexture.WritePng(pngPath, material.SpecularTexture!);
-            }
-            else
-            {
-                material.DiffuseTexture.WritePng(pngPath);
-            }
+            // Diffuse: written without the phong mask in alpha. The phong mask now lives in the
+            // spec texture's alpha (via ToSourcePhongExponent), which means basetexture alpha is
+            // free for $translucent — so glass parts can be transparent AND phong-lit at the
+            // same time.
+            material.DiffuseTexture.WritePng(pngPath);
 
-            material.NormalTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
-            material.SpecularTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
+            // Normal map gets the envmap mask packed into its alpha channel when both are
+            // available: Source's VertexLitGeneric won't accept a separate $envmapmask alongside
+            // $bumpmap (pixel-shader register conflict), so we must use $normalmapalphaenvmapmask
+            // for envmap masking on bump-mapped materials.
+            var specForMask = GetSourcePhongExponent(material);
+            var normalTextureForWrite = material.NormalTexture is not null && specForMask is not null
+                ? material.NormalTexture.WithMaskInAlpha(specForMask)
+                : material.NormalTexture;
+            normalTextureForWrite?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
+            specForMask?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
 
             using var writer = new StreamWriter(vmtPath, false, _utf8NoBom);
             writer.WriteLine("\"VertexLitGeneric\"");
@@ -622,13 +644,23 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
                 writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{sourceTexturePath}_normal\""));
             }
 
+            if (material.HasAlpha)
+            {
+                writer.WriteLine("    \"$translucent\" \"1\"");
+            }
+
             if (UseSourcePhong(material))
             {
                 WritePhongParameters(writer, $"{sourceTexturePath}_spec", material);
-            }
-            else if (material.HasAlpha)
-            {
-                writer.WriteLine("    \"$translucent\" \"1\"");
+                // Glass-like surfaces in Fortnite are often opaque black with high specular response
+                // rather than literal transparency — the reflection sells the glassiness. We emit
+                // an envmap whenever a material has spec data, masked per-pixel either from the
+                // normal map's alpha channel (when a bumpmap is present — Source requires this) or
+                // from the standalone spec texture's RGB.
+                WriteEnvmapParameters(
+                    writer,
+                    standaloneMaskPath: material.NormalTexture is null ? $"{sourceTexturePath}_spec" : null,
+                    normalMapAlphaMask: material.NormalTexture is not null);
             }
 
             if (material.IsIlluminated)
@@ -654,9 +686,16 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
     private static bool UseSourcePhong(Material material)
     {
-        return material.DiffuseTexture is not null &&
-            material.SpecularTexture is not null &&
-            !material.HasAlpha;
+        // Translucent materials can now coexist with phong because the phong mask lives in the
+        // spec texture's alpha rather than the basetexture alpha.
+        return material.DiffuseTexture is not null && material.SpecularTexture is not null;
+    }
+
+    private static Texture? GetSourcePhongExponent(Material material)
+    {
+        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+            ? material.SpecularTexture?.ToSourcePhongExponent()
+            : material.SpecularTexture;
     }
 
     private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
@@ -664,11 +703,35 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         var settings = SourcePhongSettings.For(material);
 
         writer.WriteLine("    \"$phong\" \"1\"");
-        writer.WriteLine("    \"$basemapalphaphongmask\" \"1\"");
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
+    }
+
+    // Source environment-map reflection. The reflection itself samples from `env_cubemap` entities
+    // placed in the level at game time (no static cubemap baked into the asset), so the VMT just
+    // references the built-in entity name. `$envmapfresnel 1` makes the reflection strongest at
+    // grazing angles. Source has two mutually-exclusive paths for per-pixel envmap masking:
+    //   - `$envmapmask <tex>` reads a standalone texture's RGB. Cannot coexist with `$bumpmap`.
+    //   - `$normalmapalphaenvmapmask 1` reads the normal map's alpha. Required when bumpmap is set.
+    // Caller picks based on whether a normal map is being emitted.
+    private static void WriteEnvmapParameters(
+        StreamWriter writer,
+        string? standaloneMaskPath = null,
+        bool normalMapAlphaMask = false)
+    {
+        writer.WriteLine("    \"$envmap\" \"env_cubemap\"");
+        writer.WriteLine("    \"$envmapfresnel\" \"1\"");
+        writer.WriteLine("    \"$envmaptint\" \"[0.5 0.5 0.5]\"");
+        if (normalMapAlphaMask)
+        {
+            writer.WriteLine("    \"$normalmapalphaenvmapmask\" \"1\"");
+        }
+        else if (standaloneMaskPath is not null)
+        {
+            writer.WriteLine(FormattableString.Invariant($"    \"$envmapmask\" \"{standaloneMaskPath}\""));
+        }
     }
 
     private static string[] GetMaterialDirectories(Model model, string modelPath)

@@ -524,12 +524,9 @@ internal static class MultiLayerBaker
             }
 
             var textures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var prop in texturesEl.EnumerateObject())
+            foreach (var prop in texturesEl.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String))
             {
-                if (prop.Value.ValueKind == JsonValueKind.String)
-                {
-                    textures[prop.Name] = prop.Value.GetString() ?? string.Empty;
-                }
+                textures[prop.Name] = prop.Value.GetString() ?? string.Empty;
             }
 
             textures["Diffuse"] = diffuseRef;

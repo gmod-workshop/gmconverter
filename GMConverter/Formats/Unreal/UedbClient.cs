@@ -29,13 +29,10 @@ internal static partial class UedbClient
                 [new FGuid()] = aesData.MainKey
             };
 
-            foreach (var dynamicKey in aesData.DynamicKeys ?? [])
+            foreach (var dynamicKey in (aesData.DynamicKeys ?? []).Where(k =>
+                !string.IsNullOrWhiteSpace(k.Guid) && !string.IsNullOrWhiteSpace(k.Key)))
             {
-                if (!string.IsNullOrWhiteSpace(dynamicKey.Guid) &&
-                    !string.IsNullOrWhiteSpace(dynamicKey.Key))
-                {
-                    keys[new FGuid(dynamicKey.Guid)] = dynamicKey.Key;
-                }
+                keys[new FGuid(dynamicKey.Guid)] = dynamicKey.Key;
             }
 
             var mappingsData = GetJson<FortniteMappingsResponse>(_fortniteMappingsUrl);

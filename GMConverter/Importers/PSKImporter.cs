@@ -712,13 +712,11 @@ internal sealed class PSKImporter : IImporter
             PSKMaterial material,
             out string path)
         {
-            foreach (var key in GetMaterialLookupKeys(material))
+            var matchedKey = GetMaterialLookupKeys(material).FirstOrDefault(sidecars.ContainsKey);
+            if (matchedKey is not null)
             {
-                if (sidecars.TryGetValue(key, out var sidecarPath))
-                {
-                    path = sidecarPath;
-                    return true;
-                }
+                path = sidecars[matchedKey];
+                return true;
             }
 
             path = string.Empty;
@@ -1040,12 +1038,9 @@ internal sealed class PSKImporter : IImporter
             var normalizedReference = textureReference.Replace('\\', '/');
             var score = GetCueTextureKindScore(textureKind, normalizedKey, textureName);
 
-            foreach (var token in materialContext.Tokens)
+            foreach (var token in materialContext.Tokens.Where(t => textureName.Contains(t.Value, StringComparison.OrdinalIgnoreCase)))
             {
-                if (textureName.Contains(token.Value, StringComparison.OrdinalIgnoreCase))
-                {
-                    score += Math.Min(token.Value.Length, 12) * token.Weight;
-                }
+                score += Math.Min(token.Value.Length, 12) * token.Weight;
             }
 
             if (ContainsAny(normalizedReference, ["/Game/Global/", "/Engine/", "/Landscape/"]))

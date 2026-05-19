@@ -1101,12 +1101,9 @@ internal sealed class PSKImporter : IImporter
                     yield return token;
                 }
 
-                foreach (var segment in SplitCamelCaseToken(token))
+                foreach (var segment in SplitCamelCaseToken(token).Where(IsUsefulMaterialTextureToken))
                 {
-                    if (IsUsefulMaterialTextureToken(segment))
-                    {
-                        yield return segment;
-                    }
+                    yield return segment;
                 }
             }
         }

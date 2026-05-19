@@ -664,12 +664,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             yield return trimmed;
         }
 
-        foreach (var segment in SplitCamelCaseToken(trimmed))
+        foreach (var segment in SplitCamelCaseToken(trimmed).Where(IsUsefulRelatedAnimationToken))
         {
-            if (IsUsefulRelatedAnimationToken(segment))
-            {
-                yield return segment;
-            }
+            yield return segment;
         }
     }
 

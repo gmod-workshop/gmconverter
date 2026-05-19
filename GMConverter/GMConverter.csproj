@@ -32,10 +32,24 @@
         <CoacdWheelPath>$(CoacdCacheDirectory)$(CoacdWheelFileName)</CoacdWheelPath>
         <CoacdExtractedNativeLibraryPath>$(CoacdExtractDirectory)coacd\$(CoacdNativeLibraryName)</CoacdExtractedNativeLibraryPath>
 
+        <!-- CUE4Parse natives ship with the CUE4Parse NuGet package's lib/net8.0/ folder, but we
+             can't take the package's managed DLL alongside our submodule's CUE4Parse project
+             reference (duplicate type definitions). NuGet 6+ skips extracting files for packages
+             whose assets are all excluded, so a PackageReference with ExcludeAssets=all produces
+             a metadata-only restore on a fresh CI cache and the native DLL is missing at copy
+             time. Bypass that by downloading the nupkg ourselves and unzipping the native DLL,
+             same approach the CoACD wheel uses above. -->
+        <Cue4ParseNativeVersion>1.2.2</Cue4ParseNativeVersion>
+        <Cue4ParseNupkgUrl>https://www.nuget.org/api/v2/package/CUE4Parse/$(Cue4ParseNativeVersion)</Cue4ParseNupkgUrl>
+        <Cue4ParseCacheDirectory>$(MSBuildProjectExtensionsPath)cue4parse-natives\$(Cue4ParseNativeVersion)\</Cue4ParseCacheDirectory>
+        <Cue4ParseExtractDirectory>$(Cue4ParseCacheDirectory)extracted\</Cue4ParseExtractDirectory>
+        <Cue4ParseNupkgFileName>cue4parse.$(Cue4ParseNativeVersion).nupkg</Cue4ParseNupkgFileName>
+        <Cue4ParseNupkgPath>$(Cue4ParseCacheDirectory)$(Cue4ParseNupkgFileName)</Cue4ParseNupkgPath>
+        <Cue4ParseNativeDllPath>$(Cue4ParseExtractDirectory)lib\net8.0\CUE4Parse-Natives.dll</Cue4ParseNativeDllPath>
+
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="CUE4Parse" Version="1.2.2" ExcludeAssets="all" GeneratePathProperty="true" PrivateAssets="all" />
       <PackageReference Include="JeremyAnsel.Xwa.Opt" Version="3.0.54" />
       <PackageReference Include="MdlCrowbar" Version="0.74.1" />
       <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.4" />
@@ -53,7 +67,9 @@
     <ItemGroup>
       <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse\CUE4Parse.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
       <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
-      <None Include="$(NuGetPackageRoot)cue4parse\1.2.2\lib\net8.0\CUE4Parse-Natives.dll">
+      <None Include="$(Cue4ParseNativeDllPath)">
+        <Link>CUE4Parse-Natives.dll</Link>
+        <TargetPath>CUE4Parse-Natives.dll</TargetPath>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <Visible>false</Visible>
@@ -69,6 +85,12 @@
         <Visible>false</Visible>
       </None>
     </ItemGroup>
+
+    <Target Name="PrepareCue4ParseNativeLibrary" BeforeTargets="CoreCompile">
+      <MakeDir Directories="$(Cue4ParseCacheDirectory);$(Cue4ParseExtractDirectory);$(OutDir)" />
+      <DownloadFile SourceUrl="$(Cue4ParseNupkgUrl)" DestinationFolder="$(Cue4ParseCacheDirectory)" DestinationFileName="$(Cue4ParseNupkgFileName)" Retries="3" RetryDelayMilliseconds="1000" SkipUnchangedFiles="true" />
+      <Unzip SourceFiles="$(Cue4ParseNupkgPath)" DestinationFolder="$(Cue4ParseExtractDirectory)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="true" />
+    </Target>
 
     <Target Name="PrepareCoacdNativeLibrary" BeforeTargets="CoreCompile" Condition="'$(DownloadCoacdNative)' == 'true'">
       <Error Condition="'$(CoacdVersion)' == 'latest'" Text="CoACD native preload uses built-in MSBuild tasks and requires a pinned CoACD version." />

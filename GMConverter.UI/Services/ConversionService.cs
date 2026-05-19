@@ -12,8 +12,24 @@ internal sealed class ConversionService(UiLogSink logSink)
 {
     private const int _maxCoacdPreviewTriangles = 5000;
 
+    private int _perfLogAnnounced;
+
+    private void AnnouncePerfLog()
+    {
+        if (Interlocked.Exchange(ref _perfLogAnnounced, 1) == 0)
+        {
+            logSink.Append($"Perf log: {PerfTimer.LogPath}");
+        }
+    }
+
     public string RunConversion(ConversionSettings settings)
     {
+        using var scope = PerfTimer.Measure(
+            "convert.run",
+            "RunConversion",
+            $"{settings.InputFormat}->{settings.OutputFormat}");
+        AnnouncePerfLog();
+
         var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
         using var loggerFactory = CreateLoggerFactory();
         var importer = CreateImporter(settings.InputFormat, loggerFactory);
@@ -27,42 +43,55 @@ internal sealed class ConversionService(UiLogSink logSink)
         var baseName = string.IsNullOrWhiteSpace(settings.BaseName)
             ? Path.GetFileNameWithoutExtension(inputPath)
             : settings.BaseName;
-        var model = importer.Parse(inputPath, new ModelParseOptions(
-            settings.ScaleFactor,
-            settings.AxisMode,
-            CreateMaterialResolveOptions(settings.MaterialDirectory),
-            CreateAnimationPath(settings.AnimationPath)));
+        Model model;
+        using (PerfTimer.Measure("convert.run", $"{settings.InputFormat}.Parse", inputPath))
+        {
+            model = importer.Parse(inputPath, new ModelParseOptions(
+                settings.ScaleFactor,
+                settings.AxisMode,
+                CreateMaterialResolveOptions(settings.MaterialDirectory),
+                CreateAnimationPath(settings.AnimationPath)));
+        }
 
         switch (settings.OutputFormat)
         {
             case "obj":
                 Directory.CreateDirectory(outputPath);
-                new OBJExporter().Export(model, outputPath, baseName, new OBJExportOptions());
+                using (PerfTimer.Measure("convert.run", "OBJExporter.Export"))
+                {
+                    new OBJExporter().Export(model, outputPath, baseName, new OBJExportOptions());
+                }
                 return $"Wrote OBJ output to {outputPath}";
 
             case "glb":
             case "gltf":
                 Directory.CreateDirectory(outputPath);
-                new GLTFExporter().Export(
-                    model,
-                    outputPath,
-                    baseName,
-                    new GLTFExportOptions(settings.OutputFormat is "glb"));
+                using (PerfTimer.Measure("convert.run", "GLTFExporter.Export", settings.OutputFormat))
+                {
+                    new GLTFExporter().Export(
+                        model,
+                        outputPath,
+                        baseName,
+                        new GLTFExportOptions(settings.OutputFormat is "glb"));
+                }
                 return $"Wrote {(settings.OutputFormat is "glb" ? "GLB" : "glTF")} output to {outputPath}";
 
             case "source":
             case "mdl":
                 Directory.CreateDirectory(outputPath);
-                new MDLExporter().Export(
-                    model,
-                    outputPath,
-                    baseName,
-                    new MDLExportOptions(
-                        settings.ModelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
-                        settings.StudioMdlPath,
-                        settings.VtfCmdPath,
-                        settings.BuildMaterials,
-                        CreatePhysicsOptions(settings)));
+                using (PerfTimer.Measure("convert.run", "MDLExporter.Export"))
+                {
+                    new MDLExporter().Export(
+                        model,
+                        outputPath,
+                        baseName,
+                        new MDLExportOptions(
+                            settings.ModelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
+                            settings.StudioMdlPath,
+                            settings.VtfCmdPath,
+                            settings.BuildMaterials,
+                            CreatePhysicsOptions(settings)));
+                }
                 return $"Wrote Source compile workspace to {outputPath}";
 
             default:
@@ -72,14 +101,21 @@ internal sealed class ConversionService(UiLogSink logSink)
 
     public PreviewLoadResult LoadPreview(ConversionSettings settings)
     {
+        using var scope = PerfTimer.Measure("convert.preview", "LoadPreview", settings.InputFormat);
+        AnnouncePerfLog();
+
         var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
         using var loggerFactory = CreateLoggerFactory();
         var importer = CreateImporter(settings.InputFormat, loggerFactory);
-        var model = importer.Parse(inputPath, new ModelParseOptions(
-            settings.ScaleFactor,
-            settings.AxisMode,
-            CreateMaterialResolveOptions(settings.MaterialDirectory),
-            CreateAnimationPath(settings.AnimationPath)));
+        Model model;
+        using (PerfTimer.Measure("convert.preview", $"{settings.InputFormat}.Parse", inputPath))
+        {
+            model = importer.Parse(inputPath, new ModelParseOptions(
+                settings.ScaleFactor,
+                settings.AxisMode,
+                CreateMaterialResolveOptions(settings.MaterialDirectory),
+                CreateAnimationPath(settings.AnimationPath)));
+        }
 
         var previewDirectory = Path.Combine(Path.GetTempPath(), "GMConverter.UI", "Preview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(previewDirectory);
@@ -89,9 +125,16 @@ internal sealed class ConversionService(UiLogSink logSink)
             : settings.BaseName;
 
         baseName = SanitizePathToken(baseName);
-        new GLTFExporter().Export(model, previewDirectory, baseName, new GLTFExportOptions(true));
+        using (PerfTimer.Measure("convert.preview", "GLTFExporter.Export"))
+        {
+            new GLTFExporter().Export(model, previewDirectory, baseName, new GLTFExportOptions(true));
+        }
 
-        var physicsPreview = ExportPhysicsPreview(settings, model, previewDirectory, baseName);
+        PhysicsPreviewExport physicsPreview;
+        using (PerfTimer.Measure("convert.preview", "ExportPhysicsPreview"))
+        {
+            physicsPreview = ExportPhysicsPreview(settings, model, previewDirectory, baseName);
+        }
 
         return new PreviewLoadResult(
             PreviewSummary.From(model, physicsPreview.PartCount),

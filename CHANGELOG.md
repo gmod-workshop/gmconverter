@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a persistent on-disk scan cache for Unreal Engine 4/5 archives keyed by a fingerprint of `*.pak`, `*.utoc`, `*.ucas`, `*.sig`, and `Manifest_*.txt` sizes and modification times. Subsequent scans of an unchanged install skip the CUE4Parse mount and `AssetRegistry.bin` parse and return in milliseconds; the cache is invalidated automatically when the archive set changes and is wiped by the existing Refresh action.
+- Added a persistent on-disk asset-export cache for UE4/5 resolves. Re-previewing or re-converting the same asset against an unchanged archive now reuses the previously extracted PSK, decoded textures, and material sidecars instead of re-running CUE4Parse and the multi-layer baker each time. The cache is bounded by an LRU sweeper with a 5 GB default per archive (override with `GMCONVERTER_EXPORT_CACHE_BYTES`).
+- Added Stopwatch-based instrumentation across the UE4/5 scan, resolve, and export pipeline (`%TEMP%\GMConverter.Perf.log`) for diagnosing per-phase cost.
+
+### Changed
+
+- Gated the per-material PNG re-encode debug dump in the glTF exporter behind `GMCONVERTER_GLTF_DEBUG_DUMP=1` so production exports no longer encode every texture twice. Multi-part Fortnite scenes that previously took ~30 s in glTF export should fall to roughly half that time.
+- Memoized per-`Texture` PNG encoding inside a single glTF export so textures shared across multiple materials are encoded once instead of once per material reference.
+- Memoized derived textures inside a single glTF export so `WithOpenGlNormalMap`, `ToGltfMetallicRoughness`, and `ToSpecularFactorMask` each run once per unique source texture instead of once per material reference.
+- Lowered the PNG compression level used for in-memory texture encoding (`Texture.ToPngBytes`) from the default (DEFLATE level 6) to level 1. This trades roughly 10-15% larger PNG payloads in `.glb` outputs for a 3-4x faster encode pass, which was the dominant cost left in `GLTFExporter` after the prior dedup work.
+- Lifted the per-material texture decode cache in `WriteResolvedMaterialOverrides` to per-part scope so two materials in the same UE mesh part that share a texture only pay the decode/encode/write cost once.
+- Gated the per-material multi-layer bake diagnostic logs (`*.uvdiag.log`, `*.bakediag.log`) behind `GMCONVERTER_BAKE_DIAGNOSTICS=1` to drop fixed-cost StringBuilder + disk writes per multi-layer material.
+- Reduced the post-export file-settle polling cadence in the UE4/5 explorer from 100 ms to 10 ms so resolving a multi-part scene saves several seconds of idle wait without lowering the overall five-second safety ceiling.
+
+### Removed
+
+- Removed the `GMCONVERTER_KEEP_EXPORT_CACHE` opt-in environment variable. UE4/5 export reuse is now always active and governed by the new sentinel-based asset-export cache, which validates archive fingerprint and tool version before reusing a previously extracted asset tree.
+
+### Performance
+
+- Added a thread-safe per-operation artifact cache in `GMConverter.Common` that memoizes expensive byte-producing work (currently used for UE texture decode but format-agnostic for future importers/exporters). UE4/5 scenes with shared textures across multiple parts now decode each unique texture once per resolve instead of once per reference, cutting the dominant cold-path cost in `WriteResolvedMaterialOverrides` and the multi-layer baker's channel loading.
+- Added a generic `DecodedImage` type in `GMConverter.Common` for cache payloads that need raw RGBA pixels plus lazy PNG memoization. The UE multi-layer baker now reads raw pixels directly into ImageSharp via `Image.LoadPixelData<Rgba32>` instead of going through an encode-then-decode PNG roundtrip, eliminating ~1-4 s of per-cold-preview work on a multi-part Fortnite scene.
+- Parallelized the UE4/5 per-part export loop in `ExportResolvedScene`. Parts on distinct mesh UObjects run concurrently while parts that share an underlying UObject serialize against a per-UObject lock (necessary because `MaterialOverrideScope` and CUE4Parse's `Exporter` both mutate or read state on the shared UObject). Parallelism degree defaults to half the logical core count capped at 4, override via `GMCONVERTER_PARTS_PARALLELISM=N` (set to 1 to disable). Expected cold-path win on a 22-part Fortnite scene: ~105 s sequential → ~30-45 s parallel.
+- Added a generic `BarycentricRasterizer` helper in `GMConverter.Common` with a `Vector<float>` SIMD inner loop. Walks the pixels inside a 2D triangle and invokes a struct-generic `IBarycentricPixelHandler` per inside pixel; the JIT specializes per concrete handler type so the per-pixel call is inlined. The UE multi-layer baker's `RasterizeTriangle` is now a thin caller that delegates to this helper, and any future format that needs UV-space rasterization can reuse the same primitive.
+- Parallelized glTF material construction so all materials in a multi-part scene now build concurrently with a thread-safe derived-texture cache.
+- Parallelized `PSKImporter.ParseScene` so the per-entry mesh parse of an Unreal scene runs across cores while preserving manifest order.
+- Switched the persistent UE4/5 scan cache from JSON to LZ4-compressed MessagePack (`*.msgpack` files in `%LOCALAPPDATA%\GMConverter\cache\ue4-scan`). Reading a 138K-entry Fortnite scan cache now takes a fraction of the prior JSON deserialize cost and the on-disk file is roughly half the size. Adds a `MessagePack` package reference.
+- Parallelized the multi-layer baker: the three channel bakes (diffuse, normals, specular) run concurrently per material, and the background-fill phase inside `BakeChannel` walks rows with `Parallel.For`. Triangle rasterization stays sequential to preserve last-write-wins semantics on overlapping triangles.
+- Rewrote the in-place texture transforms (`WithOpenGlNormalMap`, `ToGltfMetallicRoughness`, `ToSpecularFactorMask`) to operate on direct byte spans instead of per-pixel `Rgba32` struct reads/writes, with a `Vector<byte>` SIMD path for green-channel inversion (the most common transform — every DirectX normal map hits it).
+
 ## [1.6.0] - 2026-05-19
 
 ### Added

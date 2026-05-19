@@ -28,26 +28,53 @@ internal sealed class PSKImporter : IImporter
 
     public Model Parse(string inputPath, ModelParseOptions options)
     {
+        using var scope = PerfTimer.Measure("psk.import", "Parse", inputPath);
         return IsSceneManifest(inputPath) ? ParseScene(inputPath, options) : ParseSingle(inputPath, options, null);
     }
 
     private static Model ParseScene(string inputPath, ModelParseOptions options)
     {
+        using var sceneScope = PerfTimer.Measure("psk.import", "ParseScene", inputPath);
         var manifest = ReadSceneManifest(inputPath);
+        PerfTimer.Log("psk.import", $"manifest entries={manifest.Entries.Count}");
+
         // UE/Fortnite source assets are authored in centimeters, but glTF/standard mesh formats use
         // meters — so a scene that imports with default ScaleFactor=1.0 lands 100× too large. Fold
         // a cm→m factor into ScaleFactor for UE scenes specifically, on top of any user override.
         var sceneOptions = options with { ScaleFactor = options.ScaleFactor * 0.01f };
         var materialResolver = PSKMaterialResolver.Create(sceneOptions.Materials);
+
+        // Parse entries in parallel — each ParseSingle reads its own PSK file from disk, builds
+        // its own Mesh/Material/Texture objects, and only reads from the shared materialResolver
+        // (whose internal dictionaries are read-only after construction). Index-keyed buffer
+        // preserves manifest order so the resulting meshes/materials are deterministic.
+        var sceneDirectory = Path.GetDirectoryName(inputPath) ?? string.Empty;
+        var parsedModels = new Model[manifest.Entries.Count];
+        Parallel.For(0, manifest.Entries.Count, entryIndex =>
+        {
+            var entry = manifest.Entries[entryIndex];
+            // Manifest entry paths are produced by ExportResolvedScene via Path.GetRelativePath,
+            // so a well-formed manifest only ever contains relative paths under sceneDirectory.
+            // Run them through PathHelpers.TryResolveUnderRoot anyway — a tampered or corrupted
+            // manifest could otherwise let a rooted entry.Path silently replace sceneDirectory
+            // and walk the importer through arbitrary filesystem locations.
+            if (!PathHelpers.TryResolveUnderRoot(sceneDirectory, entry.Path, out var entryPath))
+            {
+                throw new GMConverterException(
+                    $"Unreal scene manifest entry references a path outside the scene directory: '{entry.Path}'.");
+            }
+            using var entryScope = PerfTimer.Measure(
+                "psk.import",
+                "ParseScene.Entry",
+                $"{entryIndex + 1}/{manifest.Entries.Count} {Path.GetFileName(entryPath)}");
+            parsedModels[entryIndex] = ParseSingle(entryPath, sceneOptions, entry.Transform, materialResolver);
+        });
+
         List<Mesh> meshes = [];
         Dictionary<string, Material> materials = new(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var entry in manifest.Entries)
+        foreach (var model in parsedModels)
         {
-            var entryPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(inputPath) ?? string.Empty, entry.Path));
-            var model = ParseSingle(entryPath, sceneOptions, entry.Transform, materialResolver);
             meshes.AddRange(model.Meshes);
-
             foreach (var material in model.Materials)
             {
                 materials.TryAdd(material.Name, material);

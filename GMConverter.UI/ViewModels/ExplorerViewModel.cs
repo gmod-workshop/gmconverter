@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GMConverter.Common;
 using GMConverter.Explorer;
 using GMConverter.UI.Models;
 using GMConverter.UI.Services;
@@ -361,6 +362,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         _setStatusMessage(message);
         ExplorerStatus = message;
         _logSink.Append(message);
+        _logSink.Append($"Perf log: {PerfTimer.LogPath}");
         try
         {
             var result = await Task.Run(() =>
@@ -413,6 +415,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         _setStatusMessage(resolveMessage);
         ExplorerStatus = resolveMessage;
         _logSink.Append(resolveMessage);
+        _logSink.Append($"Perf log: {PerfTimer.LogPath}");
 
         var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
         PopulateExplorerSelection(entry, resolvedEntry);

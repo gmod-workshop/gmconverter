@@ -7,7 +7,6 @@ using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse_Conversion.Meshes.PSK;
-using CUE4Parse_Conversion.Textures;
 using GMConverter.Common;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -47,7 +46,8 @@ internal static class MultiLayerBaker
         UObject meshExport,
         UMaterialInterface?[] materialInterfaces,
         string outputDirectory,
-        JsonSerializerOptions jsonOptions)
+        JsonSerializerOptions jsonOptions,
+        ExportSessionCache sessionCache)
     {
         if (materialInterfaces.Length == 0)
         {
@@ -92,11 +92,27 @@ internal static class MultiLayerBaker
                 continue;
             }
 
-            WriteUvDiagnostic(material, layerCount, triangles, outputDirectory);
-            WriteBakeDiagnostic(material, parameters, layerCount, triangles, outputDirectory);
-            BakeSingleMaterial(material, parameters, layerCount, triangles, outputDirectory, jsonOptions, partHash);
+            using var bakeScope = PerfTimer.Measure(
+                "ue4.bake",
+                "BakeSingleMaterial",
+                $"name={material.Name} layers={layerCount} tris={triangles.Count}");
+            if (_emitDiagnostics)
+            {
+                WriteUvDiagnostic(material, layerCount, triangles, outputDirectory);
+                WriteBakeDiagnostic(material, parameters, layerCount, triangles, outputDirectory);
+            }
+            BakeSingleMaterial(material, parameters, layerCount, triangles, outputDirectory, jsonOptions, partHash, sessionCache);
         }
     }
+
+    // Gated behind GMCONVERTER_BAKE_DIAGNOSTICS=1. The UV / bake diagnostics write per-material
+    // .uvdiag.log and .bakediag.log files alongside the baked textures. They're development aids
+    // for verifying FortnitePorting parity and don't affect the rendered output; skipping them in
+    // production saves a directory walk + StringBuilder churn per multi-layer material.
+    private static readonly bool _emitDiagnostics =
+        Environment.GetEnvironmentVariable("GMCONVERTER_BAKE_DIAGNOSTICS") is { Length: > 0 } flag &&
+        !flag.Equals("0", StringComparison.Ordinal) &&
+        !flag.Equals("false", StringComparison.OrdinalIgnoreCase);
 
     private static bool TryGetMeshLod(UObject meshExport, out CBaseMeshLod lod, out CMeshVertex[]? verts)
     {
@@ -203,11 +219,24 @@ internal static class MultiLayerBaker
         List<TriangleUv> triangles,
         string outputDirectory,
         JsonSerializerOptions jsonOptions,
-        string partHash)
+        string partHash,
+        ExportSessionCache sessionCache)
     {
-        var diffuseLayers = LoadChannelLayers(parameters, layerCount, CMaterialParams2.Diffuse);
-        var normalLayers = LoadChannelLayers(parameters, layerCount, CMaterialParams2.Normals);
-        var specularLayers = LoadChannelLayers(parameters, layerCount, CMaterialParams2.SpecularMasks);
+        List<Image<Rgba32>> diffuseLayers;
+        List<Image<Rgba32>> normalLayers;
+        List<Image<Rgba32>> specularLayers;
+        using (PerfTimer.Measure("ue4.bake", "LoadChannelLayers.Diffuse", $"layers={layerCount}"))
+        {
+            diffuseLayers = LoadChannelLayers(parameters, layerCount, CMaterialParams2.Diffuse, sessionCache);
+        }
+        using (PerfTimer.Measure("ue4.bake", "LoadChannelLayers.Normals", $"layers={layerCount}"))
+        {
+            normalLayers = LoadChannelLayers(parameters, layerCount, CMaterialParams2.Normals, sessionCache);
+        }
+        using (PerfTimer.Measure("ue4.bake", "LoadChannelLayers.SpecularMasks", $"layers={layerCount}"))
+        {
+            specularLayers = LoadChannelLayers(parameters, layerCount, CMaterialParams2.SpecularMasks, sessionCache);
+        }
 
         if (diffuseLayers.Count == 0)
         {
@@ -231,15 +260,48 @@ internal static class MultiLayerBaker
         var bakedNormalsName = $"{aliasName}_baked_normals";
         var bakedSpecularName = $"{aliasName}_baked_specular";
 
-        BakeChannel(diffuseLayers, triangles, width, height, baseWidth, baseHeight, layerCount, Path.Combine(outputDirectory, bakedDiffuseName + ".png"));
-        if (normalLayers.Count > 0)
-        {
-            BakeChannel(normalLayers, triangles, width, height, baseWidth, baseHeight, layerCount, Path.Combine(outputDirectory, bakedNormalsName + ".png"));
-        }
-        if (specularLayers.Count > 0)
-        {
-            BakeChannel(specularLayers, triangles, width, height, baseWidth, baseHeight, layerCount, Path.Combine(outputDirectory, bakedSpecularName + ".png"));
-        }
+        // Baked names come from `$"{sanitizedName}__p{partHash}_baked_*"` so they're leaf file
+        // names by construction. Path.GetFileName + Path.Join keeps the joins analyzer-clean and
+        // prevents a future name-generator change from producing a rooted string that would let
+        // Path.Combine silently drop outputDirectory.
+        var diffusePath = Path.Join(outputDirectory, Path.GetFileName(bakedDiffuseName + ".png"));
+        var normalsPath = Path.Join(outputDirectory, Path.GetFileName(bakedNormalsName + ".png"));
+        var specularPath = Path.Join(outputDirectory, Path.GetFileName(bakedSpecularName + ".png"));
+
+        // Each channel writes to its own output buffer and its own PNG file, so the three bakes
+        // are fully independent. Parallel.Invoke runs them concurrently — on a 4+ core machine
+        // the ~3 channel × ~350 ms BakeChannel cost compresses into roughly the slowest channel.
+        // Inside BakeChannel, the background-fill is also parallelized over rows.
+        Parallel.Invoke(
+            () =>
+            {
+                using (PerfTimer.Measure("ue4.bake", "BakeChannel.Diffuse", $"{width}x{height}"))
+                {
+                    BakeChannel(diffuseLayers, triangles, width, height, baseWidth, baseHeight, layerCount, diffusePath);
+                }
+            },
+            () =>
+            {
+                if (normalLayers.Count == 0)
+                {
+                    return;
+                }
+                using (PerfTimer.Measure("ue4.bake", "BakeChannel.Normals", $"{width}x{height}"))
+                {
+                    BakeChannel(normalLayers, triangles, width, height, baseWidth, baseHeight, layerCount, normalsPath);
+                }
+            },
+            () =>
+            {
+                if (specularLayers.Count == 0)
+                {
+                    return;
+                }
+                using (PerfTimer.Measure("ue4.bake", "BakeChannel.SpecularMasks", $"{width}x{height}"))
+                {
+                    BakeChannel(specularLayers, triangles, width, height, baseWidth, baseHeight, layerCount, specularPath);
+                }
+            });
 
         UpdateSidecarReferences(
             material.Name,
@@ -274,7 +336,17 @@ internal static class MultiLayerBaker
         return (tileX, tileY);
     }
 
-    private static List<Image<Rgba32>> LoadChannelLayers(CMaterialParams2 parameters, int layerCount, string[][] channelNames)
+    // Shares the same texture-decode cache category as UE4Explorer.TryGetOrWriteTexture. The cache
+    // stores DecodedImage records (raw RGBA + dims), so this loader skips both the CUE4Parse-side
+    // PNG encode and the ImageSharp PNG decode that the prior implementation paid per layer. Each
+    // layer image is built via Image.LoadPixelData<Rgba32> directly from the cached pixel buffer.
+    private const string _bakerTextureCacheCategory = "ue4.texture-decode";
+
+    private static List<Image<Rgba32>> LoadChannelLayers(
+        CMaterialParams2 parameters,
+        int layerCount,
+        string[][] channelNames,
+        ExportSessionCache sessionCache)
     {
         var images = new List<Image<Rgba32>>(layerCount);
         for (var i = 0; i < layerCount && i < channelNames.Length; i++)
@@ -286,13 +358,21 @@ internal static class MultiLayerBaker
 
             try
             {
-                if (tex2d.Decode(ETexturePlatform.DesktopMobile) is not { } bitmap)
+                var cacheKey = tex2d.GetPathName();
+                var decoded = sessionCache.GetOrCompute(
+                    _bakerTextureCacheCategory,
+                    cacheKey,
+                    () => Cue4ParseImageDecoder.Decode(tex2d));
+
+                if (!decoded.IsValid)
                 {
                     continue;
                 }
 
-                var pngBytes = bitmap.Encode(ETextureFormat.Png, true, out _);
-                var image = Image.Load<Rgba32>(pngBytes);
+                // DecodeTextureToImage normalizes to Rgba8888, so a direct LoadPixelData is safe.
+                // If a future decoder path ever returns Bgra8888 we'd need to branch on
+                // decoded.Format here.
+                var image = Image.LoadPixelData<Rgba32>(decoded.Pixels, decoded.Width, decoded.Height);
                 images.Add(image);
             }
             catch
@@ -339,8 +419,12 @@ internal static class MultiLayerBaker
         // MI_NobleCrest_LAATRear_A's Layer-1 slot points at the FrontLaser fallback texture —
         // tile-column-based fill bled that fallback into the visible rear-hull region).
         var dominantLayerPerColumn = ComputeDominantLayerPerColumn(triangles, width, baseWidth, effectiveLayers);
-        for (var y = 0; y < height; y++)
+        // Parallel rows: each y owns its own slice of outputBuffer (no overlap), so there's no
+        // contention. For a tile-extended 4K-wide bake this is several hundred ms of scalar work
+        // that scales nearly linearly with cores.
+        Parallel.For(0, height, y =>
         {
+            var rowOffset = y * width;
             for (var x = 0; x < width; x++)
             {
                 var layer = dominantLayerPerColumn[x / baseWidth];
@@ -348,10 +432,13 @@ internal static class MultiLayerBaker
                 var srcH = sourceHeights[layer];
                 var sx = (x % baseWidth) * srcW / baseWidth;
                 var sy = (y % baseHeight) * srcH / baseHeight;
-                outputBuffer[y * width + x] = sourceBuffers[layer][sy * srcW + sx];
+                outputBuffer[rowOffset + x] = sourceBuffers[layer][sy * srcW + sx];
             }
-        }
+        });
 
+        // Triangle rasterization stays sequential — overlapping triangles produce last-write-wins
+        // and parallelizing here would either introduce races or require a depth-buffer pass that's
+        // more complexity than the savings warrant for typical per-part triangle counts (~100-500).
         foreach (var triangle in triangles)
         {
             RasterizeTriangle(
@@ -439,54 +526,67 @@ internal static class MultiLayerBaker
         var minY = Math.Max(0, (int)Math.Floor(Math.Min(p0.Y, Math.Min(p1.Y, p2.Y))));
         var maxY = Math.Min(height - 1, (int)Math.Ceiling(Math.Max(p0.Y, Math.Max(p1.Y, p2.Y))));
 
-        var edge01x = p1.X - p0.X;
-        var edge01y = p1.Y - p0.Y;
-        var edge02x = p2.X - p0.X;
-        var edge02y = p2.Y - p0.Y;
-        var det = edge01x * edge02y - edge01y * edge02x;
-        if (Math.Abs(det) < 1e-6f)
+        // Per-pixel sample handler. Receives barycentric coords from BarycentricRasterizer, does
+        // the FortnitePorting FPv4 Layer formula on UV1.x to pick a source layer, samples the
+        // chosen layer at (uv0 mod 1) for multi-tile UV0 wrapping, and writes one pixel into the
+        // output buffer. Struct + generic constraint lets the JIT inline this through the
+        // rasterizer's hot loop.
+        var sampler = new LayerSampleHandler(
+            t, outputBuffer, width,
+            sourceBuffers, sourceWidths, sourceHeights, effectiveLayers);
+        BarycentricRasterizer.Rasterize(p0, p1, p2, minX, maxX, minY, maxY, ref sampler);
+    }
+
+    // FortnitePorting FPv4 Layer formula: `(UV.x > Layer-1) * UseLayer` where the UV Map node
+    // inside the FPv4 Layer node group has `uv_map='UV1'` explicitly set (confirmed by
+    // introspecting FP's Blender output — earlier shader-text dumps hid the property because the
+    // default-printer skipped it). Stacking multiple FPv4 Layer instances collapses to "highest
+    // layer N such that UV1.x > N-1" → floor(UV1.x) (zero-indexed). Sampling textures uses the
+    // active render UV, which FP leaves as UV0 → `verts[i].UV` in our CUE4Parse data.
+    private readonly struct LayerSampleHandler : IBarycentricPixelHandler
+    {
+        private readonly TriangleUv _t;
+        private readonly Rgba32[] _output;
+        private readonly int _outputWidth;
+        private readonly Rgba32[][] _sourceBuffers;
+        private readonly int[] _sourceWidths;
+        private readonly int[] _sourceHeights;
+        private readonly int _effectiveLayers;
+
+        public LayerSampleHandler(
+            TriangleUv t,
+            Rgba32[] output,
+            int outputWidth,
+            Rgba32[][] sourceBuffers,
+            int[] sourceWidths,
+            int[] sourceHeights,
+            int effectiveLayers)
         {
-            return;
+            _t = t;
+            _output = output;
+            _outputWidth = outputWidth;
+            _sourceBuffers = sourceBuffers;
+            _sourceWidths = sourceWidths;
+            _sourceHeights = sourceHeights;
+            _effectiveLayers = effectiveLayers;
         }
 
-        var invDet = 1f / det;
-
-        for (var py = minY; py <= maxY; py++)
+        public void Handle(int px, int py, float u, float v, float w)
         {
-            for (var px = minX; px <= maxX; px++)
-            {
-                var dx = px + 0.5f - p0.X;
-                var dy = py + 0.5f - p0.Y;
-                var v = (dx * edge02y - dy * edge02x) * invDet;
-                var w = (-dx * edge01y + dy * edge01x) * invDet;
-                var u = 1f - v - w;
-                if (u < 0f || v < 0f || w < 0f)
-                {
-                    continue;
-                }
+            var uv0x = u * _t.Uv0A.X + v * _t.Uv0B.X + w * _t.Uv0C.X;
+            var uv0y = u * _t.Uv0A.Y + v * _t.Uv0B.Y + w * _t.Uv0C.Y;
+            var uv1x = u * _t.Uv1A.X + v * _t.Uv1B.X + w * _t.Uv1C.X;
+            var layerIndex = Math.Clamp((int)MathF.Floor(uv1x), 0, _effectiveLayers - 1);
 
-                // FortnitePorting FPv4 Layer formula: `(UV.x > Layer-1) * UseLayer` where the UV
-                // Map node inside the FPv4 Layer node group has `uv_map='UV1'` explicitly set
-                // (confirmed by introspecting FP's Blender output — earlier shader-text dumps hid
-                // the property because the default-printer skipped it). Stacking multiple FPv4
-                // Layer instances collapses to "highest layer N such that UV1.x > N-1" →
-                // floor(UV1.x) (zero-indexed). Sampling textures uses the active render UV,
-                // which FP leaves as UV0 → `verts[i].UV` in our CUE4Parse data.
-                var uv0x = u * t.Uv0A.X + v * t.Uv0B.X + w * t.Uv0C.X;
-                var uv0y = u * t.Uv0A.Y + v * t.Uv0B.Y + w * t.Uv0C.Y;
-                var uv1x = u * t.Uv1A.X + v * t.Uv1B.X + w * t.Uv1C.X;
-                var layerIndex = Math.Clamp((int)MathF.Floor(uv1x), 0, effectiveLayers - 1);
-
-                // Source sample at (uv0 mod 1) so multi-tile UV0 wraps per-tile back into the
-                // source texture's [0,1] range.
-                var srcW = sourceWidths[layerIndex];
-                var srcH = sourceHeights[layerIndex];
-                var su = uv0x - MathF.Floor(uv0x);
-                var sv = uv0y - MathF.Floor(uv0y);
-                var sx = Math.Clamp((int)(su * srcW), 0, srcW - 1);
-                var sy = Math.Clamp((int)(sv * srcH), 0, srcH - 1);
-                outputBuffer[py * width + px] = sourceBuffers[layerIndex][sy * srcW + sx];
-            }
+            // Source sample at (uv0 mod 1) so multi-tile UV0 wraps per-tile back into the source
+            // texture's [0,1] range.
+            var srcW = _sourceWidths[layerIndex];
+            var srcH = _sourceHeights[layerIndex];
+            var su = uv0x - MathF.Floor(uv0x);
+            var sv = uv0y - MathF.Floor(uv0y);
+            var sx = Math.Clamp((int)(su * srcW), 0, srcW - 1);
+            var sy = Math.Clamp((int)(sv * srcH), 0, srcH - 1);
+            _output[(py * _outputWidth) + px] = _sourceBuffers[layerIndex][(sy * srcW) + sx];
         }
     }
 

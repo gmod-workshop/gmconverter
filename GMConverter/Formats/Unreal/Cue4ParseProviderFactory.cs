@@ -2,6 +2,7 @@ using CUE4Parse.Compression;
 using CUE4Parse.FileProvider;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.Textures.BC;
+using GMConverter.Common;
 
 namespace GMConverter.Formats.Unreal;
 
@@ -16,10 +17,16 @@ internal static class Cue4ParseProviderFactory
 
     public static Cue4ParseProviderContext Create(string rootPath)
     {
-        InitializeNativeLibraries();
+        using var createScope = PerfTimer.Measure("ue4.provider", "Create", rootPath);
+
+        using (PerfTimer.Measure("ue4.provider", "InitializeNativeLibraries"))
+        {
+            InitializeNativeLibraries();
+        }
 
         var archiveDirectory = ResolveArchiveDirectory(rootPath);
         var profile = SelectProfile(archiveDirectory);
+        PerfTimer.Log("ue4.provider", $"profile={profile.GetType().Name} archive={archiveDirectory}");
         var gameData = profile.TryGetGameData();
         var provider = new DefaultFileProvider(
             archiveDirectory,
@@ -32,9 +39,23 @@ internal static class Cue4ParseProviderFactory
         // the exception escapes — otherwise the caller has no reference and the resources leak.
         try
         {
-            profile.ConfigureProvider(provider, gameData);
-            provider.Initialize();
-            profile.Mount(provider, gameData);
+            using (PerfTimer.Measure("ue4.provider", "ConfigureProvider"))
+            {
+                profile.ConfigureProvider(provider, gameData);
+            }
+
+            using (PerfTimer.Measure("ue4.provider", "Initialize"))
+            {
+                provider.Initialize();
+            }
+            PerfTimer.Log("ue4.provider", $"mounted Files.Count={provider.Files.Count}");
+
+            using (PerfTimer.Measure("ue4.provider", "Mount"))
+            {
+                profile.Mount(provider, gameData);
+            }
+            PerfTimer.Log("ue4.provider", $"post-mount Files.Count={provider.Files.Count}");
+
             return new Cue4ParseProviderContext(provider, profile, archiveDirectory);
         }
         catch

@@ -102,6 +102,14 @@ internal sealed class PSKImporter : IImporter
         Dictionary<string, List<Triangle>> trianglesByMaterial = new(StringComparer.OrdinalIgnoreCase);
         var skippedFaces = 0;
 
+        // When the SCS scene transform has an odd number of negative scale components (e.g.
+        // mirrored variants with relScale=(-1,1,1) like Side_R), every triangle's winding gets
+        // reversed by the mirror. Without compensating, Source treats the mirrored mesh's outside
+        // as inside — visible as inverted lighting (the lit side is the one in shadow). Flip the
+        // triangle index order so the post-mirror winding lands on the correct face direction.
+        var hasNegativeScale = sceneTransform is not null &&
+            sceneTransform.Scale.X * sceneTransform.Scale.Y * sceneTransform.Scale.Z < 0f;
+
         foreach (var face in psk.Faces)
         {
             if (!TryGetCorner(psk, face.WedgeIndices[2], weightLookup, options, sceneTransform, out var a) ||
@@ -131,7 +139,9 @@ internal sealed class PSKImporter : IImporter
             vertices.Add(a.WithFallbackNormal(faceNormal));
             vertices.Add(b.WithFallbackNormal(faceNormal));
             vertices.Add(c.WithFallbackNormal(faceNormal));
-            triangles.Add(new Triangle(vertexOffset, vertexOffset + 1, vertexOffset + 2));
+            triangles.Add(hasNegativeScale
+                ? new Triangle(vertexOffset, vertexOffset + 2, vertexOffset + 1)
+                : new Triangle(vertexOffset, vertexOffset + 1, vertexOffset + 2));
         }
 
         if (vertices.Count == 0)
@@ -467,7 +477,19 @@ internal sealed class PSKImporter : IImporter
 
         public Vector3 TransformNormal(Vector3 normal)
         {
-            return Vector3.Transform(normal, Rotation.ToQuaternion());
+            // For a normal direction the correct transform is the inverse-transpose of the
+            // composed (scale × rotation). For a diagonal SCS scale that simplifies to "divide
+            // each component by the per-axis scale" — and for the ±1 mirrors we see in Fortnite
+            // SCS data, that's a per-axis sign flip. Without this, mirrored meshes (scale.X=-1
+            // etc.) keep their inward-pointing normals after the position mirror, which makes
+            // their lit side dark and shadow side bright. Combined with the triangle winding
+            // flip in the face loop, this restores proper outward-facing normals.
+            var s = Scale.ToVector3();
+            var scaled = new Vector3(
+                MathF.Abs(s.X) > 0.000001f ? normal.X / s.X : 0f,
+                MathF.Abs(s.Y) > 0.000001f ? normal.Y / s.Y : 0f,
+                MathF.Abs(s.Z) > 0.000001f ? normal.Z / s.Z : 0f);
+            return Vector3.Transform(scaled, Rotation.ToQuaternion());
         }
     }
 

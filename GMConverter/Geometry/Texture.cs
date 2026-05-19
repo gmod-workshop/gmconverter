@@ -74,12 +74,13 @@ internal sealed class Texture : IDisposable
 
     public Texture ToSpecularFactorMask(string? textureName = null)
     {
-        // KHR_materials_specular reads the strength multiplier from the texture's ALPHA channel
-        // (per the spec: `specular = specularFactor * sample(specularTexture).a`). Fortnite's
-        // SpecularMasks store the specular strength in R, so move R -> A and leave RGB at 255 so
-        // any consumer that fetches RGB still sees a neutral white. Writing R = G = B = R-value
-        // and A = 255 (the old behavior) silently maxed every pixel's specular factor to 1.0,
-        // which is why every Fortnite material rendered uniformly glossy.
+        // Write Fortnite's SpecularMasks.R into both RGB and Alpha so downstream exporters that
+        // sample either channel get the right value:
+        //   - glTF KHR_materials_specular reads `specularTexture.A` per the spec.
+        //   - Source MDL's `$phongmask` is composited as the alpha channel of the basetexture,
+        //     but our `ApplyAlphaMask` helper composites the mask's RED channel into the diffuse's
+        //     alpha (per its docstring) — so the mask needs the value in R, not just A.
+        // Putting the value in all four channels covers both cases without per-exporter branching.
         var output = _image.Clone(_ => { });
         output.ProcessPixelRows(accessor =>
         {
@@ -88,7 +89,8 @@ internal sealed class Texture : IDisposable
                 var row = accessor.GetRowSpan(y);
                 for (var x = 0; x < row.Length; x++)
                 {
-                    row[x] = new Rgba32(byte.MaxValue, byte.MaxValue, byte.MaxValue, row[x].R);
+                    var v = row[x].R;
+                    row[x] = new Rgba32(v, v, v, v);
                 }
             }
         });
@@ -97,6 +99,13 @@ internal sealed class Texture : IDisposable
 
     public Texture ToSourcePhongExponent(string? textureName = null)
     {
+        // Fortnite SpecularMasks packing: R=Specular, G=Metallic, B=Roughness.
+        // Source `$phongexponenttexture` packing: R=per-pixel exponent scale (multiplied with
+        // `$phongexponent`), A=phong mask (only used when `$basemapalphaphongmask` is not set, so
+        // the basetexture alpha can be free for `$translucent`).
+        // Mapping: invert roughness (smooth surfaces → sharp highlights). Phong mask = SpecularMasks.R
+        // so the same per-pixel "how much specular here" carries through whether the consumer uses
+        // glTF KHR_materials_specular or Source phong.
         var output = _image.Clone(_ => { });
         output.ProcessPixelRows(accessor =>
         {
@@ -105,12 +114,41 @@ internal sealed class Texture : IDisposable
                 var row = accessor.GetRowSpan(y);
                 for (var x = 0; x < row.Length; x++)
                 {
-                    var value = (byte)(byte.MaxValue - row[x].G);
-                    row[x] = new Rgba32(value, value, value, byte.MaxValue);
+                    var src = row[x];
+                    var exponent = (byte)(byte.MaxValue - src.B);
+                    row[x] = new Rgba32(exponent, exponent, exponent, src.R);
                 }
             }
         });
         return new Texture(textureName ?? $"{Name}_phong_exponent", output);
+    }
+
+    // Returns a copy of this texture with its alpha channel replaced by the mask's red channel.
+    // Used for Source's `$normalmapalphaenvmapmask` workflow, where the envmap mask must live in
+    // the normal map's alpha rather than a separate texture (Source rejects $envmapmask alongside
+    // $bumpmap due to pixel-shader register limits in VertexLitGeneric).
+    public Texture WithMaskInAlpha(Texture mask, string? textureName = null)
+    {
+        var output = _image.Clone(_ => { });
+        using var maskImage = mask._image.Clone(_ => { });
+        if (maskImage.Width != output.Width || maskImage.Height != output.Height)
+        {
+            maskImage.Mutate(ctx => ctx.Resize(output.Width, output.Height));
+        }
+        output.ProcessPixelRows(maskImage, (outAccessor, maskAccessor) =>
+        {
+            for (var y = 0; y < outAccessor.Height; y++)
+            {
+                var outRow = outAccessor.GetRowSpan(y);
+                var maskRow = maskAccessor.GetRowSpan(y);
+                for (var x = 0; x < outRow.Length; x++)
+                {
+                    var pixel = outRow[x];
+                    outRow[x] = new Rgba32(pixel.R, pixel.G, pixel.B, maskRow[x].R);
+                }
+            }
+        });
+        return new Texture(textureName ?? $"{Name}_with_mask", output, hasAlpha: true);
     }
 
     public byte[] ToPngBytes()

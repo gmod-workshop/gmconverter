@@ -25,9 +25,11 @@ internal static class PerfTimer
                 FormattableString.Invariant(
                     $"# GMConverter perf log | pid {Environment.ProcessId} | started {DateTimeOffset.Now:O}{Environment.NewLine}"));
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            // Telemetry is best-effort; never propagate IO failures from instrumentation.
+            // Telemetry is best-effort; never propagate filesystem failures from instrumentation.
+            // Anything outside this expected set (OOM, programmer error) propagates as normal so
+            // unrelated bugs aren't silently masked by the perf log initializer.
         }
     }
 
@@ -52,18 +54,18 @@ internal static class PerfTimer
             {
                 File.AppendAllText(LogPath, line + Environment.NewLine);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Best-effort.
+                // Best-effort telemetry — filesystem failures here must never block the caller.
             }
 
             try
             {
                 Console.WriteLine(line);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
             {
-                // Best-effort.
+                // Console may be detached (windowed app, redirected stream closed). Drop the line.
             }
         }
     }

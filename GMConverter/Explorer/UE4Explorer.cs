@@ -241,8 +241,12 @@ internal sealed class UE4Explorer : IExplorer
                     resolvedExports = ResolveMeshExports(sourceExport, provider);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OutOfMemoryException)
             {
+                // Wrap any normal CUE4Parse / asset-resolution failure with the archive entry
+                // context so the caller can blame the asset. OOM bypasses the wrap so it
+                // propagates as the process-level failure it actually is — wrapping it would only
+                // disguise the real problem.
                 throw new GMConverterException(
                     $"UE4/5 archive scene resolution failed for {fileEntry.ArchiveEntryPath}. {ex}");
             }

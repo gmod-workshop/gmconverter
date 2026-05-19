@@ -135,11 +135,13 @@ internal static class UE4ScanCache
             PerfTimer.Log("ue4.scan-cache", $"cache HIT entries={entries.Count}");
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or MessagePackSerializationException or InvalidOperationException)
         {
-            // Any read failure (corrupt file, schema mismatch, IO error, MessagePack runtime issue)
-            // should fall back to a live scan — never propagate. The cache is purely opportunistic
-            // and the worst outcome is paying the original 30s scan cost again.
+            // Any expected read failure (corrupt file, schema mismatch, IO error, MessagePack
+            // runtime issue, invalid stream state) falls back to a live scan. The cache is purely
+            // opportunistic and the worst outcome on a miss is paying the original 30s scan cost
+            // again. Anything outside this set (OOM, programmer error) propagates so a real bug
+            // doesn't get swallowed and disguised as a cache miss.
             PerfTimer.Log("ue4.scan-cache", $"TryRead failed: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
@@ -180,12 +182,14 @@ internal static class UE4ScanCache
                 MessagePackSerializer.Serialize(stream, envelope, _serializerOptions);
             }
             File.Move(tempPath, cachePath, overwrite: true);
-            tempPath = null;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or MessagePackSerializationException)
         {
-            // Cache write is best-effort. Swallow every failure mode — the live scan already
-            // succeeded and its result is in memory, so the user should never see an error here.
+            // Cache write is best-effort across the three failure modes we actually expect:
+            // filesystem errors, permission errors, and MessagePack contract mismatches. Any other
+            // exception (OOM, programmer error) should propagate so it doesn't get silently lost
+            // — the live scan result is still in memory and the user has already seen the scan
+            // succeed at this point, so the only consumer affected is the cache write.
             PerfTimer.Log("ue4.scan-cache", $"Write failed: {ex.GetType().Name}: {ex.Message}");
             if (tempPath is not null)
             {
@@ -196,7 +200,7 @@ internal static class UE4ScanCache
                         File.Delete(tempPath);
                     }
                 }
-                catch
+                catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
                 {
                     // Leaving an orphan .tmp behind is benign — the next Write overwrites it.
                 }

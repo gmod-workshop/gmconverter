@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using NewtonsoftJson = Newtonsoft.Json;
 using CUE4Parse.FileProvider;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.GameTypes.FN.Assets.Exports;
@@ -30,6 +29,7 @@ using CUE4Parse_Conversion.UEFormat.Enums;
 using GMConverter.Common;
 using GMConverter.Formats.PSK;
 using GMConverter.Formats.Unreal;
+using NewtonsoftJson = Newtonsoft.Json;
 
 namespace GMConverter.Explorer;
 

@@ -3,10 +3,10 @@ using System.Numerics;
 using GMConverter.Common;
 using GMConverter.Formats.MOW;
 using GMConverter.Geometry;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace GMConverter.Importers;
 

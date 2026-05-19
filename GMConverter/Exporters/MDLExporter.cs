@@ -119,12 +119,9 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         // sample off the end of the baked PNG in Source. We bake the per-material BakedUv0Scale
         // into the SMD wedge UVs here so each submesh's UVs map directly into [0,1] of its texture.
         var uvScales = new Dictionary<string, Vector2>(StringComparer.OrdinalIgnoreCase);
-        foreach (var material in model.Materials)
+        foreach (var material in model.Materials.Where(m => m.BakedUv0Scale is not null))
         {
-            if (material.BakedUv0Scale is { } scale)
-            {
-                uvScales[material.Name] = scale;
-            }
+            uvScales[material.Name] = material.BakedUv0Scale!.Value;
         }
 
         foreach (var mesh in model.Meshes)

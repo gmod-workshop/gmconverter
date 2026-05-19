@@ -27,10 +27,21 @@ internal static class Cue4ParseProviderFactory
             profile.CreateVersionContainer(),
             StringComparer.OrdinalIgnoreCase);
 
-        profile.ConfigureProvider(provider, gameData);
-        provider.Initialize();
-        profile.Mount(provider, gameData);
-        return new Cue4ParseProviderContext(provider, profile, archiveDirectory);
+        // The provider owns native handles and disk-mounted archives, so if any step between
+        // construction and successful context wrap-up throws we must dispose it ourselves before
+        // the exception escapes — otherwise the caller has no reference and the resources leak.
+        try
+        {
+            profile.ConfigureProvider(provider, gameData);
+            provider.Initialize();
+            profile.Mount(provider, gameData);
+            return new Cue4ParseProviderContext(provider, profile, archiveDirectory);
+        }
+        catch
+        {
+            provider.Dispose();
+            throw;
+        }
     }
 
     public static bool LooksLikeArchiveRoot(string path)

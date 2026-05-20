@@ -3,7 +3,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using GMConverter.UI.ViewModels;
+using GMConverter.UI.Views;
 
 namespace GMConverter.UI;
 
@@ -20,8 +22,19 @@ public partial class MainWindow : ShadUI.Window
         SizeChanged += (_, _) => ApplyPreviewLayout();
         AttachShellViewModel();
 
-        Unloaded += (_, _) =>
+        // Avalonia does not raise Unloaded on a top-level Window when it closes via the [X]
+        // chrome button — the close path tears the window down without firing Unloaded on the
+        // window itself or its descendants. Hooking Closed instead guarantees the disposal
+        // chain runs; without it the SharpEngine SceneView's Vulkan resources keep a
+        // foreground thread alive and the .NET host process strands holding the assembly DLLs
+        // even after the window is gone, which blocks the next rebuild.
+        Closed += (_, _) =>
         {
+            foreach (var pane in this.GetVisualDescendants().OfType<PreviewPane>())
+            {
+                pane.Dispose();
+            }
+
             if (DataContext is MainWindowViewModel viewModel)
             {
                 viewModel.SaveSettingsNow();

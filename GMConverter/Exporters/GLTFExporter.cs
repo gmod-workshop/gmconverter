@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using GMConverter.Common;
@@ -109,12 +110,9 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
             // with a parent are already wired up by BuildJointNodes.
             if (jointNodes is not null && model.Skeleton is { } skeleton)
             {
-                foreach (var bone in skeleton.Bones)
+                foreach (var bone in skeleton.Bones.Where(bone => bone.ParentIndex < 0))
                 {
-                    if (bone.ParentIndex < 0)
-                    {
-                        zUpToYUp.AddNode(jointNodes[bone.Index]);
-                    }
+                    zUpToYUp.AddNode(jointNodes[bone.Index]);
                 }
 
                 AddAnimations(model, jointNodes);

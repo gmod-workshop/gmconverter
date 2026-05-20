@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using GMConverter.Common;
@@ -23,6 +22,10 @@ namespace GMConverter.Exporters;
 
 internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 {
+    // -90° around X rotates Z-up data into Y-up: (x, y, z) → (x, z, -y).
+    private static readonly Quaternion _zUpToYUpRotation =
+        Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f);
+
     public string OutputFormat => "glb";
 
     public string OutputName => "glTF";
@@ -74,10 +77,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         // scene-level transform handles the convention change.
         var zUpToYUp = new NodeBuilder("ZUpToYUp")
         {
-            LocalTransform = new AffineTransform(
-                Vector3.One,
-                Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f),
-                Vector3.Zero),
+            LocalTransform = new AffineTransform(Vector3.One, _zUpToYUpRotation, Vector3.Zero),
         };
 
         Directory.CreateDirectory(outputDirectory);

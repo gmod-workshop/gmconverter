@@ -64,6 +64,21 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         var isSkinned = CanExportSkin(model);
         var jointNodes = hasSkeleton ? BuildJointNodes(model.Skeleton!) : null;
 
+        // Our importers normalize source data to Z-up, which is also what Source/SMD needs, so
+        // MDLExporter writes positions as-is. glTF, however, mandates Y-up; without a conversion
+        // the produced .glb claims Y-up while actually holding Z-up data, and every viewer
+        // (in-app preview, Blender) renders the model tipped onto its face. Wrap every top-level
+        // scene node — both rigid meshes and skeleton roots — under one rotated parent so the
+        // mesh vertices, joint bind poses, and animation keyframes can stay untouched while the
+        // scene-level transform handles the convention change.
+        var zUpToYUp = new NodeBuilder("ZUpToYUp")
+        {
+            LocalTransform = new AffineTransform(
+                Vector3.One,
+                Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f),
+                Vector3.Zero),
+        };
+
         Directory.CreateDirectory(outputDirectory);
 
         using (PerfTimer.Measure("gltf.export", "BuildScene", $"meshes={model.Meshes.Count}"))
@@ -76,7 +91,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
                     : mesh.Name;
                 // The scene node — not the mesh data block — is what Blender uses as the object
                 // name on import, so build it explicitly with a name and attach the mesh to it.
-                var node = new NodeBuilder(nodeName);
+                var node = zUpToYUp.CreateNode(nodeName);
                 if (isSkinned)
                 {
                     var meshBuilder = BuildSkinnedMesh(mesh, meshIndex, materialBuilders, model.Skeleton!.Bones.Count, inlineUvScales);
@@ -89,8 +104,19 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
                 }
             }
 
-            if (jointNodes is not null)
+            // Re-parent each skeleton root under the axis-fixup node so joint world transforms
+            // (and therefore skinning) pick up the same Z-up → Y-up rotation as the meshes. Bones
+            // with a parent are already wired up by BuildJointNodes.
+            if (jointNodes is not null && model.Skeleton is { } skeleton)
             {
+                foreach (var bone in skeleton.Bones)
+                {
+                    if (bone.ParentIndex < 0)
+                    {
+                        zUpToYUp.AddNode(jointNodes[bone.Index]);
+                    }
+                }
+
                 AddAnimations(model, jointNodes);
             }
         }

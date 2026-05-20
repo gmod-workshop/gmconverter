@@ -233,7 +233,11 @@ public partial class PreviewPane : UserControl, IDisposable
     {
         var importer = new glTFImporter(null, PreviewSceneView.Scene.GpuDevice)
         {
-            UsePbrMaterial = false,
+            // PBR is required so metallic-roughness textures (e.g. Fortnite SpecularMasks
+            // exported with metallic=1.0) render via PhysicallyBasedMaterial. With StandardMaterial,
+            // ConvertPbrToSpecular drains the base color into specular and metallic surfaces appear
+            // near-black under analytic lights.
+            UsePbrMaterial = true,
             UseGpuDeviceCache = false,
             LoggerCallback = (_, message) =>
             {

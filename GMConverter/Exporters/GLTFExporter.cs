@@ -46,8 +46,18 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         Dictionary<string, MaterialBuilder> materialBuilders;
         using (PerfTimer.Measure("gltf.export", "BuildMaterials"))
         {
-            materialBuilders = BuildMaterials(model, encodeCache);
+            materialBuilders = BuildMaterials(model, encodeCache, options.BakeUvTransforms);
         }
+
+        // When BakeUvTransforms is set, the consumer can't honor KHR_texture_transform (e.g. the
+        // in-app SharpEngine preview), so we fold each material's BakedUv0Scale into the mesh's UVs
+        // at write time instead. ApplyUvScale in BuildMaterial is skipped in this mode to avoid
+        // double-applying the transform.
+        var inlineUvScales = options.BakeUvTransforms
+            ? model.Materials
+                .Where(m => m.BakedUv0Scale is not null)
+                .ToDictionary(m => m.Name, m => m.BakedUv0Scale!.Value, StringComparer.OrdinalIgnoreCase)
+            : null;
 
         var scene = new SceneBuilder(model.Name);
         var hasSkeleton = model.Skeleton is { Bones.Count: > 0 };
@@ -69,12 +79,12 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
                 var node = new NodeBuilder(nodeName);
                 if (isSkinned)
                 {
-                    var meshBuilder = BuildSkinnedMesh(mesh, meshIndex, materialBuilders, model.Skeleton!.Bones.Count);
+                    var meshBuilder = BuildSkinnedMesh(mesh, meshIndex, materialBuilders, model.Skeleton!.Bones.Count, inlineUvScales);
                     scene.AddSkinnedMesh(meshBuilder, node.WorldMatrix, jointNodes!);
                 }
                 else
                 {
-                    var meshBuilder = BuildMesh(mesh, meshIndex, materialBuilders);
+                    var meshBuilder = BuildMesh(mesh, meshIndex, materialBuilders, inlineUvScales);
                     scene.AddRigidMesh(meshBuilder, node);
                 }
             }
@@ -141,7 +151,8 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
     private static GltfMeshBuilder BuildMesh(
         Mesh mesh,
         int meshIndex,
-        Dictionary<string, MaterialBuilder> materialBuilders)
+        Dictionary<string, MaterialBuilder> materialBuilders,
+        IReadOnlyDictionary<string, Vector2>? inlineUvScales)
     {
         var meshBuilder = new GltfMeshBuilder(
             string.IsNullOrWhiteSpace(mesh.Name)
@@ -152,13 +163,14 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         {
             var materialBuilder = ResolveMaterial(submesh.MaterialName, materialBuilders);
             var primitive = meshBuilder.UsePrimitive(materialBuilder);
+            var uvScale = LookupInlineUvScale(submesh.MaterialName, inlineUvScales);
 
             foreach (var triangle in submesh.Triangles)
             {
                 primitive.AddTriangle(
-                    BuildVertex(mesh.Vertices[triangle.A]),
-                    BuildVertex(mesh.Vertices[triangle.B]),
-                    BuildVertex(mesh.Vertices[triangle.C]));
+                    BuildVertex(mesh.Vertices[triangle.A], uvScale),
+                    BuildVertex(mesh.Vertices[triangle.B], uvScale),
+                    BuildVertex(mesh.Vertices[triangle.C], uvScale));
             }
         }
 
@@ -169,7 +181,8 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         Mesh mesh,
         int meshIndex,
         Dictionary<string, MaterialBuilder> materialBuilders,
-        int boneCount)
+        int boneCount,
+        IReadOnlyDictionary<string, Vector2>? inlineUvScales)
     {
         var meshBuilder = new GltfSkinnedMeshBuilder(
             string.IsNullOrWhiteSpace(mesh.Name)
@@ -180,33 +193,44 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         {
             var materialBuilder = ResolveMaterial(submesh.MaterialName, materialBuilders);
             var primitive = meshBuilder.UsePrimitive(materialBuilder);
+            var uvScale = LookupInlineUvScale(submesh.MaterialName, inlineUvScales);
 
             foreach (var triangle in submesh.Triangles)
             {
                 primitive.AddTriangle(
-                    BuildSkinnedVertex(mesh.Vertices[triangle.A], boneCount),
-                    BuildSkinnedVertex(mesh.Vertices[triangle.B], boneCount),
-                    BuildSkinnedVertex(mesh.Vertices[triangle.C], boneCount));
+                    BuildSkinnedVertex(mesh.Vertices[triangle.A], boneCount, uvScale),
+                    BuildSkinnedVertex(mesh.Vertices[triangle.B], boneCount, uvScale),
+                    BuildSkinnedVertex(mesh.Vertices[triangle.C], boneCount, uvScale));
             }
         }
 
         return meshBuilder;
     }
 
-    private static GltfVertexBuilder BuildVertex(Vertex vertex)
+    private static Vector2 LookupInlineUvScale(string? materialName, IReadOnlyDictionary<string, Vector2>? inlineUvScales)
     {
-        var (geometry, material) = BuildVertexParts(vertex);
+        if (inlineUvScales is null || string.IsNullOrWhiteSpace(materialName))
+        {
+            return Vector2.One;
+        }
+
+        return inlineUvScales.TryGetValue(materialName, out var scale) ? scale : Vector2.One;
+    }
+
+    private static GltfVertexBuilder BuildVertex(Vertex vertex, Vector2 uvScale)
+    {
+        var (geometry, material) = BuildVertexParts(vertex, uvScale);
         return new GltfVertexBuilder(in geometry, in material);
     }
 
-    private static GltfSkinnedVertexBuilder BuildSkinnedVertex(Vertex vertex, int boneCount)
+    private static GltfSkinnedVertexBuilder BuildSkinnedVertex(Vertex vertex, int boneCount, Vector2 uvScale)
     {
-        var (geometry, material) = BuildVertexParts(vertex);
+        var (geometry, material) = BuildVertexParts(vertex, uvScale);
         var joints = new VertexJoints4(NormalizeWeights(vertex.BoneWeights, boneCount));
         return new GltfSkinnedVertexBuilder(in geometry, in material, in joints);
     }
 
-    private static (VertexPositionNormal Geometry, VertexTexture1 Material) BuildVertexParts(Vertex vertex)
+    private static (VertexPositionNormal Geometry, VertexTexture1 Material) BuildVertexParts(Vertex vertex, Vector2 uvScale)
     {
         var normal = vertex.Normal;
         if (normal.LengthSquared() <= 0.000001f)
@@ -219,7 +243,7 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         }
 
         var geometry = new VertexPositionNormal(vertex.Position.X, vertex.Position.Y, vertex.Position.Z, normal.X, normal.Y, normal.Z);
-        var material = new VertexTexture1(new Vector2(vertex.TextureCoordinate.X, 1.0f - vertex.TextureCoordinate.Y));
+        var material = new VertexTexture1(new Vector2(vertex.TextureCoordinate.X * uvScale.X, (1.0f - vertex.TextureCoordinate.Y) * uvScale.Y));
         return (geometry, material);
     }
 
@@ -322,7 +346,8 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
     private static Dictionary<string, MaterialBuilder> BuildMaterials(
         Model model,
-        ConditionalWeakTable<Texture, byte[]> encodeCache)
+        ConditionalWeakTable<Texture, byte[]> encodeCache,
+        bool bakeUvTransforms)
     {
         // Derived-texture caches: WithOpenGlNormalMap / ToGltfMetallicRoughness / ToSpecularFactorMask
         // each produce a new Texture instance per call (Clone + pixel walk). When the same source
@@ -348,7 +373,8 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
                 encodeCache,
                 normalGlCache,
                 metallicRoughnessCache,
-                specularFactorCache);
+                specularFactorCache,
+                bakeUvTransforms);
             concurrent[material.Name] = builder;
         });
 
@@ -388,7 +414,8 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         ConditionalWeakTable<Texture, byte[]> encodeCache,
         ConditionalWeakTable<Texture, Texture> normalGlCache,
         ConditionalWeakTable<Texture, Texture> metallicRoughnessCache,
-        ConditionalWeakTable<Texture, Texture> specularFactorCache)
+        ConditionalWeakTable<Texture, Texture> specularFactorCache,
+        bool bakeUvTransforms)
     {
         if (_emitDebugDump)
         {
@@ -399,7 +426,9 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
         // KHR_texture_transform scale, set when MultiLayerBaker emitted a tile-extended texture
         // and we need to remap the mesh's tiled UV0 into the texture's [0,1] sample range.
-        var uvScale = material.BakedUv0Scale;
+        // When bakeUvTransforms is set the scale is folded into the mesh's UVs in BuildVertexParts,
+        // so we suppress the extension write here to avoid double-applying it.
+        var uvScale = bakeUvTransforms ? null : material.BakedUv0Scale;
 
         if (material.DiffuseTexture is not null)
         {
@@ -588,4 +617,4 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
     }
 }
 
-internal sealed record GLTFExportOptions(bool Binary = true);
+internal sealed record GLTFExportOptions(bool Binary = true, bool BakeUvTransforms = false);

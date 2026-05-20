@@ -127,7 +127,11 @@ internal sealed class ConversionService(UiLogSink logSink)
         baseName = SanitizePathToken(baseName);
         using (PerfTimer.Measure("convert.preview", "GLTFExporter.Export"))
         {
-            new GLTFExporter().Export(model, previewDirectory, baseName, new GLTFExportOptions(true));
+            // BakeUvTransforms folds per-material BakedUv0Scale into the mesh's UVs in lieu of
+            // KHR_texture_transform; the SharpEngine glTF importer used by the in-app preview does
+            // not honor that extension, so without inline baking multi-layer Fortnite materials
+            // sample the wrong tile of their bake and render as garbled textures.
+            new GLTFExporter().Export(model, previewDirectory, baseName, new GLTFExportOptions(Binary: true, BakeUvTransforms: true));
         }
 
         PhysicsPreviewExport physicsPreview;

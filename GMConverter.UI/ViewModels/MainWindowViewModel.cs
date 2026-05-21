@@ -97,6 +97,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         Convert.TryLoadDefaultConfig();
         TryLoadSettings();
+        Convert.ApplyLocalToolDefaults();
         _suppressSettingsSave = false;
 
         Convert.PropertyChanged += (_, e) =>

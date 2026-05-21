@@ -159,9 +159,10 @@ internal sealed class SourceMaterialCompiler
             ["-file", sourcePath, "-output", outputDirectory, "-resize", "-silent"],
             Path.GetDirectoryName(_vtfCmdPath));
 
-        var expectedVtfPath = Path.Combine(
-            outputDirectory,
-            Path.GetFileNameWithoutExtension(sourcePath) + ".vtf");
+        // Wrap with Path.GetFileName so the second arg is unambiguously a leaf name and
+        // Path.Combine can't drop outputDirectory if a future caller passes a rooted sourcePath.
+        var expectedVtfName = Path.GetFileName(Path.GetFileNameWithoutExtension(sourcePath) + ".vtf");
+        var expectedVtfPath = Path.Combine(outputDirectory, expectedVtfName);
         if (!File.Exists(expectedVtfPath))
         {
             throw new GMConverterException(

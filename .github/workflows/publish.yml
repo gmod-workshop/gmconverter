@@ -48,12 +48,17 @@ jobs:
       - name: Restore
         run: dotnet restore GMConverter.slnx
 
+      # UseSharedCompilation=false stops VBCSCompiler from persisting across the three publish
+      # steps below. Each one transitively builds CUE4Parse into the same obj/Release/net8.0/
+      # directory, and the persistent compiler from an earlier step would otherwise hold the
+      # previous CUE4Parse.dll open and break the next overwrite with CS2012.
       - name: Publish library
         run: >
           dotnet publish GMConverter/GMConverter.csproj
           --configuration Release
           --no-restore
           --output artifacts/publish/GMConverter.Library
+          -p:UseSharedCompilation=false
 
       - name: Publish CLI
         run: >
@@ -64,6 +69,7 @@ jobs:
           --output artifacts/publish/GMConverter.CLI-win-x64
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:UseSharedCompilation=false
 
       - name: Publish UI
         run: >
@@ -74,6 +80,7 @@ jobs:
           --output artifacts/publish/GMConverter.UI-win-x64
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:UseSharedCompilation=false
 
       - name: Create release archives
         shell: pwsh

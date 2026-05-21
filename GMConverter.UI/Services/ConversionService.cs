@@ -90,7 +90,8 @@ internal sealed class ConversionService(UiLogSink logSink)
                             settings.StudioMdlPath,
                             settings.VtfCmdPath,
                             settings.BuildMaterials,
-                            CreatePhysicsOptions(settings)));
+                            CreatePhysicsOptions(settings),
+                            new MaterialOptimizationOptions(settings.MaxTextureSize, settings.DeduplicateTextures)));
                 }
                 return $"Wrote Source compile workspace to {outputPath}";
 

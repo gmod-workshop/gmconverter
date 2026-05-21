@@ -23,7 +23,9 @@ internal sealed record UiConfig(
     float? PhysicsMass,
     float? CoacdThreshold,
     int? MaxConvexPieces,
-    int? MaxHullVertices)
+    int? MaxHullVertices,
+    int? MaxTextureSize,
+    bool? DeduplicateTextures)
 {
     public const string DefaultFileName = "gmconverter.ini";
 
@@ -152,6 +154,8 @@ internal sealed record UiConfig(
         public float? CoacdThreshold { get; private set; }
         public int? MaxConvexPieces { get; private set; }
         public int? MaxHullVertices { get; private set; }
+        public int? MaxTextureSize { get; private set; }
+        public bool? DeduplicateTextures { get; private set; }
 
         public void Set(string path, int lineNumber, string key, string value)
         {
@@ -228,6 +232,12 @@ internal sealed record UiConfig(
                 case "maxhullvertices":
                     MaxHullVertices = ParseInt(path, lineNumber, key, value);
                     break;
+                case "maxtexturesize":
+                    MaxTextureSize = ParseInt(path, lineNumber, key, value);
+                    break;
+                case "deduplicatetextures":
+                    DeduplicateTextures = ParseBool(path, lineNumber, key, value);
+                    break;
                 default:
                     throw new GMConverterException($"Unknown config key in {path} line {lineNumber}: {key}");
             }
@@ -255,7 +265,9 @@ internal sealed record UiConfig(
                 PhysicsMass,
                 CoacdThreshold,
                 MaxConvexPieces,
-                MaxHullVertices);
+                MaxHullVertices,
+                MaxTextureSize,
+                DeduplicateTextures);
         }
 
         private static string? EmptyToNull(string value)

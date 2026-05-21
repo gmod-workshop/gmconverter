@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Numerics;
 using System.Text;
 using GMConverter.Common;
@@ -59,19 +58,34 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         }
 
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths);
-        ExportSourceMaterials(model, materialDirectory, materialRelativeDirectory);
+
+        // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
+        // available it owns both files in materialDirectory — and the resize/dedup logic there
+        // needs to choose VMT texture references, which this fallback can't see.
+        var willCompileMaterials = options.BuildMaterials && sourceTools.CanCompileMaterials;
+        if (!willCompileMaterials)
+        {
+            ExportSourceMaterials(model, materialDirectory, materialRelativeDirectory);
+        }
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
-        Compile(model, result, sourceTools, options.BuildMaterials);
+        Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
     }
 
-    private static void Compile(Model model, MDLExportResult result, SourceToolPaths sourceTools, bool buildMaterials)
+    private static void Compile(
+        Model model,
+        MDLExportResult result,
+        SourceToolPaths sourceTools,
+        bool buildMaterials,
+        MaterialOptimizationOptions? materialOptimization)
     {
         if (buildMaterials)
         {
             if (sourceTools.CanCompileMaterials)
             {
-                var materialCompiler = new SourceMaterialCompiler(sourceTools.VtfCmdPath!);
+                var materialCompiler = new SourceMaterialCompiler(
+                    sourceTools.VtfCmdPath!,
+                    materialOptimization ?? MaterialOptimizationOptions.Default);
                 materialCompiler.Compile(model.Materials, result.MaterialDirectory, result.MaterialRelativeDirectory);
             }
         }
@@ -86,24 +100,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             throw new GMConverterException($"studiomdl not found: {studioMdlPath}");
         }
 
-        var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = studioMdlPath,
-            ArgumentList = { qcPath },
-            UseShellExecute = false
-        });
-
-        process?.WaitForExit();
-
-        if (process is null)
-        {
-            throw new GMConverterException("Failed to start studiomdl.");
-        }
-
-        if (process.ExitCode != 0)
-        {
-            throw new GMConverterException($"studiomdl exited with code {process.ExitCode}.");
-        }
+        ProcessRunner.Run(studioMdlPath, [qcPath]);
     }
 
     private static void WriteSmd(Model model, string smdPath)
@@ -801,4 +798,5 @@ internal sealed record MDLExportOptions(
     string? StudioMdlPath,
     string? VtfCmdPath,
     bool BuildMaterials,
-    PhysicsOptions? Physics);
+    PhysicsOptions? Physics,
+    MaterialOptimizationOptions? MaterialOptimization = null);

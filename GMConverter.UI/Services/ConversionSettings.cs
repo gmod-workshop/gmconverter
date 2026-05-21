@@ -21,4 +21,6 @@ internal sealed record ConversionSettings(
     float PhysicsMass,
     float CoacdThreshold,
     int MaxConvexPieces,
-    int MaxHullVertices);
+    int MaxHullVertices,
+    int MaxTextureSize,
+    bool DeduplicateTextures);

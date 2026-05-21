@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:GMConverter.UI.ViewModels"
              xmlns:common="using:GMConverter.UI.Controls.Common"
+             xmlns:settings="using:GMConverter.UI.Controls.Settings"
              xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
              xmlns:controls="clr-namespace:GMConverter.UI.Controls"
              mc:Ignorable="d"
@@ -48,42 +49,7 @@
             </shad:Card.Footer>
           </shad:Card>
 
-          <shad:Card HasShadow="True">
-            <shad:Card.Header>
-              <StackPanel Spacing="4">
-                <shad:CardTitle>Source Engine</shad:CardTitle>
-                <shad:CardDescription>Leave tool paths empty to download portable defaults beside the app.</shad:CardDescription>
-              </StackPanel>
-            </shad:Card.Header>
-            <StackPanel Spacing="16">
-              <TextBox Text="{Binding ModelPath}"
-                       shad:ControlAssist.Label="Model path"/>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox x:Name="StudioMdlPathBox"
-                         Text="{Binding StudioMdlPath}"
-                         shad:ControlAssist.Label="StudioMDL path"/>
-                <Button Grid.Column="1"
-                        Classes="Outline"
-                        Content="Browse"
-                        Click="BrowseStudioMdlPath_Click"
-                        IsEnabled="{Binding IsIdle}"
-                        VerticalAlignment="Bottom"/>
-              </Grid>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBox x:Name="VtfCmdPathBox"
-                         Text="{Binding VtfCmdPath}"
-                         shad:ControlAssist.Label="VTFCmd path"/>
-                <Button Grid.Column="1"
-                        Classes="Outline"
-                        Content="Browse"
-                        Click="BrowseVtfCmdPath_Click"
-                        IsEnabled="{Binding IsIdle}"
-                        VerticalAlignment="Bottom"/>
-              </Grid>
-              <CheckBox Content="Build VTF/VMT materials"
-                        IsChecked="{Binding BuildMaterials}"/>
-            </StackPanel>
-          </shad:Card>
+          <settings:SourceEngineSettings/>
         </StackPanel>
       </controls:ScrollProgress.ScrollContent>
     </controls:ScrollProgress>

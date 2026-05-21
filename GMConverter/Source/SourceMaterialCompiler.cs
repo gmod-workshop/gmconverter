@@ -4,10 +4,17 @@ using GMConverter.Geometry;
 
 namespace GMConverter.Source;
 
-internal sealed class SourceMaterialCompiler(string vtfCmdPath)
+internal sealed class SourceMaterialCompiler
 {
-    private readonly string _vtfCmdPath = Path.GetFullPath(vtfCmdPath);
+    private readonly string _vtfCmdPath;
+    private readonly MaterialOptimizationOptions _optimization;
     private static readonly UTF8Encoding _utf8NoBom = new(false);
+
+    public SourceMaterialCompiler(string vtfCmdPath, MaterialOptimizationOptions? optimization = null)
+    {
+        _vtfCmdPath = Path.GetFullPath(vtfCmdPath);
+        _optimization = optimization ?? MaterialOptimizationOptions.Default;
+    }
 
     public void Compile(IEnumerable<Material> materials, string materialOutputDirectory, string materialRelativeDirectory)
     {
@@ -23,6 +30,13 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
         Directory.CreateDirectory(materialSourceDirectory);
         Directory.CreateDirectory(materialOutputDirectory);
 
+        // Deduplication maps a (hash, hasAlpha) tuple to the canonical VTF basename already written
+        // to disk this run. Two materials that produce identical resized PNGs reference the same
+        // VTF instead of paying a second compile+disk write. hasAlpha is part of the key because
+        // the same RGB content compiled as DXT5 vs DXT1 produces different VTFs and one VMT may
+        // need translucency while the other does not.
+        var contentBasenames = new Dictionary<(ulong Hash, bool HasAlpha), string>();
+
         try
         {
             foreach (var material in materials)
@@ -32,51 +46,65 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
                     continue;
                 }
 
-                var baseTexturePath = $"{normalizedMaterialDirectory}/{material.Name}".Replace('\\', '/');
-                var texturePath = GetSourceTexturePath(materialSourceDirectory, material.Name);
-                var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
-
-                // Diffuse stays clean — phong mask now lives in the spec texture's alpha, freeing
-                // the basetexture alpha for $translucent so glass parts can be transparent and
-                // phong-lit simultaneously.
-                material.DiffuseTexture.WritePng(texturePath);
-                RunVtfCmd(texturePath, materialOutputDirectory);
+                var diffuseBasename = WriteOrReuse(
+                    material.DiffuseTexture,
+                    material.Name,
+                    material.DiffuseTexture.HasAlpha,
+                    materialSourceDirectory,
+                    materialOutputDirectory,
+                    contentBasenames);
 
                 var specForMask = UseSourcePhong(material) ? GetSourcePhongExponent(material) : null;
 
+                string? normalBasename = null;
                 if (material.NormalTexture is not null)
                 {
-                    var normalName = $"{material.Name}_normal";
-                    var normalPath = GetSourceTexturePath(materialSourceDirectory, normalName);
-
-                    // Pack the envmap mask into the normal map's alpha channel — Source requires
-                    // `$normalmapalphaenvmapmask` when both bumpmap and envmap masking are used.
                     var normalTextureForWrite = specForMask is not null
                         ? material.NormalTexture.WithMaskInAlpha(specForMask)
                         : material.NormalTexture;
-                    normalTextureForWrite.WritePng(normalPath);
-                    RunVtfCmd(normalPath, materialOutputDirectory);
+                    normalBasename = WriteOrReuse(
+                        normalTextureForWrite,
+                        $"{material.Name}_normal",
+                        hasAlpha: specForMask is not null,
+                        materialSourceDirectory,
+                        materialOutputDirectory,
+                        contentBasenames);
                 }
 
+                string? specBasename = null;
                 if (specForMask is not null)
                 {
-                    var specularName = $"{material.Name}_spec";
-                    var specularPath = GetSourceTexturePath(materialSourceDirectory, specularName);
-
-                    specForMask.WritePng(specularPath);
-                    RunVtfCmd(specularPath, materialOutputDirectory);
+                    // Phong-exponent texture's alpha carries the phong mask (per
+                    // ToSourcePhongExponent), so compile as DXT5 to keep that channel intact.
+                    specBasename = WriteOrReuse(
+                        specForMask,
+                        $"{material.Name}_spec",
+                        hasAlpha: true,
+                        materialSourceDirectory,
+                        materialOutputDirectory,
+                        contentBasenames);
                 }
 
-                WriteVmt(vmtPath, baseTexturePath, material);
-
+                string? illumBasename = null;
                 if (material.EmissiveTexture is not null)
                 {
-                    var illumName = $"{material.Name}_illum";
-                    var illumPath = GetSourceTexturePath(materialSourceDirectory, illumName);
-
-                    material.EmissiveTexture.WritePng(illumPath);
-                    RunVtfCmd(illumPath, materialOutputDirectory);
+                    illumBasename = WriteOrReuse(
+                        material.EmissiveTexture,
+                        $"{material.Name}_illum",
+                        material.EmissiveTexture.HasAlpha,
+                        materialSourceDirectory,
+                        materialOutputDirectory,
+                        contentBasenames);
                 }
+
+                var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
+                WriteVmt(
+                    vmtPath,
+                    $"{normalizedMaterialDirectory}/{diffuseBasename}",
+                    normalBasename is null ? null : $"{normalizedMaterialDirectory}/{normalBasename}",
+                    specBasename is null ? null : $"{normalizedMaterialDirectory}/{specBasename}",
+                    illumBasename is null ? null : $"{normalizedMaterialDirectory}/{illumBasename}",
+                    material);
             }
         }
         finally
@@ -88,15 +116,66 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
         }
     }
 
+    private string WriteOrReuse(
+        Texture texture,
+        string preferredBasename,
+        bool hasAlpha,
+        string materialSourceDirectory,
+        string materialOutputDirectory,
+        Dictionary<(ulong Hash, bool HasAlpha), string> contentBasenames)
+    {
+        var resized = _optimization.MaxTextureSize > 0
+            ? texture.Resized(_optimization.MaxTextureSize)
+            : texture;
+
+        if (_optimization.DeduplicateTextures)
+        {
+            var key = (resized.ContentHash(), hasAlpha);
+            if (contentBasenames.TryGetValue(key, out var existing))
+            {
+                return existing;
+            }
+
+            contentBasenames[key] = preferredBasename;
+        }
+
+        var sourcePath = GetSourceTexturePath(materialSourceDirectory, preferredBasename);
+        resized.WritePng(sourcePath);
+        RunVtfCmd(sourcePath, materialOutputDirectory);
+        return preferredBasename;
+    }
+
+    // `-resize` snaps non-power-of-two inputs to the nearest POT. Multi-layer-baked materials
+    // (MultiLayerBaker produces baseWidth*tileX × baseHeight*tileY) can land on non-POT dimensions
+    // when tileX/tileY aren't powers of two, and after our MaxTextureSize cap they often still
+    // aren't POT. Without -resize VtfCmd silently exits 0 without producing a VTF on those inputs,
+    // which surfaces in-engine as the missing-texture checker. Format flags are intentionally
+    // omitted so VtfCmd auto-picks DXT1/DXT5 from the actual PNG alpha — forcing DXT1 on alpha-
+    // bearing sources can trigger the same silent-no-output failure mode.
     private void RunVtfCmd(string sourcePath, string outputDirectory)
     {
         ProcessRunner.Run(
             _vtfCmdPath,
-            ["-file", sourcePath, "-output", outputDirectory, "-silent"],
+            ["-file", sourcePath, "-output", outputDirectory, "-resize", "-silent"],
             Path.GetDirectoryName(_vtfCmdPath));
+
+        var expectedVtfPath = Path.Combine(
+            outputDirectory,
+            Path.GetFileNameWithoutExtension(sourcePath) + ".vtf");
+        if (!File.Exists(expectedVtfPath))
+        {
+            throw new GMConverterException(
+                $"VTFCmd exited successfully but did not produce {expectedVtfPath} (source: {sourcePath}).");
+        }
     }
 
-    private static void WriteVmt(string vmtPath, string baseTexturePath, Material material)
+    private static void WriteVmt(
+        string vmtPath,
+        string baseTexturePath,
+        string? normalTexturePath,
+        string? specTexturePath,
+        string? illumTexturePath,
+        Material material)
     {
         using var writer = new StreamWriter(vmtPath, false, _utf8NoBom);
         writer.WriteLine("\"VertexLitGeneric\"");
@@ -105,9 +184,9 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
         writer.WriteLine("    \"$nocull\" \"1\"");
         WriteSurfaceProp(writer, material);
 
-        if (material.NormalTexture is not null)
+        if (normalTexturePath is not null)
         {
-            writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{baseTexturePath}_normal\""));
+            writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{normalTexturePath}\""));
         }
 
         if (material.HasAlpha)
@@ -115,19 +194,19 @@ internal sealed class SourceMaterialCompiler(string vtfCmdPath)
             writer.WriteLine("    \"$translucent\" \"1\"");
         }
 
-        if (UseSourcePhong(material))
+        if (specTexturePath is not null && UseSourcePhong(material))
         {
-            WritePhongParameters(writer, $"{baseTexturePath}_spec", material);
+            WritePhongParameters(writer, specTexturePath, material);
             WriteEnvmapParameters(
                 writer,
-                standaloneMaskPath: material.NormalTexture is null ? $"{baseTexturePath}_spec" : null,
-                normalMapAlphaMask: material.NormalTexture is not null);
+                standaloneMaskPath: normalTexturePath is null ? specTexturePath : null,
+                normalMapAlphaMask: normalTexturePath is not null);
         }
 
-        if (material.IsIlluminated)
+        if (material.IsIlluminated && illumTexturePath is not null)
         {
             writer.WriteLine("    \"$selfillum\" \"1\"");
-            writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{baseTexturePath}_illum\""));
+            writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{illumTexturePath}\""));
         }
 
         writer.WriteLine("}");

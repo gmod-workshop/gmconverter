@@ -203,6 +203,64 @@ internal sealed class Texture : IDisposable
     // preview/export workflow where iteration speed matters more than wire size.
     private static readonly PngEncoder _fastPngEncoder = new() { CompressionLevel = PngCompressionLevel.Level1 };
 
+    // Clamp the longest edge to maxDimension while preserving aspect ratio. Returns this when
+    // already within the cap or when maxDimension is non-positive, so callers can pass through
+    // without conditionals.
+    public Texture Resized(int maxDimension)
+    {
+        if (maxDimension <= 0 || (_image.Width <= maxDimension && _image.Height <= maxDimension))
+        {
+            return this;
+        }
+
+        var (width, height) = ScaleToFit(_image.Width, _image.Height, maxDimension);
+        var output = _image.Clone(ctx => ctx.Resize(width, height));
+        return new Texture(Name, output, HasAlpha, Path);
+    }
+
+    // FNV-1a 64 over the dimensions and raw RGBA bytes. Used by the Source material compiler to
+    // deduplicate VTFs across materials when extractions produce identical resized maps.
+    public ulong ContentHash()
+    {
+        const ulong fnvOffset = 14695981039346656037UL;
+        const ulong fnvPrime = 1099511628211UL;
+        var hash = fnvOffset;
+        Span<byte> dims = stackalloc byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dims[..4], _image.Width);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dims[4..], _image.Height);
+        foreach (var b in dims)
+        {
+            hash = (hash ^ b) * fnvPrime;
+        }
+        _image.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var bytes = MemoryMarshal.AsBytes(accessor.GetRowSpan(y));
+                var local = hash;
+                foreach (var b in bytes)
+                {
+                    local = (local ^ b) * fnvPrime;
+                }
+                hash = local;
+            }
+        });
+        return hash;
+    }
+
+    private static (int Width, int Height) ScaleToFit(int width, int height, int maxDimension)
+    {
+        if (width >= height)
+        {
+            var newWidth = maxDimension;
+            var newHeight = Math.Max(1, (int)Math.Round((double)height * maxDimension / width));
+            return (newWidth, newHeight);
+        }
+
+        var scaledWidth = Math.Max(1, (int)Math.Round((double)width * maxDimension / height));
+        return (scaledWidth, maxDimension);
+    }
+
     public byte[] ToPngBytes()
     {
         using var ms = new MemoryStream();

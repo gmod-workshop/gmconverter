@@ -29,7 +29,9 @@ internal sealed record UiSettings(
     double PhysicsMass,
     double CoacdThreshold,
     int MaxConvexPieces,
-    int MaxHullVertices)
+    int MaxHullVertices,
+    int MaxTextureSize = 1024,
+    bool DeduplicateTextures = true)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

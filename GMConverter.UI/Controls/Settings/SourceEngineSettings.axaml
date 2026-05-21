@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="900"
+             x:Class="GMConverter.UI.Controls.Settings.SourceEngineSettings"
+             x:DataType="vm:ConvertViewModel">
+  <shad:Card HasShadow="True">
+    <shad:Card.Header>
+      <StackPanel Spacing="4">
+        <shad:CardTitle>Source Engine</shad:CardTitle>
+        <shad:CardDescription>Leave tool paths empty to download portable defaults beside the app.</shad:CardDescription>
+      </StackPanel>
+    </shad:Card.Header>
+    <StackPanel Spacing="20">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="section-header" Text="TOOLS"/>
+        <TextBox Text="{Binding ModelPath}"
+                 shad:ControlAssist.Label="Model path"/>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <TextBox x:Name="StudioMdlPathBox"
+                   Text="{Binding StudioMdlPath}"
+                   shad:ControlAssist.Label="StudioMDL path"/>
+          <Button Grid.Column="1"
+                  Classes="Outline"
+                  Content="Browse"
+                  Click="BrowseStudioMdlPath_Click"
+                  IsEnabled="{Binding IsIdle}"
+                  VerticalAlignment="Bottom"/>
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <TextBox x:Name="VtfCmdPathBox"
+                   Text="{Binding VtfCmdPath}"
+                   shad:ControlAssist.Label="VTFCmd path"/>
+          <Button Grid.Column="1"
+                  Classes="Outline"
+                  Content="Browse"
+                  Click="BrowseVtfCmdPath_Click"
+                  IsEnabled="{Binding IsIdle}"
+                  VerticalAlignment="Bottom"/>
+        </Grid>
+      </StackPanel>
+
+      <Separator/>
+
+      <StackPanel Spacing="12">
+        <TextBlock Classes="section-header" Text="MATERIALS"/>
+        <CheckBox Content="Build VTF/VMT materials"
+                  IsChecked="{Binding BuildMaterials}"/>
+        <ComboBox ItemsSource="{Binding MaxTextureSizes}"
+                  SelectedItem="{Binding SelectedMaxTextureSize}"
+                  IsEnabled="{Binding BuildMaterials}"
+                  shad:ControlAssist.Label="Max texture size"/>
+        <CheckBox Content="Deduplicate identical textures"
+                  IsChecked="{Binding DeduplicateTextures}"
+                  IsEnabled="{Binding BuildMaterials}"/>
+      </StackPanel>
+    </StackPanel>
+  </shad:Card>
+</UserControl>

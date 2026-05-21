@@ -39,6 +39,9 @@ public sealed partial class ConvertViewModel : ViewModelBase
     private DisplayOption _selectedPhysicsMode;
 
     [ObservableProperty]
+    private DisplayOption _selectedMaxTextureSize;
+
+    [ObservableProperty]
     private string _configPath = string.Empty;
 
     [ObservableProperty]
@@ -70,6 +73,9 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _buildMaterials = true;
+
+    [ObservableProperty]
+    private bool _deduplicateTextures = true;
 
     [ObservableProperty]
     private bool _generatePhysics;
@@ -105,6 +111,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _selectedOutputFormat = OutputFormats.First(format => format.Value == "mdl");
         _selectedAxisMode = AxisModes[0];
         _selectedPhysicsMode = PhysicsModes[0];
+        _selectedMaxTextureSize = MaxTextureSizes.First(option => option.Value == "1024");
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
@@ -136,6 +143,15 @@ public sealed partial class ConvertViewModel : ViewModelBase
     [
         new("bounds", "Bounds", string.Empty),
         new("coacd", "CoACD", string.Empty)
+    ];
+
+    public ObservableCollection<DisplayOption> MaxTextureSizes { get; } =
+    [
+        new("0", "Original", "no resize"),
+        new("512", "512", string.Empty),
+        new("1024", "1024", string.Empty),
+        new("2048", "2048", string.Empty),
+        new("4096", "4096", string.Empty)
     ];
 
     public bool IsSourceOutput => SelectedOutputFormat.Value is "source" or "mdl";
@@ -274,7 +290,16 @@ public sealed partial class ConvertViewModel : ViewModelBase
             (float)PhysicsMass,
             (float)CoacdThreshold,
             MaxConvexPieces,
-            MaxHullVertices);
+            MaxHullVertices,
+            ParseMaxTextureSize(SelectedMaxTextureSize.Value),
+            DeduplicateTextures);
+    }
+
+    private static int ParseMaxTextureSize(string value)
+    {
+        return int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var result)
+            ? Math.Max(0, result)
+            : 0;
     }
 
     internal void TryLoadDefaultConfig()
@@ -307,8 +332,16 @@ public sealed partial class ConvertViewModel : ViewModelBase
         MaterialDirectory = settings.MaterialDirectory ?? MaterialDirectory;
         ScaleFactor = settings.ScaleFactor;
         BuildMaterials = settings.BuildMaterials;
+        DeduplicateTextures = settings.DeduplicateTextures;
         GeneratePhysics = settings.GeneratePhysics;
         PhysicsMass = settings.PhysicsMass;
+
+        var sizeValue = settings.MaxTextureSize.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var sizeOption = MaxTextureSizes.FirstOrDefault(option => option.Value == sizeValue);
+        if (sizeOption is not null)
+        {
+            SelectedMaxTextureSize = sizeOption;
+        }
 
         if (HasLegacyCoacdDefaults(settings))
         {
@@ -422,6 +455,22 @@ public sealed partial class ConvertViewModel : ViewModelBase
         if (config.MaxHullVertices.HasValue)
         {
             MaxHullVertices = config.MaxHullVertices.Value;
+        }
+
+        if (config.MaxTextureSize.HasValue)
+        {
+            var sizeValue = Math.Max(0, config.MaxTextureSize.Value)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var sizeOption = MaxTextureSizes.FirstOrDefault(option => option.Value == sizeValue);
+            if (sizeOption is not null)
+            {
+                SelectedMaxTextureSize = sizeOption;
+            }
+        }
+
+        if (config.DeduplicateTextures.HasValue)
+        {
+            DeduplicateTextures = config.DeduplicateTextures.Value;
         }
     }
 

@@ -3,11 +3,11 @@ using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using GMConverter.UI.ViewModels;
 
-namespace GMConverter.UI.Views;
+namespace GMConverter.UI.Controls.Settings;
 
-public partial class SettingsView : UserControl
+public partial class SourceEngineSettings : UserControl
 {
-    public SettingsView()
+    public SourceEngineSettings()
     {
         InitializeComponent();
         InitializeDragDrop();
@@ -15,16 +15,24 @@ public partial class SettingsView : UserControl
 
     private void InitializeDragDrop()
     {
-        ConfigurePathDrop(ConfigPathBox, DropPathKind.File, path =>
+        ConfigurePathDrop(StudioMdlPathBox, path =>
         {
             if (DataContext is ConvertViewModel viewModel)
             {
-                viewModel.ConfigPath = path;
+                viewModel.StudioMdlPath = path;
+            }
+        });
+
+        ConfigurePathDrop(VtfCmdPathBox, path =>
+        {
+            if (DataContext is ConvertViewModel viewModel)
+            {
+                viewModel.VtfCmdPath = path;
             }
         });
     }
 
-    private static void ConfigurePathDrop(Control control, DropPathKind pathKind, Action<string> applyPath)
+    private static void ConfigurePathDrop(Control control, Action<string> applyPath)
     {
         DragDrop.SetAllowDrop(control, true);
 
@@ -36,38 +44,35 @@ public partial class SettingsView : UserControl
 
         control.AddHandler(DragDrop.DropEvent, (_, e) =>
         {
-            var path = GetDroppedPath(e, pathKind);
-            if (path is not null)
+            var item = e.DataTransfer.TryGetFiles()?.FirstOrDefault();
+            if (item is not null)
             {
-                applyPath(path);
+                var path = item.Path.LocalPath;
+                if (File.Exists(path))
+                {
+                    applyPath(path);
+                }
             }
 
             e.Handled = true;
         });
     }
 
-    private static string? GetDroppedPath(DragEventArgs e, DropPathKind pathKind)
-    {
-        var item = e.DataTransfer.TryGetFiles()?.FirstOrDefault();
-        if (item is null)
-        {
-            return null;
-        }
-
-        var path = item.Path.LocalPath;
-        return pathKind switch
-        {
-            DropPathKind.File when File.Exists(path) => path,
-            _ => null
-        };
-    }
-
-    private async void BrowseConfigPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private async void BrowseStudioMdlPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is ConvertViewModel viewModel &&
-            await BrowseFileAsync("Select config file", [new FilePickerFileType("GMConverter config") { Patterns = ["*.ini"] }]) is { } path)
+            await BrowseFileAsync("Select StudioMDL executable", [new FilePickerFileType("StudioMDL") { Patterns = ["*.exe"] }]) is { } path)
         {
-            viewModel.ConfigPath = path;
+            viewModel.StudioMdlPath = path;
+        }
+    }
+
+    private async void BrowseVtfCmdPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is ConvertViewModel viewModel &&
+            await BrowseFileAsync("Select VTFCmd executable", [new FilePickerFileType("VTFCmd") { Patterns = ["*.exe"] }]) is { } path)
+        {
+            viewModel.VtfCmdPath = path;
         }
     }
 
@@ -87,10 +92,5 @@ public partial class SettingsView : UserControl
         });
 
         return files.Count == 0 ? null : files[0].Path.LocalPath;
-    }
-
-    private enum DropPathKind
-    {
-        File
     }
 }

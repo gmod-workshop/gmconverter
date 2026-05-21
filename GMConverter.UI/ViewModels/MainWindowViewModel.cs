@@ -32,7 +32,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.PhysicsMass),
         nameof(ConvertViewModel.CoacdThreshold),
         nameof(ConvertViewModel.MaxConvexPieces),
-        nameof(ConvertViewModel.MaxHullVertices)
+        nameof(ConvertViewModel.MaxHullVertices),
+        nameof(ConvertViewModel.SelectedMaxTextureSize),
+        nameof(ConvertViewModel.DeduplicateTextures)
     };
 
     private static readonly HashSet<string> _explorerSettingsProperties = new(StringComparer.Ordinal)
@@ -273,7 +275,16 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.PhysicsMass,
             Convert.CoacdThreshold,
             Convert.MaxConvexPieces,
-            Convert.MaxHullVertices);
+            Convert.MaxHullVertices,
+            ParseMaxTextureSize(Convert.SelectedMaxTextureSize.Value),
+            Convert.DeduplicateTextures);
+    }
+
+    private static int ParseMaxTextureSize(string value)
+    {
+        return int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var result)
+            ? Math.Max(0, result)
+            : 1024;
     }
 
     private void QueueSettingsSave()

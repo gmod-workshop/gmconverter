@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-05-21
+
+### Added
+
+- Added Source MDL texture optimization options in the Source Engine settings card under a new Materials subsection: a max-edge texture-size cap (default 1024, with Original/512/1024/2048/4096 presets) that resizes textures before VTF compile, and a deduplicate-identical-textures toggle (default on) that content-hashes resized PNGs so materials sharing the same map only emit one VTF. Together these cut typical Fortnite character MDL output from roughly 200–300 MB of textures down to ~50 MB without quality loss on representative assets.
+- Added auto-fill for the StudioMDL and VTFCmd path fields in the Source Engine settings card. On startup the UI scans the existing `tools/` directory and populates empty fields with whatever portable tools are already extracted. The discovered paths are not persisted to `ui-settings.json`, so moving the app folder cleanly re-resolves against the new `tools/` location instead of carrying a stale absolute path forward.
+
+### Changed
+
+- Extracted the Source Engine settings card into a dedicated `Controls/Settings/SourceEngineSettings` UserControl and split its contents into labelled `TOOLS` and `MATERIALS` subsections to keep `SettingsView` readable as the section grew.
+- Passed `-resize` to VTFCmd so non-power-of-two inputs (common from the multi-layer baker, whose output dimensions are `baseWidth × tileX` by `baseHeight × tileY` and land non-POT whenever the tile counts are not powers of two) get snapped to POT instead of silently exiting 0 with no `.vtf`. Added a post-compile existence check that turns those silent failures into loud build errors with the source PNG path.
+- Gated the `MDLExporter.ExportSourceMaterials` PNG fallback path so per-material PNGs are no longer emitted alongside compiled VTFs in the output `materials/` directory. The fallback now runs only when VTF compilation is not going to (no `VtfCmdPath`, or `BuildMaterials` off).
+- Routed `studiomdl` invocations through `ProcessRunner` and set `CreateNoWindow = true` on every shelled-out tool. The vtfcmd, studiomdl, and coacd subprocesses no longer briefly flash console windows during a conversion.
+
+### Fixed
+
+- Fixed UE4/5 preview rendering by switching the preview pane to `PhysicallyBasedMaterial` (`UsePbrMaterial = true`). UE4/5/Fortnite assets export with `metallic = 1.0`, and the previous PBR→Phong conversion drained the base color into specular, leaving metallic surfaces near-black under analytic lights.
+- Fixed UV transforms in the in-app preview by adding `GLTFExportOptions.BakeUvTransforms`, which folds each material's `BakedUv0Scale` into mesh UVs and skips the `KHR_texture_transform` write. The Ab4d.SharpEngine glTF importer used for the preview does not honor that extension, which made multi-layer Fortnite parts sample the wrong tile of the `MultiLayerBaker` output. The main `.glb` export keeps the extension-based representation so Blender and other consumers that honor `KHR_texture_transform` see the same data they do today.
+- Fixed glTF/GLB orientation when exporting Z-up internal data. Importers normalize source data to Z-up, but `GLTFExporter` was writing vertex positions, joint bind poses, and animation keyframes as-is while still declaring Y-up, so the in-app preview and Blender both showed the model tipped onto its face. Every top-level scene node is now wrapped under a single `NodeBuilder` that applies a -90° rotation around the X axis at view time, so Auto / Z-up input produces correct preview, Blender output, and MDL output without having to manually flip axis mode.
+- Fixed Avalonia preview pane disposal when the main window closes via the `[X]` chrome button. Avalonia does not raise `Unloaded` on a top-level `Window` on that path, so `PreviewPane.Dispose()` (and therefore `SharpEngineSceneView.Dispose()`) never ran and SharpEngine's Vulkan render thread kept the .NET host alive — holding the build output DLLs open and blocking the next `dotnet build` until the host was killed manually. The shell now hooks `Closed`, walks the visual tree for `PreviewPane` descendants, disposes each, then disposes the view model.
+- Fixed the Publish workflow by passing `submodules: recursive` to `actions/checkout`, matching the Build workflow. The v1.6.0 and v1.6.1 publishes had failed at release time with CS0246 errors across every CUE4Parse-derived type because the `Dependencies/CUE4Parse` submodule was checked out as an empty directory.
+
 ## [1.6.1] - 2026-05-19
 
 ### Added
@@ -222,7 +244,8 @@ All notable changes to this project will be documented in this file.
 
 - Initial public release.
 
-[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/gmod-workshop/gmconverter/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/gmod-workshop/gmconverter/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/gmod-workshop/gmconverter/compare/v1.4.0...v1.5.0

@@ -302,6 +302,23 @@ public sealed partial class ConvertViewModel : ViewModelBase
             : 0;
     }
 
+    // Fill empty StudioMDL / VTFCmd path fields from whatever's already extracted under tools/.
+    // Called at startup while settings-save suppression is on, so these auto-discovered paths
+    // never get persisted — if the user moves the app, the next launch re-resolves against the
+    // new tools/ location instead of carrying a stale absolute path forward.
+    internal void ApplyLocalToolDefaults()
+    {
+        var (studioMdl, vtfCmd) = GMConverter.Source.SourceToolPaths.TryFindLocalDefaults();
+        if (string.IsNullOrWhiteSpace(StudioMdlPath) && studioMdl is not null)
+        {
+            StudioMdlPath = studioMdl;
+        }
+        if (string.IsNullOrWhiteSpace(VtfCmdPath) && vtfCmd is not null)
+        {
+            VtfCmdPath = vtfCmd;
+        }
+    }
+
     internal void TryLoadDefaultConfig()
     {
         var defaultPath = UiConfig.FindDefaultPath();

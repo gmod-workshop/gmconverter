@@ -9,6 +9,7 @@ internal sealed class ExplorerService
     private readonly IReadOnlyList<IExplorer> _explorers =
     [
         new UE4Explorer(),
+        new FrostbiteExplorer(),
         new MOWExplorer(),
         new UE2Explorer(),
         new GenericExplorer()

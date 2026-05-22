@@ -20,9 +20,11 @@
 Run these before handing work back:
 
 ```powershell
-dotnet format GMConverter.slnx --verify-no-changes --severity warn --no-restore
+dotnet format GMConverter.slnx --verify-no-changes --severity warn --no-restore --exclude Dependencies/
 dotnet build GMConverter.slnx --configuration Release --no-restore
 ```
+
+`--exclude Dependencies/` keeps `dotnet format` from linting submodule sources (CUE4Parse, FrostyToolsuite). Submodules with their own `root = true` `.editorconfig` sever the parent's `generated_code = true` exemption, so they need an explicit exclude.
 
 If either command fails, fix the reported issue or clearly report the remaining blocker.
 

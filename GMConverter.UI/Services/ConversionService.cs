@@ -175,6 +175,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
             "mow" => new MOWImporter(loggerFactory),
+            "frostbite" => new FrostbiteImporter(),
             _ => throw new InvalidOperationException($"Unsupported input format: {inputFormat}")
         };
     }
@@ -187,6 +188,7 @@ internal sealed class ConversionService(UiLogSink logSink)
         {
             "psk" => [".psk", ".pskx", ".ue4scene"],
             "mow" => [".def", ".mdl"],
+            "frostbite" => [".frostbiteref"],
             _ => new[] { $".{inputFormat}" }
         };
 

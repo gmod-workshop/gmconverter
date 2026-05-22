@@ -119,7 +119,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
         new("opt", "OPT", new OPTImporter().InputName),
         new("mdl", "MDL", new MDLImporter().InputName),
         new("psk", "PSK", new PSKImporter().InputName),
-        new("mow", "MOW", new MOWImporter().InputName)
+        new("mow", "MOW", new MOWImporter().InputName),
+        new("frostbite", "Frostbite", new FrostbiteImporter().InputName)
     ];
 
     public ObservableCollection<DisplayOption> OutputFormats { get; } =

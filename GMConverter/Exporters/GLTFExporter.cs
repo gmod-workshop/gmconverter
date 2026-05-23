@@ -424,13 +424,11 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
     private static byte[] EncodeOnce(Texture texture, ConditionalWeakTable<Texture, byte[]> encodeCache)
     {
-        if (encodeCache.TryGetValue(texture, out var cached))
-        {
-            return cached;
-        }
-        var bytes = texture.ToPngBytes();
-        encodeCache.Add(texture, bytes);
-        return bytes;
+        // GetValue is the atomic insert-or-fetch on ConditionalWeakTable; using TryGetValue +
+        // Add here was a TOCTOU race in BuildMaterials' Parallel.ForEach when two materials
+        // shared the same Texture instance (now happens for Frostbite assets where multiple
+        // submesh materials are bound to the same heuristically-resolved diffuse/normal).
+        return encodeCache.GetValue(texture, static t => t.ToPngBytes());
     }
 
     private static MaterialBuilder BuildMaterial(

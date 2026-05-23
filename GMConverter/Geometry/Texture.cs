@@ -47,6 +47,35 @@ internal sealed class Texture : IDisposable
         return new Texture(textureName ?? $"{Name}_gl", output);
     }
 
+    // Frostbite packs vehicle/character normal maps as NMA = (Normal.X, Normal.Y, Metallic, AO)
+    // in RGBA. Passing this directly to glTF as a normal map makes the viewer read the Metallic
+    // channel as Normal.Z, which produces visibly wrong shading (the "weird overlay" symptom). We
+    // reconstruct Z from R and G assuming the encoded values are (N+1)/2 in [0,1], then output a
+    // proper RGB normal map. The caller is still responsible for the OpenGL Y-flip downstream
+    // (`WithOpenGlNormalMap`).
+    public Texture WithFrostbiteNmaToNormal(string? textureName = null)
+    {
+        var output = _image.Clone(_ => { });
+        output.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var bytes = MemoryMarshal.AsBytes(accessor.GetRowSpan(y));
+                for (var i = 0; i + 4 <= bytes.Length; i += 4)
+                {
+                    var nx = (bytes[i + 0] / 255f) * 2f - 1f;
+                    var ny = (bytes[i + 1] / 255f) * 2f - 1f;
+                    var nzSquared = 1f - nx * nx - ny * ny;
+                    var nz = nzSquared > 0f ? MathF.Sqrt(nzSquared) : 0f;
+                    var b = (byte)Math.Clamp((int)MathF.Round((nz + 1f) * 0.5f * 255f), 0, 255);
+                    bytes[i + 2] = b;
+                    bytes[i + 3] = 255;
+                }
+            }
+        });
+        return new Texture(textureName ?? $"{Name}_normal", output);
+    }
+
     public Texture ToGltfMetallicRoughness(string? textureName = null)
     {
         // Fortnite SpecularMasks pack as R=Specular(unused), G=Metallic, B=Roughness, A=custom.

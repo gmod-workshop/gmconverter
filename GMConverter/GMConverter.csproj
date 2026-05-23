@@ -52,6 +52,29 @@
     </ItemGroup>
 
     <ItemGroup>
+      <!-- FrostySdk's ProfilesLibrary looks for *.json under {Utils.BaseDirectory}/Profiles/.
+           These three live alongside our explorer source so they version with the loader and
+           ship into the output Profiles/ directory at build time. -->
+      <Content Include="Explorer\Frostbite\Profiles\*.json">
+        <Link>Profiles\%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+
+      <!-- FrostySdk declares its ThirdParty natives (libzstd/liblz4/libzlib) as Content on its
+           own csproj, but Content items do not flow through a ProjectReference — only the
+           FrostySdk.dll itself does. Re-include the native binaries here so they land next to
+           our output and FrostySdk's P/Invokes resolve at runtime. -->
+      <Content Include="..\Dependencies\FrostyToolsuite\FrostySdk\ThirdParty\*.dll">
+        <Link>%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <Content Include="..\Dependencies\FrostyToolsuite\FrostySdk\ThirdParty\*.so" Condition="'$(OS)' != 'Windows_NT'">
+        <Link>%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
       <!-- CUE4Parse's project file declares a Build-Natives target that runs CMake on
            Dependencies/CUE4Parse-Natives/ to produce CUE4Parse-Natives.dll, and emits it as a
            Content item with CopyToOutputDirectory=PreserveNewest, which propagates through
@@ -59,6 +82,13 @@
            on PATH; GitHub Actions windows-latest images have these pre-installed. -->
       <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse\CUE4Parse.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
       <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- FrostySdk targets net8.0 (our app is net10.0). The reference brings in
+           Manifest2019 superbundle loading, layout.toc/CAS/CAT, and EBX v2/v4 deserialization.
+           v2 has no mesh/texture exporter; those live in GMConverter/Formats/Frostbite. -->
+      <ProjectReference Include="..\Dependencies\FrostyToolsuite\FrostySdk\FrostySdk.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(DownloadCoacdNative)' == 'true' and '$(CoacdNativeLibraryName)' != ''">

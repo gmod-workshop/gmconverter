@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added Frostbite engine support for Star Wars: Squadrons and Star Wars: Battlefront II. The Explorer can now mount a Squadrons install and browse `MeshAsset` / `CompositeMeshAsset` / `TextureAsset` EBX entries; previewing a mesh produces a glTF with materials and textures resolved through the game's `MeshVariationDatabase` and `SurfaceShaderPreset` EBX entries. Static-mesh extraction covers LOD0 of rigid + composite meshes, decodes BC1/BC2/BC3/BC4/BC5/BC6H/BC7/R8/RGBA8 textures, and reconstructs the Frostbite NMA packed-normal channel (`R=Nx, G=Ny, B=Metallic, A=AO`) into a proper RGB normal map. FrostySdk v2 is vendored as a submodule under `Dependencies/Frostyv2`.
+- Added a heuristic UV-channel selector for Frostbite meshes that picks whichever of `TexCoord0` / `TexCoord1` is best contained in [0,1] across the section's vertices. Squadrons routes the diffuse UV through `TexCoord1` for vehicles (and `TexCoord0` for static props) — FrostyEditor's preview itself uses `MeshFallback.hlsl` and always reads `TexCoord0`, so this heuristic gives a better preview than Frosty does for vehicle meshes. Per-section UV-channel mapping in the game shader's compiled HLSL (`SS_Vehicle_Fighter`, etc.) is not parsed; assets whose shader applies a constant-buffer UV transform (e.g., the `_dest_` damage-state meshes) preview with mild UV drift.
+
+### Known limitations
+
+- Skinned Frostbite meshes are not yet supported; the parser throws when `MeshType == Skinned`.
+- The window/glass material slot renders untextured for Squadrons vehicles, because the engine uses a procedural glass shader rather than a texture binding.
+- Assets whose game shader applies a UV transform via constant buffer (notably the destroyed-state `_dest_` body meshes) preview with mild UV drift; the conversion still produces a usable mesh.
+
 ## [1.7.0] - 2026-05-21
 
 ### Added

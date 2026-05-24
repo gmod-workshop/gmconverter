@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a plugin system. The SDK now defines `IPlugin`, `IPluginContext`, `PluginManifest`, and a `[Plugin(typeof(MyPlugin))]` assembly attribute under `GMConverter.SDK.Plugins`. The core library hosts a `PluginLoader` that discovers `plugin.json` manifests under a `plugins/` directory next to the executable, loads each into its own collectible `AssemblyLoadContext` with SDK type unification (so `IImporter`/`IExporter`/`IExplorer` references match across the plugin boundary), and instantiates the plugin's entry type. Plugin-contributed importers and explorers are merged into the host's resolution path; CLI and UI both bootstrap the loader at startup. No plugins ship today — the infrastructure is in place for the per-engine plugin migrations that follow.
+- Added `ITextureFactory` to the SDK and exposed it on `IPluginContext.TextureFactory`. Plugins construct `Texture` instances by name/stream/raw RGBA bytes without taking a dependency on the host's image library. The default implementation (`DefaultTextureFactory` in Core) wraps SixLabors.ImageSharp.
+- Moved the format-agnostic helpers `NameHelpers` and `PathHelpers` from `GMConverter.Common` (Core) to `GMConverter.SDK.Common` so plugins can sanitize material names and safely resolve relative paths without taking a Core reference.
+
+### Changed
+
+- Extracted the plugin-facing contract into a new `GMConverter.SDK` project under the `GMConverter.SDK.*` namespace, split by domain: `GMConverter.SDK.Geometry` (mesh/skeleton bits), `GMConverter.SDK.Animation` (clips and tracks), `GMConverter.SDK.Materials`, `GMConverter.SDK.Textures`, plus `GMConverter.SDK.Importers` / `Exporters` / `Explorer` / `Common`. The core `GMConverter` library now references the SDK and all moved types are `public` so engine plugins can compile against the contract without a dependency on the core library. CLI and UI behavior is unchanged.
+- Kept the SDK free of implementation dependencies. `Texture` is now an abstract base class with no image-library dependency; the concrete `ImageSharpTexture` implementation lives in the core library, and pipeline-specific transforms (`ToGltfMetallicRoughness`, `ToSourcePhongExponent`, `WithOpenGlNormalMap`, etc.) are exposed as extension methods on the SDK `Texture` that delegate to the concrete type. The MessagePack attribute on `ExplorerFileEntry` was removed; the UE4 scan cache continues to serialize it via the contractless resolver.
+- Split `IExporter<TOptions>` to inherit from a new non-generic `IExporterDescriptor` so the plugin registry can hold exporters in a homogeneous collection and look them up by `OutputFormat` without committing to a specific options type at the call site.
+
 ## [1.7.0] - 2026-05-21
 
 ### Added

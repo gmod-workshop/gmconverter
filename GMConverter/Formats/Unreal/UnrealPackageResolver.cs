@@ -1,3 +1,5 @@
+using GMConverter.SDK.Common;
+
 namespace GMConverter.Formats.Unreal;
 
 internal sealed class UnrealPackageResolver
@@ -80,7 +82,7 @@ internal sealed class UnrealPackageResolver
         {
             package = UnrealPackageFile.Read(packagePath);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Common.GMConverterException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or GMConverterException)
         {
             package = null;
         }

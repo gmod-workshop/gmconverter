@@ -8,6 +8,7 @@ using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse_Conversion.Meshes.PSK;
 using GMConverter.Common;
+using GMConverter.SDK.Common;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 

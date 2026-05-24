@@ -1,8 +1,12 @@
 using System.Globalization;
 using System.Numerics;
-using GMConverter.Common;
 using GMConverter.Formats.MOW;
 using GMConverter.Geometry;
+using GMConverter.SDK.Animation;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Importers;
+using GMConverter.SDK.Materials;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SixLabors.ImageSharp;
@@ -598,7 +602,7 @@ internal sealed class MOWImporter : IImporter
                 loggerFactory.CreateLogger<MOWTextureResolver>());
         }
 
-        public Texture? LoadTexture(string? textureName, bool hasAlpha)
+        public ImageSharpTexture? LoadTexture(string? textureName, bool hasAlpha)
         {
             if (string.IsNullOrWhiteSpace(textureName))
             {
@@ -637,7 +641,7 @@ internal sealed class MOWImporter : IImporter
                     });
                 }
 
-                return new Texture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);
+                return new ImageSharpTexture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);
             }
 
             if (!foundCandidate)

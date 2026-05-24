@@ -1,4 +1,6 @@
-using GMConverter.Common;
+using GMConverter.Plugins;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Explorer;
 
 namespace GMConverter.Explorer;
 
@@ -6,21 +8,27 @@ internal sealed class ExplorerService
 {
     public const string AutoProfileId = "auto";
 
-    private readonly IReadOnlyList<IExplorer> _explorers =
-    [
-        new UE4Explorer(),
-        new MOWExplorer(),
-        new UE2Explorer(),
-        new GenericExplorer()
-    ];
+    private readonly IReadOnlyList<IExplorer> _explorers;
 
     public IReadOnlyList<ExplorerProfile> Profiles { get; }
 
     public ExplorerService()
     {
-        Profiles = _explorers
-            .Select(explorer => new ExplorerProfile(explorer.Id, explorer.DisplayName))
-            .ToArray();
+        // Built-in explorers come first so they win Auto-profile resolution for known target
+        // shapes; plugin-contributed explorers are appended and matched when no built-in supports
+        // the target. The GenericExplorer fallback stays at the very end of the built-in list so
+        // plugins still have a chance to handle a target before it falls into the generic catch-all.
+        List<IExplorer> explorers =
+        [
+            new UE4Explorer(),
+            new MOWExplorer(),
+            new UE2Explorer(),
+        ];
+        explorers.AddRange(PluginHost.Registry.Explorers);
+        explorers.Add(new GenericExplorer());
+        _explorers = explorers;
+
+        Profiles = [.. _explorers.Select(explorer => new ExplorerProfile(explorer.Id, explorer.DisplayName))];
     }
 
     public ExplorerResolvedEntry ResolveEntry(ExplorerFileEntry fileEntry)

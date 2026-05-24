@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
-using GMConverter.Common;
-using GMConverter.Geometry;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
 
 namespace GMConverter.Formats.PSK;
 

@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using GMConverter.Explorer;
+using GMConverter.SDK.Explorer;
 
 namespace GMConverter.UI.Models;
 

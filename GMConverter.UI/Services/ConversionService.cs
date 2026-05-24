@@ -3,6 +3,11 @@ using GMConverter.Common;
 using GMConverter.Exporters;
 using GMConverter.Geometry;
 using GMConverter.Importers;
+using GMConverter.Plugins;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Importers;
+using GMConverter.SDK.Materials;
 using GMConverter.Source;
 using Microsoft.Extensions.Logging;
 
@@ -175,7 +180,8 @@ internal sealed class ConversionService(UiLogSink logSink)
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
             "mow" => new MOWImporter(loggerFactory),
-            _ => throw new InvalidOperationException($"Unsupported input format: {inputFormat}")
+            _ => PluginHost.Registry.GetImporter(inputFormat)
+                ?? throw new GMConverterException($"Unsupported input format: {inputFormat}")
         };
     }
 

@@ -30,6 +30,8 @@ using CUE4Parse_Conversion.UEFormat.Enums;
 using GMConverter.Common;
 using GMConverter.Formats.PSK;
 using GMConverter.Formats.Unreal;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Explorer;
 using NewtonsoftJson = Newtonsoft.Json;
 
 namespace GMConverter.Explorer;

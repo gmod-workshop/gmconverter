@@ -1,5 +1,5 @@
 using System.Globalization;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
 
 namespace GMConverter.UI.Services;
 

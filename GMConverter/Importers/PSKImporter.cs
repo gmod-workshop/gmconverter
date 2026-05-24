@@ -4,6 +4,12 @@ using GMConverter.Common;
 using GMConverter.Formats.PSA;
 using GMConverter.Formats.PSK;
 using GMConverter.Geometry;
+using GMConverter.SDK.Animation;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Importers;
+using GMConverter.SDK.Materials;
+using GMConverter.SDK.Textures;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -774,7 +780,7 @@ internal sealed class PSKImporter : IImporter
             }
         }
 
-        private Texture? TryLoadTexture(
+        private ImageSharpTexture? TryLoadTexture(
             Dictionary<string, string> references,
             IReadOnlyCollection<string> channels,
             bool hasAlpha)
@@ -797,7 +803,7 @@ internal sealed class PSKImporter : IImporter
             return null;
         }
 
-        private Texture? TryLoadLayerTexture(
+        private ImageSharpTexture? TryLoadLayerTexture(
             Dictionary<string, string> references,
             IReadOnlyCollection<string> channels,
             string? layerSuffix,
@@ -870,7 +876,7 @@ internal sealed class PSKImporter : IImporter
             return normalized.EndsWith("_H", StringComparison.OrdinalIgnoreCase) ? "8" : null;
         }
 
-        private Texture? TryLoadTextureByName(
+        private ImageSharpTexture? TryLoadTextureByName(
             Dictionary<string, string> references,
             IReadOnlyCollection<string> keyTerms,
             bool hasAlpha)
@@ -893,7 +899,7 @@ internal sealed class PSKImporter : IImporter
             return null;
         }
 
-        private Texture? TryLoadCueMaterialTexture(
+        private ImageSharpTexture? TryLoadCueMaterialTexture(
             MaterialTextureContext materialContext,
             Dictionary<string, string> references,
             CueTextureKind textureKind,
@@ -928,7 +934,7 @@ internal sealed class PSKImporter : IImporter
             return null;
         }
 
-        private Texture? TryLoadDirectCueMaterialTexture(
+        private ImageSharpTexture? TryLoadDirectCueMaterialTexture(
             MaterialTextureContext materialContext,
             Dictionary<string, string> references,
             CueTextureKind textureKind,
@@ -1162,7 +1168,7 @@ internal sealed class PSKImporter : IImporter
             return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
 
-        private Texture? TryLoadRelatedTexture(
+        private ImageSharpTexture? TryLoadRelatedTexture(
             Dictionary<string, string> references,
             IReadOnlyCollection<string> baseChannels,
             IReadOnlyCollection<string> suffixes,
@@ -1190,7 +1196,7 @@ internal sealed class PSKImporter : IImporter
             return null;
         }
 
-        private Texture? TryLoadTexture(string textureReference, bool hasAlpha)
+        private ImageSharpTexture? TryLoadTexture(string textureReference, bool hasAlpha)
         {
             var textureName = NameHelpers.SanitizeMaterialName(textureReference);
             if (!_images.TryGetValue(textureName, out var imagePath))
@@ -1218,7 +1224,7 @@ internal sealed class PSKImporter : IImporter
                     });
                 }
 
-                return new Texture(textureName, image, hasAlpha);
+                return new ImageSharpTexture(textureName, image, hasAlpha);
             }
             catch
             {
@@ -1226,7 +1232,7 @@ internal sealed class PSKImporter : IImporter
             }
         }
 
-        private static Texture? TryCreateColorTexture(
+        private static ImageSharpTexture? TryCreateColorTexture(
             string materialName,
             IReadOnlyDictionary<string, CueMaterialColor> colors)
         {
@@ -1242,7 +1248,7 @@ internal sealed class PSKImporter : IImporter
                 ToColorByte(color.B),
                 byte.MaxValue);
             var image = new Image<Rgba32>(1, 1, pixel);
-            return new Texture(textureName, image);
+            return new ImageSharpTexture(textureName, image);
         }
 
         private static bool TrySelectBaseColor(

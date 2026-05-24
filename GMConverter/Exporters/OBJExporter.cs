@@ -1,6 +1,9 @@
 using System.Text;
-using GMConverter.Common;
 using GMConverter.Geometry;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Materials;
 
 namespace GMConverter.Exporters;
 

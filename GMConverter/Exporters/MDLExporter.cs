@@ -2,6 +2,12 @@ using System.Numerics;
 using System.Text;
 using GMConverter.Common;
 using GMConverter.Geometry;
+using GMConverter.SDK.Animation;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Materials;
+using GMConverter.SDK.Textures;
 using GMConverter.Source;
 
 namespace GMConverter.Exporters;

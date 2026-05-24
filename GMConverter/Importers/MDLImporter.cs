@@ -1,11 +1,13 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using GMConverter.Common;
-using GMConverter.Geometry;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Importers;
+using GMConverter.SDK.Materials;
 using MdlCrowbar;
 using static MdlCrowbar.Enums;
-using Mesh = GMConverter.Geometry.Mesh;
+using Mesh = GMConverter.SDK.Geometry.Mesh;
 
 namespace GMConverter.Importers;
 

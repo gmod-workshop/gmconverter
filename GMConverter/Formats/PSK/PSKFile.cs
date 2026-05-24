@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
 
 namespace GMConverter.Formats.PSK;
 

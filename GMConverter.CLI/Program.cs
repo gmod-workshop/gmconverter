@@ -1,9 +1,11 @@
 using System.CommandLine;
 using System.Text;
-using GMConverter.Common;
 using GMConverter.Exporters;
-using GMConverter.Geometry;
 using GMConverter.Importers;
+using GMConverter.Plugins;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Importers;
 using GMConverter.Source;
 using Microsoft.Extensions.Logging;
 
@@ -14,6 +16,8 @@ internal static class Program
     public static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+
+        PluginHost.Initialize(PluginHost.DefaultDirectory);
 
         var rootCommand = CreateRootCommand();
 
@@ -281,7 +285,8 @@ internal static class Program
             "mdl" => new MDLImporter(),
             "psk" => new PSKImporter(),
             "mow" => new MOWImporter(loggerFactory),
-            _ => throw new ArgumentException("Option --input-format must be 'opt', 'mdl', 'psk', or 'mow'.")
+            _ => PluginHost.Registry.GetImporter(inputFormat)
+                ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Built-ins: opt, mdl, psk, mow. Plugins may contribute additional formats.")
         };
     }
 

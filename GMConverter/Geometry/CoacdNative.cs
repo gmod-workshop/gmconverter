@@ -1,7 +1,8 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
 
 namespace GMConverter.Geometry;
 
@@ -205,8 +206,3 @@ internal static partial class CoacdNative
         public ulong MeshesCount;
     }
 }
-
-internal sealed record CoacdDecompositionOptions(
-    double Threshold,
-    int MaxConvexPieces,
-    int MaxHullVertices);

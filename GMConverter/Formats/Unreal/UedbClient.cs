@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using CUE4Parse.UE4.Objects.Core.Misc;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
 
 namespace GMConverter.Formats.Unreal;
 

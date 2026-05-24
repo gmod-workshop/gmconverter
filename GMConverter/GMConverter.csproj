@@ -52,6 +52,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\GMConverter.SDK\GMConverter.SDK.csproj" />
       <!-- CUE4Parse's project file declares a Build-Natives target that runs CMake on
            Dependencies/CUE4Parse-Natives/ to produce CUE4Parse-Natives.dll, and emits it as a
            Content item with CopyToOutputDirectory=PreserveNewest, which propagates through

@@ -1,6 +1,6 @@
 using System.Numerics;
-using GMConverter.Common;
-using GMConverter.Geometry;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
 
 namespace GMConverter.Formats.MOW;
 

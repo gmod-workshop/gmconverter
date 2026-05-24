@@ -1,16 +1,20 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
 using GMConverter.Geometry;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Materials;
 using JeremyAnsel.Xwa.Opt;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using Mesh = GMConverter.Geometry.Mesh;
+using Mesh = GMConverter.SDK.Geometry.Mesh;
 using OptTexture = JeremyAnsel.Xwa.Opt.Texture;
 using Vector = JeremyAnsel.Xwa.Opt.Vector;
 
 #pragma warning disable CS8602, CS8604 // JeremyAnsel.Xwa.Opt exposes populated collections without nullable annotations.
+
+using GMConverter.SDK.Importers;
 
 namespace GMConverter.Importers;
 
@@ -115,9 +119,9 @@ internal sealed class OPTImporter : IImporter
                 var name = NameHelpers.SanitizeMaterialName(texture.Name);
                 return new Material(
                     name,
-                    diffuseTexture: new Geometry.Texture(name, CreateTextureImage(texture), texture.HasAlpha),
+                    diffuseTexture: new ImageSharpTexture(name, CreateTextureImage(texture), texture.HasAlpha),
                     emissiveTexture: texture.IsIlluminated
-                        ? new Geometry.Texture($"{name}_illum", CreateIlluminationImage(texture))
+                        ? new ImageSharpTexture($"{name}_illum", CreateIlluminationImage(texture))
                         : null);
             })
         ];

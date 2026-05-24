@@ -1,4 +1,5 @@
 using Avalonia;
+using GMConverter.Plugins;
 
 namespace GMConverter.UI;
 
@@ -17,6 +18,8 @@ internal sealed class Program
         Ab4d.SharpEngine.Licensing.SetLicense(licenseOwner: "David Katz",
             licenseType: "OpenSourceLicense",
             license: "A543-105E-0047-F209-CC6E-32CD-D155-4F0F-11AD-2706-9E68-7A5B-4945-D56B-9F96-C0CB-A45F-9339-DB9E-F4CE-C84A-DFAD-82B5-B095-1B");
+
+        PluginHost.Initialize(PluginHost.DefaultDirectory);
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }

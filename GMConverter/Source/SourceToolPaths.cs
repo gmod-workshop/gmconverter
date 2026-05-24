@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
 
 namespace GMConverter.Source;
 

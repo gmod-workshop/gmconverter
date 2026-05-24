@@ -1,4 +1,4 @@
-using GMConverter.Geometry;
+using GMConverter.SDK.Materials;
 
 namespace GMConverter.Source;
 

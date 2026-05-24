@@ -1,5 +1,5 @@
 using System.Text.Json;
-using GMConverter.Common;
+using GMConverter.SDK.Common;
 
 namespace GMConverter.UI.Services;
 

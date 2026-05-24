@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using GMConverter.Common;
+using GMConverter.SDK.Explorer;
 using MessagePack;
 using MessagePack.Resolvers;
 

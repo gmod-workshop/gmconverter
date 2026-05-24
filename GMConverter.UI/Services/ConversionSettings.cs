@@ -1,4 +1,4 @@
-using GMConverter.Importers;
+using GMConverter.SDK.Importers;
 
 namespace GMConverter.UI.Services;
 

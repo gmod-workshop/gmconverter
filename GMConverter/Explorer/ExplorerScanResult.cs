@@ -1,3 +1,5 @@
+using GMConverter.SDK.Explorer;
+
 namespace GMConverter.Explorer;
 
 internal sealed record ExplorerScanResult(

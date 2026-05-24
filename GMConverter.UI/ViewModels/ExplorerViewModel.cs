@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Common;
 using GMConverter.Explorer;
+using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;
 using GMConverter.UI.Services;
 

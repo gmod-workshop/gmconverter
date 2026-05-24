@@ -1,6 +1,7 @@
 using System.IO.Compression;
-using GMConverter.Common;
 using GMConverter.Formats.MOW;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Explorer;
 
 namespace GMConverter.Explorer;
 

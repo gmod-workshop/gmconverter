@@ -83,7 +83,18 @@ public sealed class PluginLoader
 
         var pluginDir = Path.GetDirectoryName(manifestPath)
             ?? throw new GMConverterException($"Plugin manifest has no directory: {manifestPath}");
-        var entryPath = Path.GetFullPath(Path.Combine(pluginDir, manifest.Entry));
+
+        // Resolve the manifest's entry path against the plugin directory and reject anything that
+        // is rooted, that uses ".." to escape the plugin folder, or that otherwise fails to
+        // normalize cleanly. The manifest is data loaded from disk, so we treat it as untrusted —
+        // a malformed or malicious plugin.json must not be able to point the loader at an
+        // arbitrary assembly elsewhere on the filesystem.
+        if (!PathHelpers.TryResolveUnderRoot(pluginDir, manifest.Entry, out var entryPath))
+        {
+            _logger.EntryPathEscapedPluginDirectory(manifest.Id, manifest.Entry);
+            return false;
+        }
+
         if (!File.Exists(entryPath))
         {
             _logger.EntryAssemblyMissing(manifest.Id, entryPath);

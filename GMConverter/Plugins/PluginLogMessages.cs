@@ -69,4 +69,10 @@ internal static partial class PluginLogMessages
         Level = LogLevel.Warning,
         Message = "Plugin {Id}: partial type-load failure during entry scan; using loadable subset.")]
     public static partial void PartialTypeLoadFailure(this ILogger logger, Exception exception, string id);
+
+    [LoggerMessage(
+        EventId = 2011,
+        Level = LogLevel.Warning,
+        Message = "Plugin {Id}: entry path '{Entry}' is rooted or escapes the plugin directory; skipping.")]
+    public static partial void EntryPathEscapedPluginDirectory(this ILogger logger, string id, string entry);
 }

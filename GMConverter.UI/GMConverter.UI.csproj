@@ -34,6 +34,30 @@
         <ProjectReference Include="..\GMConverter\GMConverter.csproj" />
     </ItemGroup>
 
+    <!-- Plugins bundled with this host build. See GMConverter.CLI.csproj for the rationale. -->
+    <ItemGroup>
+        <BundledPlugin Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
+            <PluginId>unrealengine</PluginId>
+        </BundledPlugin>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="@(BundledPlugin)">
+            <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+            <Private>false</Private>
+        </ProjectReference>
+    </ItemGroup>
+
+    <Target Name="CopyBundledPlugins" AfterTargets="Build">
+        <ItemGroup>
+            <PluginPayload Include="%(BundledPlugin.RootDir)%(BundledPlugin.Directory)bin\$(Configuration)\$(TargetFramework)\**\*"
+                           PluginId="%(BundledPlugin.PluginId)" />
+        </ItemGroup>
+        <Copy SourceFiles="@(PluginPayload)"
+              DestinationFiles="$(OutputPath)plugins\%(PluginPayload.PluginId)\%(PluginPayload.RecursiveDir)%(PluginPayload.Filename)%(PluginPayload.Extension)"
+              SkipUnchangedFiles="true" />
+    </Target>
+
     <ItemGroup>
       <Compile Update="Controls\Preview\PreviewSidebar.axaml.cs">
         <DependentUpon>PreviewSidebar.axaml</DependentUpon>

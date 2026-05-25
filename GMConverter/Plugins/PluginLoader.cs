@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Plugins;
+using GMConverter.SDK.Textures;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -23,12 +25,21 @@ public sealed class PluginLoader
 
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<PluginLoader> _logger;
-    private readonly DefaultTextureFactory _textureFactory = new();
+    private readonly ServiceProvider _services;
 
     public PluginLoader(ILoggerFactory? loggerFactory = null)
     {
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<PluginLoader>();
+
+        // The host's service provider — populated with everything plugin code can consume via DI.
+        // Adding a new host-side capability (IFileSystem, IHttpClient, etc.) is a single AddSingleton
+        // call here; existing plugins that don't need it are unaffected, and plugins that want it
+        // just declare it as a constructor parameter.
+        var services = new ServiceCollection();
+        services.AddSingleton(_loggerFactory);
+        services.AddSingleton<ITextureFactory, DefaultTextureFactory>();
+        _services = services.BuildServiceProvider();
     }
 
     public PluginRegistry LoadAll(string pluginsDirectory)
@@ -135,7 +146,7 @@ public sealed class PluginLoader
             return false;
         }
 
-        var context = new DefaultPluginContext(_loggerFactory, _textureFactory);
+        var context = new DefaultPluginContext(_services);
         try
         {
             instance.OnLoad(context);

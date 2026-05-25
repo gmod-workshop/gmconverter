@@ -283,10 +283,9 @@ internal static class Program
         {
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
-            "psk" => new PSKImporter(),
             "mow" => new MOWImporter(loggerFactory),
             _ => PluginHost.Registry.GetImporter(inputFormat)
-                ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Built-ins: opt, mdl, psk, mow. Plugins may contribute additional formats.")
+                ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Built-ins: opt, mdl, mow. Plugins (e.g. GMConverter.UnrealEngine for psk) may contribute additional formats.")
         };
     }
 

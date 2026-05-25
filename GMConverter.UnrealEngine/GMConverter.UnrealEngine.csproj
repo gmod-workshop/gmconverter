@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>GMConverter.UnrealEngine</AssemblyName>
+        <PackageId>GMConverter.UnrealEngine</PackageId>
+        <RootNamespace>GMConverter.UnrealEngine</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="MessagePack" Version="3.1.4" />
+        <!-- Pinned to override the vulnerable 9.0.0 pulled transitively by CUE4Parse. -->
+        <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.4" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\GMConverter.SDK\GMConverter.SDK.csproj" />
+        <!-- CUE4Parse's project file declares a Build-Natives target that runs CMake on
+             Dependencies/CUE4Parse-Natives/ to produce CUE4Parse-Natives.dll, and emits it as a
+             Content item with CopyToOutputDirectory=PreserveNewest. Builds require CMake and a
+             C++ compiler available on PATH; GitHub Actions windows-latest images have these
+             pre-installed. -->
+        <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse\CUE4Parse.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+        <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+</Project>

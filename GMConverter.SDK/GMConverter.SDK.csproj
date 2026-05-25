@@ -10,8 +10,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- Logging.Abstractions is a no-runtime-dep package; safe in the SDK because plugins need
-             ILoggerFactory to write into the host's logging configuration. -->
+        <!-- DependencyInjection.Abstractions exposes IServiceProvider on IPluginContext. Plugins
+             pull ITextureFactory, ILoggerFactory, and any future host services via DI rather than
+             named context properties. Abstractions has no runtime dependencies. -->
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+        <!-- Logging.Abstractions is pulled transitively but listed explicitly so plugins that need
+             ILogger types don't depend on a transitive that could be tightened later. -->
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     </ItemGroup>
 

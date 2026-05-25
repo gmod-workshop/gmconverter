@@ -15,4 +15,34 @@
       <PackageReference Include="System.CommandLine" Version="2.0.7" />
     </ItemGroup>
 
+    <!-- Plugins bundled with this host build. Each entry is a loose ProjectReference that
+         enforces build order (the plugin builds first) but does not link the plugin's assembly
+         into this host's compile output (the plugin lives behind the SDK interface, not as a
+         direct dependency). The CopyBundledPlugins target then stages each plugin's bin into
+         this host's plugins/<id>/ folder so the runtime PluginLoader picks them up. After a
+         plugin moves to its own repo, drop the entry here and ship the plugin through a release
+         artifact instead. -->
+    <ItemGroup>
+      <BundledPlugin Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
+        <PluginId>unrealengine</PluginId>
+      </BundledPlugin>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="@(BundledPlugin)">
+        <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+        <Private>false</Private>
+      </ProjectReference>
+    </ItemGroup>
+
+    <Target Name="CopyBundledPlugins" AfterTargets="Build">
+      <ItemGroup>
+        <PluginPayload Include="%(BundledPlugin.RootDir)%(BundledPlugin.Directory)bin\$(Configuration)\$(TargetFramework)\**\*"
+                       PluginId="%(BundledPlugin.PluginId)" />
+      </ItemGroup>
+      <Copy SourceFiles="@(PluginPayload)"
+            DestinationFiles="$(OutputPath)plugins\%(PluginPayload.PluginId)\%(PluginPayload.RecursiveDir)%(PluginPayload.Filename)%(PluginPayload.Extension)"
+            SkipUnchangedFiles="true" />
+    </Target>
+
 </Project>

@@ -1,0 +1,12 @@
+{
+  "id": "gmconverter.unrealengine",
+  "version": "0.1.0",
+  "displayName": "Unreal Engine 4/5",
+  "entry": "GMConverter.UnrealEngine.dll",
+  "sdkVersion": "1.0",
+  "capabilities": [
+    "importer:psk",
+    "explorer:ue4",
+    "explorer:ue2"
+  ]
+}

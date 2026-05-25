@@ -118,7 +118,11 @@ public sealed partial class ConvertViewModel : ViewModelBase
     [
         new("opt", "OPT", new OPTImporter().InputName),
         new("mdl", "MDL", new MDLImporter().InputName),
-        new("psk", "PSK", new PSKImporter().InputName),
+        // "psk" is plugin-contributed (GMConverter.UnrealEngine). The display name is hardcoded
+        // here because constructing a plugin importer at UI-init time would require pulling it
+        // from PluginHost.Registry and handling the not-loaded case. TODO: replace this whole
+        // static list with a dynamic projection over (built-in importers + registry importers).
+        new("psk", "PSK", "Unreal Engine"),
         new("mow", "MOW", new MOWImporter().InputName)
     ];
 

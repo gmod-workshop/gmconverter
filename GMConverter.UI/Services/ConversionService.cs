@@ -1,5 +1,4 @@
 using System.Numerics;
-using GMConverter.Common;
 using GMConverter.Exporters;
 using GMConverter.Geometry;
 using GMConverter.Importers;
@@ -178,7 +177,6 @@ internal sealed class ConversionService(UiLogSink logSink)
         {
             "opt" => new OPTImporter(),
             "mdl" => new MDLImporter(),
-            "psk" => new PSKImporter(),
             "mow" => new MOWImporter(loggerFactory),
             _ => PluginHost.Registry.GetImporter(inputFormat)
                 ?? throw new GMConverterException($"Unsupported input format: {inputFormat}")

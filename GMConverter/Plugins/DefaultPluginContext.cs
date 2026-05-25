@@ -2,8 +2,7 @@ using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Plugins;
-using GMConverter.SDK.Textures;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GMConverter.Plugins;
 
@@ -13,15 +12,12 @@ internal sealed class DefaultPluginContext : IPluginContext
     private readonly List<IExporterDescriptor> _exporters = [];
     private readonly List<IExplorer> _explorers = [];
 
-    public DefaultPluginContext(ILoggerFactory loggerFactory, ITextureFactory textureFactory)
+    public DefaultPluginContext(IServiceProvider services)
     {
-        LoggerFactory = loggerFactory;
-        TextureFactory = textureFactory;
+        Services = services;
     }
 
-    public ILoggerFactory LoggerFactory { get; }
-
-    public ITextureFactory TextureFactory { get; }
+    public IServiceProvider Services { get; }
 
     public IReadOnlyList<IImporter> RegisteredImporters => _importers;
 
@@ -35,15 +31,30 @@ internal sealed class DefaultPluginContext : IPluginContext
         _importers.Add(importer);
     }
 
+    public void RegisterImporter<T>() where T : class, IImporter
+    {
+        _importers.Add(ActivatorUtilities.CreateInstance<T>(Services));
+    }
+
     public void RegisterExporter(IExporterDescriptor exporter)
     {
         ArgumentNullException.ThrowIfNull(exporter);
         _exporters.Add(exporter);
     }
 
+    public void RegisterExporter<T>() where T : class, IExporterDescriptor
+    {
+        _exporters.Add(ActivatorUtilities.CreateInstance<T>(Services));
+    }
+
     public void RegisterExplorer(IExplorer explorer)
     {
         ArgumentNullException.ThrowIfNull(explorer);
         _explorers.Add(explorer);
+    }
+
+    public void RegisterExplorer<T>() where T : class, IExplorer
+    {
+        _explorers.Add(ActivatorUtilities.CreateInstance<T>(Services));
     }
 }

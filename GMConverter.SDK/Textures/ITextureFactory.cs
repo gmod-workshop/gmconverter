@@ -1,10 +1,10 @@
 namespace GMConverter.SDK.Textures;
 
 /// <summary>
-/// Constructs <see cref="Texture"/> instances on behalf of plugins. The host injects an
-/// implementation via <see cref="Plugins.IPluginContext.TextureFactory"/>, keeping the
-/// concrete image library a host-side choice. Plugin code never references the underlying
-/// image library directly.
+/// Constructs <see cref="Texture"/> instances on behalf of plugins. The host registers an
+/// implementation in the service provider exposed by <see cref="Plugins.IPluginContext.Services"/>,
+/// keeping the concrete image library a host-side choice. Plugin code declares
+/// <see cref="ITextureFactory"/> as a constructor parameter and DI provides it.
 /// </summary>
 public interface ITextureFactory
 {

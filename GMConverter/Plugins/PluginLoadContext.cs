@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 
 namespace GMConverter.Plugins;
@@ -18,11 +19,14 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
     };
 
     private readonly AssemblyDependencyResolver _resolver;
+    private readonly string _pluginDirectory;
 
     public PluginLoadContext(string pluginAssemblyPath, string pluginId)
         : base(name: $"Plugin:{pluginId}", isCollectible: true)
     {
         _resolver = new AssemblyDependencyResolver(pluginAssemblyPath);
+        _pluginDirectory = Path.GetDirectoryName(pluginAssemblyPath)
+            ?? throw new ArgumentException($"Plugin assembly path has no directory: {pluginAssemblyPath}", nameof(pluginAssemblyPath));
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
@@ -38,7 +42,54 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
-        var path = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-        return path is null ? IntPtr.Zero : LoadUnmanagedDllFromPath(path);
+        var resolved = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+        if (resolved is not null)
+        {
+            return LoadUnmanagedDllFromPath(resolved);
+        }
+
+        // Fallback: probe the plugin's own folder. Some natives (notably CUE4Parse-Natives) ship
+        // as Content/CopyToOutputDirectory items rather than a runtimes/<rid>/native/ layout, so
+        // they end up next to the managed assemblies but aren't listed in deps.json. The default
+        // host-context loader does search AppContext.BaseDirectory, but that's the host's bin,
+        // not the plugin's subfolder — so we have to do the probe ourselves. Path.Join is used
+        // instead of Path.Combine so a rooted candidate (which EnumerateNativeFileNames never
+        // produces, but defense in depth) cannot drop _pluginDirectory and walk the loader
+        // outside the plugin folder.
+        var siblings = EnumerateNativeFileNames(unmanagedDllName)
+            .Select(candidate => Path.Join(_pluginDirectory, candidate));
+        foreach (var sibling in siblings)
+        {
+            if (File.Exists(sibling))
+            {
+                return LoadUnmanagedDllFromPath(sibling);
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static IEnumerable<string> EnumerateNativeFileNames(string unmanagedDllName)
+    {
+        // The runtime asks for the name in the form the P/Invoke source provided
+        // ("CUE4Parse-Natives", "lib_coacd"). Try the bare name first, then platform-conventional
+        // decorations. The set is platform-aware: Windows prefers ".dll" with no prefix; Linux
+        // wants "lib" prefix + ".so"; macOS wants "lib" prefix + ".dylib".
+        yield return unmanagedDllName;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            yield return unmanagedDllName + ".dll";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            yield return unmanagedDllName + ".so";
+            yield return "lib" + unmanagedDllName + ".so";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            yield return unmanagedDllName + ".dylib";
+            yield return "lib" + unmanagedDllName + ".dylib";
+        }
     }
 }

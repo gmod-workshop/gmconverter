@@ -17,7 +17,16 @@ internal static class Program
     {
         Console.OutputEncoding = Encoding.UTF8;
 
-        PluginHost.Initialize(PluginHost.DefaultDirectory);
+        // Plugin load is observability that belongs in the same stream as the rest of the CLI's
+        // output. A console logger at Information level surfaces plugin discovery + load failures
+        // alongside conversion progress, so a user running the CLI sees plugin issues immediately
+        // instead of hunting for them.
+        using var pluginLoggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Information);
+            builder.AddConsole();
+        });
+        PluginHost.Initialize(PluginHost.DefaultDirectory, pluginLoggerFactory);
 
         var rootCommand = CreateRootCommand();
 

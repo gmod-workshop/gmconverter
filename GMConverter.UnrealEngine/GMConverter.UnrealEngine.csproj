@@ -8,6 +8,14 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <!-- This is a library project that must ship as a self-contained plugin: the host's
+             deploy target copies the plugin's bin folder verbatim into plugins/<id>/, and the
+             plugin's ALC resolves NuGet dependencies from there at runtime. Without this flag
+             the library build only emits the plugin's own DLLs + ProjectReference outputs, and
+             NuGet package DLLs (MessagePack, ImageSharp, etc.) stay in the NuGet cache and never
+             reach the deployed plugin folder — the runtime ALC can't find them and plugin load
+             fails with FileNotFoundException on the first assembly-level attribute scan. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     </PropertyGroup>
 
     <ItemGroup>

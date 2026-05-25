@@ -52,10 +52,14 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         // as Content/CopyToOutputDirectory items rather than a runtimes/<rid>/native/ layout, so
         // they end up next to the managed assemblies but aren't listed in deps.json. The default
         // host-context loader does search AppContext.BaseDirectory, but that's the host's bin,
-        // not the plugin's subfolder — so we have to do the probe ourselves.
-        foreach (var candidate in EnumerateNativeFileNames(unmanagedDllName))
+        // not the plugin's subfolder — so we have to do the probe ourselves. Path.Join is used
+        // instead of Path.Combine so a rooted candidate (which EnumerateNativeFileNames never
+        // produces, but defense in depth) cannot drop _pluginDirectory and walk the loader
+        // outside the plugin folder.
+        var siblings = EnumerateNativeFileNames(unmanagedDllName)
+            .Select(candidate => Path.Join(_pluginDirectory, candidate));
+        foreach (var sibling in siblings)
         {
-            var sibling = Path.Combine(_pluginDirectory, candidate);
             if (File.Exists(sibling))
             {
                 return LoadUnmanagedDllFromPath(sibling);

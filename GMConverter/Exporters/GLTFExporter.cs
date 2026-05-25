@@ -25,7 +25,7 @@ using WriteSettings = SharpGLTF.Schema2.WriteSettings;
 
 namespace GMConverter.Exporters;
 
-internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
+internal sealed class GLTFExporter : IExporter
 {
     // -90° around X rotates Z-up data into Y-up: (x, y, z) → (x, z, -y).
     private static readonly Quaternion _zUpToYUpRotation =
@@ -35,15 +35,36 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
     public string OutputName => "glTF";
 
-    public void Export(Model model, string outputDirectory, string baseName, GLTFExportOptions options)
+    public ExporterOptionSchema OptionSchema { get; } = new(
+    [
+        new OptionGroup("output", "Output",
+        [
+            new OptionDescriptor("binary", OptionType.Bool, "Binary (.glb)")
+            {
+                DefaultValue = true,
+                Description = "Emit a single binary .glb file instead of a .gltf + sidecars.",
+            },
+            new OptionDescriptor("bakeUvTransforms", OptionType.Bool, "Bake UV transforms")
+            {
+                DefaultValue = false,
+                Description = "Fold per-material UV scale/offset into mesh UVs at write time. " +
+                              "Used by the in-app preview which does not honor KHR_texture_transform.",
+            },
+        ]),
+    ]);
+
+    public void Export(Model model, string outputDirectory, string baseName, ExportOptions options)
     {
         using var exportScope = PerfTimer.Measure(
             "gltf.export",
             "Export",
             $"meshes={model.Meshes.Count} materials={model.Materials.Count} textures={model.Textures.Count}");
 
+        var binary = options.GetBool("binary", defaultValue: true);
+        var bakeUvTransforms = options.GetBool("bakeUvTransforms");
+
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);
-        var extension = options.Binary ? ".glb" : ".gltf";
+        var extension = binary ? ".glb" : ".gltf";
         var outputPath = Path.Combine(outputDirectory, $"{safeBaseName}{extension}");
 
         // Per-Export memoization: the same source Texture instance can appear in multiple Materials
@@ -55,14 +76,14 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
         Dictionary<string, MaterialBuilder> materialBuilders;
         using (PerfTimer.Measure("gltf.export", "BuildMaterials"))
         {
-            materialBuilders = BuildMaterials(model, encodeCache, options.BakeUvTransforms);
+            materialBuilders = BuildMaterials(model, encodeCache, bakeUvTransforms);
         }
 
         // When BakeUvTransforms is set, the consumer can't honor KHR_texture_transform (e.g. the
         // in-app SharpEngine preview), so we fold each material's BakedUv0Scale into the mesh's UVs
         // at write time instead. ApplyUvScale in BuildMaterial is skipped in this mode to avoid
         // double-applying the transform.
-        var inlineUvScales = options.BakeUvTransforms
+        var inlineUvScales = bakeUvTransforms
             ? model.Materials
                 .Where(m => m.BakedUv0Scale is not null)
                 .ToDictionary(m => m.Name, m => m.BakedUv0Scale!.Value, StringComparer.OrdinalIgnoreCase)
@@ -133,13 +154,13 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
 
         var settings = new WriteSettings
         {
-            ImageWriting = options.Binary ? ResourceWriteMode.BufferView : ResourceWriteMode.SatelliteFile,
+            ImageWriting = binary ? ResourceWriteMode.BufferView : ResourceWriteMode.SatelliteFile,
             MergeBuffers = true
         };
 
-        using (PerfTimer.Measure("gltf.export", options.Binary ? "SaveGLB" : "SaveGLTF", outputPath))
+        using (PerfTimer.Measure("gltf.export", binary ? "SaveGLB" : "SaveGLTF", outputPath))
         {
-            if (options.Binary)
+            if (binary)
             {
                 gltf.SaveGLB(outputPath, settings);
             }
@@ -646,4 +667,3 @@ internal sealed class GLTFExporter : IExporter<GLTFExportOptions>
     }
 }
 
-internal sealed record GLTFExportOptions(bool Binary = true, bool BakeUvTransforms = false);

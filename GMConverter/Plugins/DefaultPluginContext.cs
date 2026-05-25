@@ -9,7 +9,7 @@ namespace GMConverter.Plugins;
 internal sealed class DefaultPluginContext : IPluginContext
 {
     private readonly List<IImporter> _importers = [];
-    private readonly List<IExporterDescriptor> _exporters = [];
+    private readonly List<IExporter> _exporters = [];
     private readonly List<IExplorer> _explorers = [];
 
     public DefaultPluginContext(IServiceProvider services)
@@ -21,7 +21,7 @@ internal sealed class DefaultPluginContext : IPluginContext
 
     public IReadOnlyList<IImporter> RegisteredImporters => _importers;
 
-    public IReadOnlyList<IExporterDescriptor> RegisteredExporters => _exporters;
+    public IReadOnlyList<IExporter> RegisteredExporters => _exporters;
 
     public IReadOnlyList<IExplorer> RegisteredExplorers => _explorers;
 
@@ -36,13 +36,13 @@ internal sealed class DefaultPluginContext : IPluginContext
         _importers.Add(ActivatorUtilities.CreateInstance<T>(Services));
     }
 
-    public void RegisterExporter(IExporterDescriptor exporter)
+    public void RegisterExporter(IExporter exporter)
     {
         ArgumentNullException.ThrowIfNull(exporter);
         _exporters.Add(exporter);
     }
 
-    public void RegisterExporter<T>() where T : class, IExporterDescriptor
+    public void RegisterExporter<T>() where T : class, IExporter
     {
         _exporters.Add(ActivatorUtilities.CreateInstance<T>(Services));
     }

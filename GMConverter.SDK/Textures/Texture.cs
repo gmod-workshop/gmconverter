@@ -20,6 +20,15 @@ public abstract class Texture : IDisposable
     public abstract string DebugDimensions { get; }
 
     /// <summary>
+    /// Returns the texture's pixel data as RGBA8888, row-major order, length
+    /// <c>Width * Height * 4</c>. Used by plugins that need to apply custom pixel transforms
+    /// (channel swaps, masking, format-specific encodings) without taking a dependency on the
+    /// host's image library. The returned buffer is a copy; callers are free to mutate it
+    /// (typically just to read).
+    /// </summary>
+    public abstract byte[] GetRgbaPixels();
+
+    /// <summary>
     /// Returns a copy of this texture scaled so its longest edge is at most <paramref name="maxDimension"/>,
     /// preserving aspect ratio. Returns the same instance when already within the cap or when
     /// <paramref name="maxDimension"/> is non-positive.

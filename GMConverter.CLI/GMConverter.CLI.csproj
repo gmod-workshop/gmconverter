@@ -23,6 +23,9 @@
          plugin moves to its own repo, drop the entry here and ship the plugin through a release
          artifact instead. -->
     <ItemGroup>
+      <BundledPlugin Include="..\GMConverter.SourceEngine\GMConverter.SourceEngine.csproj">
+        <PluginId>sourceengine</PluginId>
+      </BundledPlugin>
       <BundledPlugin Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
         <PluginId>unrealengine</PluginId>
       </BundledPlugin>

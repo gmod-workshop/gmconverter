@@ -1,21 +1,22 @@
 using System.Text;
-using GMConverter.Common;
-using GMConverter.Geometry;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Textures;
+using GMConverter.SourceEngine.Common;
 
-namespace GMConverter.Source;
+namespace GMConverter.SourceEngine;
 
 internal sealed class SourceMaterialCompiler
 {
     private readonly string _vtfCmdPath;
     private readonly MaterialOptimizationOptions _optimization;
+    private readonly ITextureFactory _textureFactory;
     private static readonly UTF8Encoding _utf8NoBom = new(false);
 
-    public SourceMaterialCompiler(string vtfCmdPath, MaterialOptimizationOptions? optimization = null)
+    public SourceMaterialCompiler(string vtfCmdPath, ITextureFactory textureFactory, MaterialOptimizationOptions? optimization = null)
     {
         _vtfCmdPath = Path.GetFullPath(vtfCmdPath);
+        _textureFactory = textureFactory;
         _optimization = optimization ?? MaterialOptimizationOptions.Default;
     }
 
@@ -63,7 +64,7 @@ internal sealed class SourceMaterialCompiler
                 if (material.NormalTexture is not null)
                 {
                     var normalTextureForWrite = specForMask is not null
-                        ? material.NormalTexture.WithMaskInAlpha(specForMask)
+                        ? material.NormalTexture.WithMaskInAlpha(specForMask, _textureFactory)
                         : material.NormalTexture;
                     normalBasename = WriteOrReuse(
                         normalTextureForWrite,
@@ -230,10 +231,10 @@ internal sealed class SourceMaterialCompiler
         return material.DiffuseTexture is not null && material.SpecularTexture is not null;
     }
 
-    private static Texture? GetSourcePhongExponent(Material material)
+    private Texture? GetSourcePhongExponent(Material material)
     {
         return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
-            ? material.SpecularTexture?.ToSourcePhongExponent()
+            ? material.SpecularTexture?.ToSourcePhongExponent(_textureFactory)
             : material.SpecularTexture;
     }
 

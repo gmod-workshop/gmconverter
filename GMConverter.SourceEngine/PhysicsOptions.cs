@@ -1,4 +1,4 @@
-namespace GMConverter.Source;
+namespace GMConverter.SourceEngine;
 
 internal enum PhysicsMode
 {

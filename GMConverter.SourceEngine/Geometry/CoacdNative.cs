@@ -4,7 +4,7 @@ using System.Text;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 
-namespace GMConverter.Geometry;
+namespace GMConverter.SourceEngine.Geometry;
 
 internal static partial class CoacdNative
 {

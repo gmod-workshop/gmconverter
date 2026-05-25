@@ -1,6 +1,6 @@
 using GMConverter.SDK.Common;
 
-namespace GMConverter.Source;
+namespace GMConverter.SourceEngine;
 
 internal sealed record GameInfo(
     string GameDirectory,

@@ -1,0 +1,11 @@
+{
+  "id": "gmconverter.sourceengine",
+  "version": "0.1.0",
+  "displayName": "Source Engine",
+  "entry": "GMConverter.SourceEngine.dll",
+  "sdkVersion": "1.0",
+  "capabilities": [
+    "importer:mdl",
+    "exporter:mdl"
+  ]
+}

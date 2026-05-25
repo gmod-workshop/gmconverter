@@ -1,4 +1,4 @@
-namespace GMConverter.Geometry;
+namespace GMConverter.SourceEngine.Geometry;
 
 internal sealed record CoacdDecompositionOptions(
     double Threshold,

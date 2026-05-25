@@ -117,11 +117,12 @@ public sealed partial class ConvertViewModel : ViewModelBase
     public ObservableCollection<DisplayOption> InputFormats { get; } =
     [
         new("opt", "OPT", new OPTImporter().InputName),
-        new("mdl", "MDL", new MDLImporter().InputName),
-        // "psk" is plugin-contributed (GMConverter.UnrealEngine). The display name is hardcoded
-        // here because constructing a plugin importer at UI-init time would require pulling it
-        // from PluginHost.Registry and handling the not-loaded case. TODO: replace this whole
-        // static list with a dynamic projection over (built-in importers + registry importers).
+        // "psk" + "mdl" are plugin-contributed (UnrealEngine + SourceEngine plugins). The display
+        // names are hardcoded here because constructing a plugin importer at UI-init time would
+        // require pulling it from PluginHost.Registry and handling the not-loaded case. TODO:
+        // replace this whole static list with a dynamic projection over (built-in importers +
+        // PluginHost.Registry.Importers).
+        new("mdl", "MDL", "Source Engine"),
         new("psk", "PSK", "Unreal Engine"),
         new("mow", "MOW", new MOWImporter().InputName)
     ];
@@ -132,8 +133,10 @@ public sealed partial class ConvertViewModel : ViewModelBase
         new(new OBJExporter().OutputFormat, "OBJ", new OBJExporter().OutputName),
         new("glb", "GLB", new GLTFExporter().OutputName),
         new("gltf", "glTF", new GLTFExporter().OutputName),
-        new("source", "Source", new MDLExporter().OutputName),
-        new(new MDLExporter().OutputFormat, "MDL", new MDLExporter().OutputName)
+        // Source plugin contributes the MDL exporter. Display name hardcoded for the same TODO
+        // reason as the importer list above.
+        new("source", "Source", "Source Engine"),
+        new("mdl", "MDL", "Source Engine")
     ];
 
     public ObservableCollection<DisplayOption> AxisModes { get; } =
@@ -312,7 +315,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
     // new tools/ location instead of carrying a stale absolute path forward.
     internal void ApplyLocalToolDefaults()
     {
-        var (studioMdl, vtfCmd) = GMConverter.Source.SourceToolPaths.TryFindLocalDefaults();
+        var (studioMdl, vtfCmd) = TryFindLocalToolDefaults();
         if (string.IsNullOrWhiteSpace(StudioMdlPath) && studioMdl is not null)
         {
             StudioMdlPath = studioMdl;
@@ -320,6 +323,42 @@ public sealed partial class ConvertViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(VtfCmdPath) && vtfCmd is not null)
         {
             VtfCmdPath = vtfCmd;
+        }
+    }
+
+    // Local copy of the path-discovery logic that used to live in GMConverter.Source.SourceToolPaths.
+    // After Source extraction to a plugin the UI can't reference that type directly, and the UI's
+    // auto-fill behavior shouldn't depend on the plugin being loaded — these directories follow a
+    // convention (./tools/<tool>/...) that's stable across plugin presence. The plugin keeps its
+    // own copy for the resolve path used at export time.
+    private static (string? StudioMdl, string? VtfCmd) TryFindLocalToolDefaults()
+    {
+        return (
+            FindExecutable(GetToolDirectory("studiomdl-ce"), "studiomdl.exe"),
+            FindExecutable(GetToolDirectory("vtfedit-reloaded"), "VTFCmd.exe"));
+    }
+
+    private static string GetToolDirectory(string toolName)
+    {
+        return Path.Combine(AppContext.BaseDirectory, "tools", toolName);
+    }
+
+    private static string? FindExecutable(string root, string executableName)
+    {
+        if (!Directory.Exists(root))
+        {
+            return null;
+        }
+        try
+        {
+            return Directory
+                .EnumerateFiles(root, executableName, SearchOption.AllDirectories)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _ = ex;
+            return null;
         }
     }
 

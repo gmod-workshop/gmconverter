@@ -7,7 +7,7 @@ using GMConverter.SDK.Materials;
 
 namespace GMConverter.Exporters;
 
-internal sealed class OBJExporter : IExporter<OBJExportOptions>
+internal sealed class OBJExporter : IExporter
 {
     private static readonly UTF8Encoding _utf8NoBom = new(false);
 
@@ -15,8 +15,13 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
 
     public string OutputName => "Wavefront OBJ";
 
-    public void Export(Model model, string outputDirectory, string baseName, OBJExportOptions options)
+    // OBJ has no user-configurable options today — the exporter writes a .obj + .mtl + texture
+    // PNGs from the Model with no knobs. Empty schema is the right shape.
+    public ExporterOptionSchema OptionSchema => ExporterOptionSchema.Empty;
+
+    public void Export(Model model, string outputDirectory, string baseName, ExportOptions options)
     {
+        _ = options;
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);
         var materialPath = Path.Combine(outputDirectory, $"{safeBaseName}.mtl");
         var objPath = Path.Combine(outputDirectory, $"{safeBaseName}.obj");
@@ -165,4 +170,3 @@ internal sealed class OBJExporter : IExporter<OBJExportOptions>
     }
 }
 
-internal sealed record OBJExportOptions;

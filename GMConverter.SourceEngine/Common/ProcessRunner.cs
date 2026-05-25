@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 using GMConverter.SDK.Common;
 
-namespace GMConverter.Common;
+namespace GMConverter.SourceEngine.Common;
 
 internal static class ProcessRunner
 {

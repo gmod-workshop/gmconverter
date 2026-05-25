@@ -36,6 +36,9 @@
 
     <!-- Plugins bundled with this host build. See GMConverter.CLI.csproj for the rationale. -->
     <ItemGroup>
+        <BundledPlugin Include="..\GMConverter.SourceEngine\GMConverter.SourceEngine.csproj">
+            <PluginId>sourceengine</PluginId>
+        </BundledPlugin>
         <BundledPlugin Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
             <PluginId>unrealengine</PluginId>
         </BundledPlugin>

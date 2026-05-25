@@ -1,4 +1,4 @@
-namespace GMConverter.Source;
+namespace GMConverter.SourceEngine;
 
 /// <summary>
 /// Controls Source material compile texture optimizations. <see cref="MaxTextureSize"/> caps

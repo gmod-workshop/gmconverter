@@ -1,24 +1,30 @@
 using System.Numerics;
 using System.Text;
-using GMConverter.Common;
-using GMConverter.Geometry;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Textures;
-using GMConverter.Source;
+using GMConverter.SourceEngine.Common;
+using GMConverter.SourceEngine.Geometry;
 
-namespace GMConverter.Exporters;
+namespace GMConverter.SourceEngine.Exporters;
 
 /// <summary>
 /// Exports a model to the Source Engine MDL format.
 /// </summary>
-internal sealed class MDLExporter : IExporter<MDLExportOptions>
+internal sealed class MDLExporter : IExporter
 {
     private static readonly UTF8Encoding _utf8NoBom = new(false);
     private const int _sourceMaxConvexPieces = 1024;
+
+    private readonly ITextureFactory _textureFactory;
+
+    public MDLExporter(ITextureFactory textureFactory)
+    {
+        _textureFactory = textureFactory;
+    }
 
     // Source's "1 unit" = 1 inch. Our importer pipeline produces models in meters (Unreal cm is
     // scaled by 0.01 in PSKImporter.ParseScene). Multiply by 39.3700787 (in/m) when writing SMD
@@ -29,12 +35,84 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
 
     public string OutputName => "Source Engine";
 
+    // Full schema declaration — three groups (Tools, Materials, Physics). The host's generic
+    // options panel renders these directly; CLI registers a --mdl-<key> argument per descriptor.
+    public ExporterOptionSchema OptionSchema { get; } = new(
+    [
+        new OptionGroup("tools", "Tools",
+        [
+            new OptionDescriptor("modelPath", OptionType.String, "Model path")
+            {
+                Description = "Output MDL path under the game models directory. Defaults to gmconverter/<name>.mdl.",
+            },
+            new OptionDescriptor("studioMdlPath", OptionType.Path, "StudioMDL override")
+            {
+                Description = "Optional StudioMDL-CE executable. Auto-downloads to tools/ when omitted.",
+            },
+            new OptionDescriptor("vtfCmdPath", OptionType.Path, "VTFCmd override")
+            {
+                Description = "Optional VTFCmd executable. Auto-downloads VTFEdit Reloaded to tools/ when omitted and materials are built.",
+            },
+            new OptionDescriptor("buildMaterials", OptionType.Bool, "Build materials")
+            {
+                DefaultValue = true,
+                Description = "Compile VTFs and VMTs alongside the MDL. Disable for mesh-only output.",
+            },
+        ]),
+        new OptionGroup("material", "Materials",
+        [
+            new OptionDescriptor("material:maxTextureSize", OptionType.Enum, "Max texture size")
+            {
+                DefaultValue = "0",
+                Choices = ["0", "512", "1024", "2048", "4096"],
+                Description = "Cap the longest edge before VTF compile. 0 disables resizing.",
+            },
+            new OptionDescriptor("material:deduplicateTextures", OptionType.Bool, "Deduplicate identical textures")
+            {
+                DefaultValue = false,
+                Description = "Hash resized texture content and reuse an existing VTF when materials produce byte-identical maps.",
+            },
+        ]),
+        new OptionGroup("physics", "Physics",
+        [
+            new OptionDescriptor("physics:enabled", OptionType.Bool, "Generate physics")
+            {
+                DefaultValue = false,
+                Description = "Generate a simple collision mesh alongside the MDL.",
+            },
+            new OptionDescriptor("physics:mode", OptionType.Enum, "Physics mode")
+            {
+                DefaultValue = "bounds",
+                Choices = ["bounds", "coacd"],
+                Description = "bounds: single AABB hull. coacd: native convex decomposition.",
+            },
+            new OptionDescriptor("physics:mass", OptionType.Float, "Mass (kg)")
+            {
+                DefaultValue = 100f,
+            },
+            new OptionDescriptor("physics:coacdThreshold", OptionType.Float, "CoACD threshold")
+            {
+                DefaultValue = 0.05f,
+                Description = "CoACD termination threshold from 0.01 to 1.",
+            },
+            new OptionDescriptor("physics:maxConvexPieces", OptionType.Int, "Max convex pieces")
+            {
+                DefaultValue = 32,
+            },
+            new OptionDescriptor("physics:maxHullVertices", OptionType.Int, "Max hull vertices")
+            {
+                DefaultValue = 32,
+            },
+        ]),
+    ]);
+
     public void Export(
         Model model,
         string outputDirectory,
         string baseName,
-        MDLExportOptions options)
+        ExportOptions exportOptions)
     {
+        var options = BuildOptions(baseName, exportOptions);
         var sourceTools = SourceToolPaths.Resolve(options.StudioMdlPath, options.VtfCmdPath, options.BuildMaterials);
         var physicsOptions = options.Physics;
         var modelPath = options.ModelPath;
@@ -78,7 +156,46 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
     }
 
-    private static void Compile(
+    // Binds the host's option bag into the strongly-typed MDLExportOptions the rest of this
+    // file already knows how to work with. Keeps the option-bag boundary tight to this method.
+    private static MDLExportOptions BuildOptions(string baseName, ExportOptions o)
+    {
+        var modelPath = o.GetString("modelPath");
+        if (string.IsNullOrWhiteSpace(modelPath))
+        {
+            modelPath = $"gmconverter/{NameHelpers.SanitizeMaterialName(baseName)}.mdl";
+        }
+
+        var physics = o.GetBool("physics:enabled")
+            ? new PhysicsOptions(
+                Mode: o.GetString("physics:mode") switch
+                {
+                    "coacd" => PhysicsMode.Coacd,
+                    _ => PhysicsMode.Bounds,
+                },
+                Mass: o.GetFloat("physics:mass", 100f),
+                Coacd: o.GetString("physics:mode") == "coacd"
+                    ? new CoacdOptions(
+                        Threshold: o.GetFloat("physics:coacdThreshold", 0.05f),
+                        MaxConvexPieces: o.GetInt("physics:maxConvexPieces", 32),
+                        MaxHullVertices: o.GetInt("physics:maxHullVertices", 32))
+                    : null)
+            : null;
+
+        var material = new MaterialOptimizationOptions(
+            MaxTextureSize: o.GetInt("material:maxTextureSize"),
+            DeduplicateTextures: o.GetBool("material:deduplicateTextures"));
+
+        return new MDLExportOptions(
+            ModelPath: modelPath,
+            StudioMdlPath: o.GetString("studioMdlPath"),
+            VtfCmdPath: o.GetString("vtfCmdPath"),
+            BuildMaterials: o.GetBool("buildMaterials", defaultValue: true),
+            Physics: physics,
+            MaterialOptimization: material);
+    }
+
+    private void Compile(
         Model model,
         MDLExportResult result,
         SourceToolPaths sourceTools,
@@ -91,6 +208,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             {
                 var materialCompiler = new SourceMaterialCompiler(
                     sourceTools.VtfCmdPath!,
+                    _textureFactory,
                     materialOptimization ?? MaterialOptimizationOptions.Default);
                 materialCompiler.Compile(model.Materials, result.MaterialDirectory, result.MaterialRelativeDirectory);
             }
@@ -605,7 +723,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         return value.Replace("\"", "'", StringComparison.Ordinal);
     }
 
-    private static void ExportSourceMaterials(Model model, string materialDirectory, string materialRelativeDirectory)
+    private void ExportSourceMaterials(Model model, string materialDirectory, string materialRelativeDirectory)
     {
         foreach (var material in model.Materials)
         {
@@ -630,7 +748,7 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
             // for envmap masking on bump-mapped materials.
             var specForMask = GetSourcePhongExponent(material);
             var normalTextureForWrite = material.NormalTexture is not null && specForMask is not null
-                ? material.NormalTexture.WithMaskInAlpha(specForMask)
+                ? material.NormalTexture.WithMaskInAlpha(specForMask, _textureFactory)
                 : material.NormalTexture;
             normalTextureForWrite?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_normal.png"));
             specForMask?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_spec.png"));
@@ -694,10 +812,10 @@ internal sealed class MDLExporter : IExporter<MDLExportOptions>
         return material.DiffuseTexture is not null && material.SpecularTexture is not null;
     }
 
-    private static Texture? GetSourcePhongExponent(Material material)
+    private Texture? GetSourcePhongExponent(Material material)
     {
         return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
-            ? material.SpecularTexture?.ToSourcePhongExponent()
+            ? material.SpecularTexture?.ToSourcePhongExponent(_textureFactory)
             : material.SpecularTexture;
     }
 

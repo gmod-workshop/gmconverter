@@ -1,13 +1,12 @@
 using System.Numerics;
 using GMConverter.Exporters;
-using GMConverter.Geometry;
 using GMConverter.Importers;
 using GMConverter.Plugins;
 using GMConverter.SDK.Common;
+using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
-using GMConverter.Source;
 using Microsoft.Extensions.Logging;
 
 namespace GMConverter.UI.Services;
@@ -63,7 +62,7 @@ internal sealed class ConversionService(UiLogSink logSink)
                 Directory.CreateDirectory(outputPath);
                 using (PerfTimer.Measure("convert.run", "OBJExporter.Export"))
                 {
-                    new OBJExporter().Export(model, outputPath, baseName, new OBJExportOptions());
+                    new OBJExporter().Export(model, outputPath, baseName, ExportOptions.Empty);
                 }
                 return $"Wrote OBJ output to {outputPath}";
 
@@ -72,11 +71,11 @@ internal sealed class ConversionService(UiLogSink logSink)
                 Directory.CreateDirectory(outputPath);
                 using (PerfTimer.Measure("convert.run", "GLTFExporter.Export", settings.OutputFormat))
                 {
-                    new GLTFExporter().Export(
-                        model,
-                        outputPath,
-                        baseName,
-                        new GLTFExportOptions(settings.OutputFormat is "glb"));
+                    var gltfOptions = new ExportOptions(new Dictionary<string, object?>
+                    {
+                        ["binary"] = settings.OutputFormat is "glb",
+                    });
+                    new GLTFExporter().Export(model, outputPath, baseName, gltfOptions);
                 }
                 return $"Wrote {(settings.OutputFormat is "glb" ? "GLB" : "glTF")} output to {outputPath}";
 
@@ -85,17 +84,9 @@ internal sealed class ConversionService(UiLogSink logSink)
                 Directory.CreateDirectory(outputPath);
                 using (PerfTimer.Measure("convert.run", "MDLExporter.Export"))
                 {
-                    new MDLExporter().Export(
-                        model,
-                        outputPath,
-                        baseName,
-                        new MDLExportOptions(
-                            settings.ModelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
-                            settings.StudioMdlPath,
-                            settings.VtfCmdPath,
-                            settings.BuildMaterials,
-                            CreatePhysicsOptions(settings),
-                            new MaterialOptimizationOptions(settings.MaxTextureSize, settings.DeduplicateTextures)));
+                    var mdlExporter = PluginHost.Registry.GetExporter("mdl")
+                        ?? throw new GMConverterException("Source plugin not loaded: cannot produce MDL output. Install GMConverter.SourceEngine.");
+                    mdlExporter.Export(model, outputPath, baseName, BuildMdlExportOptions(settings, baseName));
                 }
                 return $"Wrote Source compile workspace to {outputPath}";
 
@@ -136,7 +127,12 @@ internal sealed class ConversionService(UiLogSink logSink)
             // KHR_texture_transform; the SharpEngine glTF importer used by the in-app preview does
             // not honor that extension, so without inline baking multi-layer Fortnite materials
             // sample the wrong tile of their bake and render as garbled textures.
-            new GLTFExporter().Export(model, previewDirectory, baseName, new GLTFExportOptions(Binary: true, BakeUvTransforms: true));
+            var previewOptions = new ExportOptions(new Dictionary<string, object?>
+            {
+                ["binary"] = true,
+                ["bakeUvTransforms"] = true,
+            });
+            new GLTFExporter().Export(model, previewDirectory, baseName, previewOptions);
         }
 
         PhysicsPreviewExport physicsPreview;
@@ -176,7 +172,6 @@ internal sealed class ConversionService(UiLogSink logSink)
         return inputFormat switch
         {
             "opt" => new OPTImporter(),
-            "mdl" => new MDLImporter(),
             "mow" => new MOWImporter(loggerFactory),
             _ => PluginHost.Registry.GetImporter(inputFormat)
                 ?? throw new GMConverterException($"Unsupported input format: {inputFormat}")
@@ -233,32 +228,44 @@ internal sealed class ConversionService(UiLogSink logSink)
         return new MaterialResolveOptions(fullPath);
     }
 
-    private static PhysicsOptions? CreatePhysicsOptions(ConversionSettings settings)
+    // Builds the host-side ExportOptions bag from ConversionSettings. Translates UI fields into
+    // the schema's option keys. Lives here (not on the exporter) because the host owns the
+    // mapping from its settings shape to the exporter's bag — the exporter doesn't see settings.
+    // After Source migration to a plugin the host no longer references plugin-private types
+    // (PhysicsOptions/PhysicsMode etc.), so the bag is built directly from primitives.
+    private static ExportOptions BuildMdlExportOptions(ConversionSettings settings, string baseName)
     {
-        if (!settings.GeneratePhysics && string.IsNullOrWhiteSpace(settings.PhysicsMode))
+        var bag = new Dictionary<string, object?>
         {
-            return null;
-        }
-
-        var mode = settings.PhysicsMode?.Trim().ToLowerInvariant() switch
-        {
-            null or "" or "bounds" => PhysicsMode.Bounds,
-            "coacd" => PhysicsMode.Coacd,
-            _ => throw new GMConverterException("Unsupported physics mode.")
+            ["modelPath"] = settings.ModelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
+            ["studioMdlPath"] = settings.StudioMdlPath,
+            ["vtfCmdPath"] = settings.VtfCmdPath,
+            ["buildMaterials"] = settings.BuildMaterials,
+            ["material:maxTextureSize"] = settings.MaxTextureSize,
+            ["material:deduplicateTextures"] = settings.DeduplicateTextures,
         };
-
-        if (mode is PhysicsMode.Bounds)
+        if (settings.GeneratePhysics || !string.IsNullOrWhiteSpace(settings.PhysicsMode))
         {
-            return new PhysicsOptions(mode, settings.PhysicsMass, null);
+            var mode = settings.PhysicsMode?.Trim().ToLowerInvariant() switch
+            {
+                null or "" or "bounds" => "bounds",
+                "coacd" => "coacd",
+                _ => throw new GMConverterException("Unsupported physics mode."),
+            };
+            bag["physics:enabled"] = true;
+            bag["physics:mode"] = mode;
+            bag["physics:mass"] = settings.PhysicsMass;
+            if (mode == "coacd")
+            {
+                bag["physics:coacdThreshold"] = settings.CoacdThreshold;
+                bag["physics:maxConvexPieces"] = settings.MaxConvexPieces;
+                bag["physics:maxHullVertices"] = settings.MaxHullVertices;
+            }
         }
-
-        return new PhysicsOptions(
-            mode,
-            settings.PhysicsMass,
-            new CoacdOptions(settings.CoacdThreshold, settings.MaxConvexPieces, settings.MaxHullVertices));
+        return new ExportOptions(bag);
     }
 
-    private PhysicsPreviewExport ExportPhysicsPreview(ConversionSettings settings, Model model, string previewDirectory, string baseName)
+    private static PhysicsPreviewExport ExportPhysicsPreview(ConversionSettings settings, Model model, string previewDirectory, string baseName)
     {
         if (!settings.GeneratePhysics)
         {
@@ -276,37 +283,23 @@ internal sealed class ConversionService(UiLogSink logSink)
             model.Name + " Physics",
             physicsMeshes,
             [new Material("physics")]);
-        new GLTFExporter().Export(physicsModel, previewDirectory, physicsBaseName, new GLTFExportOptions(true));
+        var physicsGltfOptions = new ExportOptions(new Dictionary<string, object?>
+        {
+            ["binary"] = true,
+        });
+        new GLTFExporter().Export(physicsModel, previewDirectory, physicsBaseName, physicsGltfOptions);
         return new PhysicsPreviewExport(Path.Combine(previewDirectory, physicsBaseName + ".glb"), physicsMeshes.Count);
     }
 
-    private IReadOnlyList<Mesh> BuildPhysicsPreviewMeshes(Model model, ConversionSettings settings)
+    private static IReadOnlyList<Mesh> BuildPhysicsPreviewMeshes(Model model, ConversionSettings settings)
     {
-        return settings.PhysicsMode?.Trim().ToLowerInvariant() switch
-        {
-            "coacd" => BuildCoacdPhysicsPreviewMeshes(model, settings),
-            _ => [CreateBoundsMesh(model.Bounds().WithMinimumThickness())]
-        };
-    }
-
-    private IReadOnlyList<Mesh> BuildCoacdPhysicsPreviewMeshes(Model model, ConversionSettings settings)
-    {
-        var triangleCount = model.Meshes.Sum(mesh => mesh.Triangles.Count());
-        if (triangleCount > _maxCoacdPreviewTriangles)
-        {
-            logSink.Append(
-                $"Skipped CoACD physics preview for {triangleCount:N0} render triangles. " +
-                $"Preview uses bounds above {_maxCoacdPreviewTriangles:N0} triangles; run conversion to build full CoACD physics.");
-            return [CreateBoundsMesh(model.Bounds().WithMinimumThickness())];
-        }
-
-        logSink.Append($"Building CoACD physics preview from {triangleCount:N0} render triangles...");
-        return CoacdNative.Decompose(
-            model.Merge(),
-            new CoacdDecompositionOptions(
-                settings.CoacdThreshold,
-                settings.MaxConvexPieces,
-                settings.MaxHullVertices));
+        // CoACD-based physics preview moved to the Source plugin (which owns CoacdNative). The
+        // UI's preview path now shows bounds for both modes; the actual export still uses CoACD
+        // when the user selects "coacd" mode. A follow-up could surface a plugin-contributed
+        // "preview physics" hook so the UI can render the real shape pre-export, but it's not
+        // currently in scope. The Mode string is still read so persistence/round-tripping works.
+        _ = settings.PhysicsMode;
+        return [CreateBoundsMesh(model.Bounds().WithMinimumThickness())];
     }
 
     private static Mesh CreateBoundsMesh(Bounds bounds)

@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using GMConverter.SDK.Common;
 
-namespace GMConverter.Source;
+namespace GMConverter.SourceEngine;
 
 internal sealed record SourceToolPaths(
     string StudioMdlPath,

@@ -4,9 +4,9 @@ using GMConverter.Exporters;
 using GMConverter.Importers;
 using GMConverter.Plugins;
 using GMConverter.SDK.Common;
+using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
-using GMConverter.Source;
 using Microsoft.Extensions.Logging;
 
 namespace GMConverter.CLI;
@@ -242,7 +242,12 @@ internal static class Program
                     studioMdlPath,
                     vtfCmdPath,
                     buildMaterials,
-                    CreatePhysicsOptions(generatePhysics, physicsModeText, physicsMass, coacdThreshold, maxConvexPieces, maxHullVertices));
+                    generatePhysics,
+                    physicsModeText,
+                    physicsMass,
+                    coacdThreshold,
+                    maxConvexPieces,
+                    maxHullVertices);
                 return 0;
 
             default:
@@ -255,7 +260,7 @@ internal static class Program
         Directory.CreateDirectory(outputDirectory);
 
         Console.WriteLine($"Writing OBJ output to {outputDirectory}");
-        new OBJExporter().Export(model, outputDirectory, baseName, new OBJExportOptions());
+        new OBJExporter().Export(model, outputDirectory, baseName, ExportOptions.Empty);
     }
 
     private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary)
@@ -263,7 +268,11 @@ internal static class Program
         Directory.CreateDirectory(outputDirectory);
 
         Console.WriteLine($"Writing {(binary ? "GLB" : "glTF")} output to {outputDirectory}");
-        new GLTFExporter().Export(model, outputDirectory, baseName, new GLTFExportOptions(binary));
+        var options = new ExportOptions(new Dictionary<string, object?>
+        {
+            ["binary"] = binary,
+        });
+        new GLTFExporter().Export(model, outputDirectory, baseName, options);
     }
 
     private static void RunMdl(
@@ -274,16 +283,40 @@ internal static class Program
         string? studioMdlPath,
         string? vtfCmdPath,
         bool buildMaterials,
-        PhysicsOptions? physicsOptions)
+        bool generatePhysics,
+        string? physicsModeText,
+        float physicsMass,
+        float coacdThreshold,
+        int maxConvexPieces,
+        int maxHullVertices)
     {
         Directory.CreateDirectory(outputDirectory);
 
+        var exporter = PluginHost.Registry.GetExporter("mdl")
+            ?? throw new GMConverterException("Source plugin not loaded: cannot produce MDL output. Install GMConverter.SourceEngine.");
+
         Console.WriteLine($"Writing Source compile workspace to {outputDirectory}");
-        new MDLExporter().Export(
-            model,
-            outputDirectory,
-            baseName,
-            new MDLExportOptions(modelPath, studioMdlPath, vtfCmdPath, buildMaterials, physicsOptions));
+        var bag = new Dictionary<string, object?>
+        {
+            ["modelPath"] = modelPath,
+            ["studioMdlPath"] = studioMdlPath,
+            ["vtfCmdPath"] = vtfCmdPath,
+            ["buildMaterials"] = buildMaterials,
+        };
+        if (generatePhysics || !string.IsNullOrWhiteSpace(physicsModeText))
+        {
+            var mode = NormalizePhysicsMode(physicsModeText);
+            bag["physics:enabled"] = true;
+            bag["physics:mode"] = mode;
+            bag["physics:mass"] = physicsMass;
+            if (mode == "coacd")
+            {
+                bag["physics:coacdThreshold"] = coacdThreshold;
+                bag["physics:maxConvexPieces"] = maxConvexPieces;
+                bag["physics:maxHullVertices"] = maxHullVertices;
+            }
+        }
+        exporter.Export(model, outputDirectory, baseName, new ExportOptions(bag));
     }
 
     private static IImporter GetImporter(string inputFormat, ILoggerFactory? loggerFactory = null)
@@ -291,10 +324,9 @@ internal static class Program
         return inputFormat switch
         {
             "opt" => new OPTImporter(),
-            "mdl" => new MDLImporter(),
             "mow" => new MOWImporter(loggerFactory),
             _ => PluginHost.Registry.GetImporter(inputFormat)
-                ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Built-ins: opt, mdl, mow. Plugins (e.g. GMConverter.UnrealEngine for psk) may contribute additional formats.")
+                ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Built-ins: opt, mow. Plugins (GMConverter.UnrealEngine for psk; GMConverter.SourceEngine for mdl) may contribute additional formats.")
         };
     }
 
@@ -362,49 +394,6 @@ internal static class Program
         return string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? char.ToLowerInvariant(c) : '_')).Trim('_');
     }
 
-    private static PhysicsOptions? CreatePhysicsOptions(
-        bool generatePhysics,
-        string? physicsModeText,
-        float mass,
-        float threshold,
-        int maxConvexPieces,
-        int maxHullVertices)
-    {
-        if (!generatePhysics && string.IsNullOrWhiteSpace(physicsModeText))
-        {
-            return null;
-        }
-
-        var mode = NormalizePhysicsMode(physicsModeText);
-
-        if (mass <= 0)
-        {
-            throw new ArgumentException("Option --physics-mass must be greater than zero.");
-        }
-
-        if (mode is PhysicsMode.Bounds)
-        {
-            return new PhysicsOptions(mode, mass, null);
-        }
-
-        if (threshold is < 0.01f or > 1.0f)
-        {
-            throw new ArgumentException("Option --coacd-threshold must be between 0.01 and 1.");
-        }
-
-        if (maxConvexPieces is 0 or < -1)
-        {
-            throw new ArgumentException("Option --max-convex-pieces must be -1 or greater than zero.");
-        }
-
-        if (maxHullVertices < 4)
-        {
-            throw new ArgumentException("Option --coacd-max-hull-vertices must be at least 4.");
-        }
-
-        return new PhysicsOptions(mode, mass, new CoacdOptions(threshold, maxConvexPieces, maxHullVertices));
-    }
-
     private static MaterialResolveOptions? CreateMaterialResolveOptions(string? materialDirectory)
     {
         if (string.IsNullOrWhiteSpace(materialDirectory))
@@ -442,12 +431,12 @@ internal static class Program
         return fullPath;
     }
 
-    private static PhysicsMode NormalizePhysicsMode(string? physicsModeText)
+    private static string NormalizePhysicsMode(string? physicsModeText)
     {
         return physicsModeText?.Trim().ToLowerInvariant() switch
         {
-            null or "" or "bounds" => PhysicsMode.Bounds,
-            "coacd" => PhysicsMode.Coacd,
+            null or "" or "bounds" => "bounds",
+            "coacd" => "coacd",
             _ => throw new ArgumentException("Option --physics-mode must be 'bounds' or 'coacd'.")
         };
     }

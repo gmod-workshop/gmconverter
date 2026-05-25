@@ -41,13 +41,13 @@ public interface IPluginContext
     /// <summary>
     /// Registers an exporter instance with the host.
     /// </summary>
-    void RegisterExporter(IExporterDescriptor exporter);
+    void RegisterExporter(IExporter exporter);
 
     /// <summary>
     /// Activates <typeparamref name="T"/> via <c>ActivatorUtilities.CreateInstance</c> against
     /// <see cref="Services"/> and registers the resulting exporter.
     /// </summary>
-    void RegisterExporter<T>() where T : class, IExporterDescriptor;
+    void RegisterExporter<T>() where T : class, IExporter;
 
     /// <summary>
     /// Registers an archive explorer (browser) instance with the host.

@@ -20,12 +20,6 @@ internal static class TextureExtensions
     public static ImageSharpTexture ToSpecularFactorMask(this Texture texture, string? textureName = null)
         => RequireImageSharp(texture).ToSpecularFactorMask(textureName);
 
-    public static ImageSharpTexture ToSourcePhongExponent(this Texture texture, string? textureName = null)
-        => RequireImageSharp(texture).ToSourcePhongExponent(textureName);
-
-    public static ImageSharpTexture WithMaskInAlpha(this Texture texture, Texture mask, string? textureName = null)
-        => RequireImageSharp(texture).WithMaskInAlpha(RequireImageSharp(mask), textureName);
-
     private static ImageSharpTexture RequireImageSharp(Texture texture)
     {
         return texture as ImageSharpTexture

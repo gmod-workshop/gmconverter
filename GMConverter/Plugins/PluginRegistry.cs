@@ -14,7 +14,7 @@ public sealed class PluginRegistry
 {
     private readonly List<LoadedPlugin> _plugins = [];
     private readonly Dictionary<string, IImporter> _importersByFormat = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IExporterDescriptor> _exportersByFormat = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IExporter> _exportersByFormat = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IExplorer> _explorers = [];
 
     public static PluginRegistry Empty { get; } = new();
@@ -26,7 +26,7 @@ public sealed class PluginRegistry
     public IImporter? GetImporter(string inputFormat) =>
         _importersByFormat.TryGetValue(inputFormat, out var importer) ? importer : null;
 
-    public IExporterDescriptor? GetExporter(string outputFormat) =>
+    public IExporter? GetExporter(string outputFormat) =>
         _exportersByFormat.TryGetValue(outputFormat, out var exporter) ? exporter : null;
 
     internal void Add(LoadedPlugin loaded)

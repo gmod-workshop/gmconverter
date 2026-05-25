@@ -3,5 +3,6 @@
   <Project Path="GMConverter/GMConverter.csproj" />
   <Project Path="GMConverter.CLI/GMConverter.CLI.csproj" />
   <Project Path="GMConverter.SDK/GMConverter.SDK.csproj" />
+  <Project Path="GMConverter.SourceEngine/GMConverter.SourceEngine.csproj" />
   <Project Path="GMConverter.UnrealEngine/GMConverter.UnrealEngine.csproj" />
 </Solution>

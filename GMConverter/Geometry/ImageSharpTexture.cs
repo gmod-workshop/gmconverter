@@ -34,6 +34,13 @@ internal sealed class ImageSharpTexture : Texture
 
     public override string DebugDimensions => $"{_image.Width}x{_image.Height} pixel={typeof(Rgba32).Name}";
 
+    public override byte[] GetRgbaPixels()
+    {
+        var output = new byte[_image.Width * _image.Height * 4];
+        _image.CopyPixelDataTo(output);
+        return output;
+    }
+
     public ImageSharpTexture WithOpenGlNormalMap(string? textureName = null)
     {
         var output = _image.Clone(_ => { });

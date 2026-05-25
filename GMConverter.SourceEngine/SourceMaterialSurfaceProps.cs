@@ -1,6 +1,6 @@
 using GMConverter.SDK.Materials;
 
-namespace GMConverter.Source;
+namespace GMConverter.SourceEngine;
 
 internal static class SourceMaterialSurfaceProps
 {

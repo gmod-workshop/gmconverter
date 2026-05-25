@@ -9,7 +9,7 @@ using MdlCrowbar;
 using static MdlCrowbar.Enums;
 using Mesh = GMConverter.SDK.Geometry.Mesh;
 
-namespace GMConverter.Importers;
+namespace GMConverter.SourceEngine.Importers;
 
 internal sealed class MDLImporter : IImporter
 {

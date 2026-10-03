@@ -32,3 +32,6 @@ jobs:
 
       - name: Build
         run: dotnet build GMConverter.slnx --configuration Release --no-restore
+
+      - name: Exporter and UI regression tests
+        run: dotnet test GMConverter.UI.Tests/GMConverter.UI.Tests.csproj --configuration Release --no-build --no-restore

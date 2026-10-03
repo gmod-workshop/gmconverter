@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Globalization;
 using System.Text;
 using GMConverter.Exporters;
 using GMConverter.Importers;
@@ -13,6 +14,9 @@ namespace GMConverter.CLI;
 
 internal static class Program
 {
+    private static readonly string[] _builtInInputFormats = ["opt", "mow"];
+    private static readonly string[] _builtInOutputFormats = ["info", "obj", "glb", "gltf"];
+
     public static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
@@ -51,8 +55,8 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: opt, mdl, psk, mow.");
-        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: info, obj, glb, gltf, source, mdl.");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", _builtInInputFormats.Concat(PluginHost.Registry.Importers.Select(importer => importer.InputFormat))) + ".");
+        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", _builtInOutputFormats.Concat(PluginHost.Registry.Exporters.Select(exporter => exporter.OutputFormat))) + ". Source is an alias for mdl.");
         var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
         var outputPathOption = new Option<string>("--output-path")
         {
@@ -153,6 +157,20 @@ internal static class Program
             physicsMassOption
         };
 
+        var schemaArguments = new List<(string Format, OptionDescriptor Descriptor, Option<string> Argument)>();
+        foreach (var exporter in new IExporter[] { new GLTFExporter() }.Concat(PluginHost.Registry.Exporters))
+        {
+            foreach (var descriptor in exporter.OptionSchema.AllOptions)
+            {
+                var argument = new Option<string>($"--{exporter.OutputFormat}-{descriptor.Key.Replace(':', '-')}")
+                {
+                    Description = descriptor.Description ?? descriptor.Label
+                };
+                rootCommand.Options.Add(argument);
+                schemaArguments.Add((exporter.OutputFormat, descriptor, argument));
+            }
+        }
+
         rootCommand.SetAction(parseResult => Run(
             inputFormat: parseResult.GetRequiredValue(inputFormatOption),
             outputFormat: parseResult.GetRequiredValue(outputFormatOption),
@@ -173,9 +191,56 @@ internal static class Program
             coacdThreshold: parseResult.GetValue(coacdThresholdOption),
             maxConvexPieces: parseResult.GetValue(maxConvexPiecesOption),
             maxHullVertices: parseResult.GetValue(maxHullVerticesOption),
-            physicsMass: parseResult.GetValue(physicsMassOption)));
+            physicsMass: parseResult.GetValue(physicsMassOption),
+            exporterOptions: ReadExporterOptions(parseResult.GetRequiredValue(outputFormatOption), schemaArguments, parseResult)));
 
         return rootCommand;
+    }
+
+    private static ExportOptions ReadExporterOptions(
+        string outputFormat,
+        IEnumerable<(string Format, OptionDescriptor Descriptor, Option<string> Argument)> arguments,
+        ParseResult parseResult)
+    {
+        var format = outputFormat.Trim().ToLowerInvariant() switch
+        {
+            "source" => "mdl",
+            "gltf" => "glb",
+            var value => value
+        };
+        var values = new Dictionary<string, object?>();
+        foreach (var (argumentFormat, descriptor, argument) in arguments)
+        {
+            var text = parseResult.GetValue(argument);
+            if (text is null)
+            {
+                continue;
+            }
+            if (!string.Equals(argumentFormat, format, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new GMConverterException($"Option {argument.Name} does not apply to {outputFormat} output.");
+            }
+            object value = descriptor.Type switch
+            {
+                OptionType.String or OptionType.Path => text,
+                OptionType.Bool when bool.TryParse(text, out var parsed) => parsed,
+                OptionType.Int when int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) => parsed,
+                OptionType.Float when float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && float.IsFinite(parsed) => parsed,
+                OptionType.Enum when descriptor.Choices?.Contains(text) == true => text,
+                _ => throw new GMConverterException($"Invalid value for {argument.Name}: {text}")
+            };
+            if (value is int or float)
+            {
+                var number = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                if (descriptor.Minimum is { } minimum && number < (double)minimum ||
+                    descriptor.Maximum is { } maximum && number > (double)maximum)
+                {
+                    throw new GMConverterException($"Value for {argument.Name} is outside its allowed range: {text}");
+                }
+            }
+            values[descriptor.Key] = value;
+        }
+        return new ExportOptions(values);
     }
 
     private static int Run(
@@ -198,7 +263,8 @@ internal static class Program
         float coacdThreshold,
         int maxConvexPieces,
         int maxHullVertices,
-        float physicsMass)
+        float physicsMass,
+        ExportOptions exporterOptions)
     {
         inputFormat = NormalizeFormat(inputFormat, "input-format");
         outputFormat = NormalizeFormat(outputFormat, "output-format");
@@ -229,7 +295,8 @@ internal static class Program
                     importer.Parse(fullInputPath, parseOptions),
                     RequireOutputPath(outputPath, outputFormat),
                     baseName,
-                    outputFormat is "glb");
+                    outputFormat is "glb",
+                    exporterOptions);
                 return 0;
 
             case "source":
@@ -247,11 +314,23 @@ internal static class Program
                     physicsMass,
                     coacdThreshold,
                     maxConvexPieces,
-                    maxHullVertices);
+                    maxHullVertices,
+                    exporterOptions);
                 return 0;
 
             default:
-                throw new ArgumentException("Option --output-format must be 'info', 'obj', 'glb', 'gltf', 'source', or 'mdl'.");
+                var exporter = PluginHost.Registry.GetExporter(outputFormat)
+                    ?? throw new GMConverterException($"Unsupported output format or plugin not loaded: {outputFormat}");
+                var directory = RequireOutputPath(outputPath, outputFormat);
+                Directory.CreateDirectory(directory);
+                var values = exporter.OptionSchema.AllOptions.ToDictionary(option => option.Key, option => option.ResolveDefault());
+                foreach (var (key, value) in exporterOptions.AsDictionary())
+                {
+                    values[key] = value;
+                }
+                exporter.Export(importer.Parse(fullInputPath, parseOptions), directory, baseName, new ExportOptions(values));
+                Console.WriteLine($"Wrote {outputFormat} output to {directory}");
+                return 0;
         }
     }
 
@@ -263,12 +342,12 @@ internal static class Program
         new OBJExporter().Export(model, outputDirectory, baseName, ExportOptions.Empty);
     }
 
-    private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary)
+    private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary, ExportOptions overrides)
     {
         Directory.CreateDirectory(outputDirectory);
 
         Console.WriteLine($"Writing {(binary ? "GLB" : "glTF")} output to {outputDirectory}");
-        var options = new ExportOptions(new Dictionary<string, object?>
+        var options = new ExportOptions(new Dictionary<string, object?>(overrides.AsDictionary())
         {
             ["binary"] = binary,
         });
@@ -288,7 +367,8 @@ internal static class Program
         float physicsMass,
         float coacdThreshold,
         int maxConvexPieces,
-        int maxHullVertices)
+        int maxHullVertices,
+        ExportOptions overrides)
     {
         Directory.CreateDirectory(outputDirectory);
 
@@ -315,6 +395,10 @@ internal static class Program
                 bag["physics:maxConvexPieces"] = maxConvexPieces;
                 bag["physics:maxHullVertices"] = maxHullVertices;
             }
+        }
+        foreach (var (key, value) in overrides.AsDictionary())
+        {
+            bag[key] = value;
         }
         exporter.Export(model, outputDirectory, baseName, new ExportOptions(bag));
     }

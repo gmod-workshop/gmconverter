@@ -31,7 +31,8 @@ internal sealed record UiSettings(
     int MaxConvexPieces,
     int MaxHullVertices,
     int MaxTextureSize = 1024,
-    bool DeduplicateTextures = true)
+    bool DeduplicateTextures = true,
+    Dictionary<string, Dictionary<string, object?>>? ExporterOptions = null)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

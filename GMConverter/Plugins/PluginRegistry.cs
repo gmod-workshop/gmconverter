@@ -23,6 +23,10 @@ public sealed class PluginRegistry
 
     public IReadOnlyList<IExplorer> Explorers => _explorers;
 
+    public IReadOnlyCollection<IImporter> Importers => _importersByFormat.Values.ToArray();
+
+    public IReadOnlyCollection<IExporter> Exporters => _exportersByFormat.Values.ToArray();
+
     public IImporter? GetImporter(string inputFormat) =>
         _importersByFormat.TryGetValue(inputFormat, out var importer) ? importer : null;
 

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:GMConverter.UI.ViewModels"
              xmlns:common="using:GMConverter.UI.Controls.Common"
+             xmlns:settings="using:GMConverter.UI.Controls.Settings"
              xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
              xmlns:controls="clr-namespace:GMConverter.UI.Controls"
              mc:Ignorable="d"
@@ -99,50 +100,14 @@
                 </shad:Card>
 
                 <UniformGrid Columns="2" ColumnSpacing="16">
-                    <shad:Card HasShadow="True" IsEnabled="{Binding IsSourceOutput}">
+                    <shad:Card HasShadow="True" IsEnabled="{Binding IsIdle}">
                         <shad:Card.Header>
                             <StackPanel Spacing="4">
-                                <shad:CardTitle>Physics</shad:CardTitle>
-                                <shad:CardDescription>Generate a Source physics mesh during export.</shad:CardDescription>
+                                <shad:CardTitle>Export options</shad:CardTitle>
+                                <shad:CardDescription>Options provided by the selected exporter.</shad:CardDescription>
                             </StackPanel>
                         </shad:Card.Header>
-                        <StackPanel Spacing="16">
-                            <ComboBox ItemsSource="{Binding PhysicsModes}"
-                                      SelectedItem="{Binding SelectedPhysicsMode}"
-                                      shad:ControlAssist.Label="Mode"/>
-                            <NumericUpDown Value="{Binding PhysicsMass}"
-                                           Minimum="0.1"
-                                           Maximum="100000"
-                                           Increment="10"
-                                           FormatString="F1"
-                                           IsEnabled="{Binding IsPhysicsEnabled}"
-                                           shad:ControlAssist.Label="Mass"/>
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                                <NumericUpDown Value="{Binding CoacdThreshold}"
-                                               Minimum="0.0001"
-                                               Maximum="1"
-                                               Increment="0.001"
-                                               FormatString="F4"
-                                               IsEnabled="{Binding IsCoacdEnabled}"
-                                               shad:ControlAssist.Label="CoACD threshold"/>
-                                <NumericUpDown Grid.Column="1"
-                                               Value="{Binding MaxConvexPieces}"
-                                               Minimum="1"
-                                               Maximum="128"
-                                               Increment="1"
-                                               FormatString="F0"
-                                               IsEnabled="{Binding IsCoacdEnabled}"
-                                               shad:ControlAssist.Label="Max pieces"/>
-                            </Grid>
-                            <NumericUpDown Value="{Binding MaxHullVertices}"
-                                           Minimum="4"
-                                           Maximum="256"
-                                           Increment="1"
-                                           FormatString="F0"
-                                           IsEnabled="{Binding IsCoacdEnabled}"
-                                           shad:ControlAssist.Label="Hull vertices"/>
-                            <CheckBox Content="Generate mesh" IsChecked="{Binding GeneratePhysics}"/>
-                        </StackPanel>
+                        <settings:ExporterOptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
                     </shad:Card>
 
                     <shad:Card HasShadow="True">

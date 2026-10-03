@@ -88,19 +88,29 @@ internal sealed class MDLExporter : IExporter
             },
             new OptionDescriptor("physics:mass", OptionType.Float, "Mass (kg)")
             {
+                Minimum = 0.1m,
+                Maximum = 100000m,
+                Increment = 10m,
                 DefaultValue = 100f,
             },
             new OptionDescriptor("physics:coacdThreshold", OptionType.Float, "CoACD threshold")
             {
+                Minimum = 0.0001m,
+                Maximum = 1m,
+                Increment = 0.001m,
                 DefaultValue = 0.05f,
                 Description = "CoACD termination threshold from 0.01 to 1.",
             },
             new OptionDescriptor("physics:maxConvexPieces", OptionType.Int, "Max convex pieces")
             {
+                Minimum = 1m,
+                Maximum = 128m,
                 DefaultValue = 32,
             },
             new OptionDescriptor("physics:maxHullVertices", OptionType.Int, "Max hull vertices")
             {
+                Minimum = 4m,
+                Maximum = 256m,
                 DefaultValue = 32,
             },
         ]),

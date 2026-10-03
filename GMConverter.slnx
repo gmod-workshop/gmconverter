@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="GMConverter.UI/GMConverter.UI.csproj" />
+  <Project Path="GMConverter.UI.Tests/GMConverter.UI.Tests.csproj" />
   <Project Path="GMConverter/GMConverter.csproj" />
   <Project Path="GMConverter.CLI/GMConverter.CLI.csproj" />
   <Project Path="GMConverter.SDK/GMConverter.SDK.csproj" />

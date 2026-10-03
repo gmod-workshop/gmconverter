@@ -19,7 +19,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="MessagePack" Version="3.1.4" />
+        <PackageReference Include="MessagePack" Version="3.1.10" />
         <!-- Pinned to override the vulnerable 9.0.0 pulled transitively by CUE4Parse. -->
         <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.4" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />

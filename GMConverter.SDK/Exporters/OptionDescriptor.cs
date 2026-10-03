@@ -37,6 +37,15 @@ public sealed record OptionDescriptor(string Key, OptionType Type, string Label)
     /// </summary>
     public IReadOnlyList<string>? Choices { get; init; }
 
+    /// <summary>Optional lower bound for numeric controls.</summary>
+    public decimal? Minimum { get; init; }
+
+    /// <summary>Optional upper bound for numeric controls.</summary>
+    public decimal? Maximum { get; init; }
+
+    /// <summary>Optional step size for numeric controls.</summary>
+    public decimal? Increment { get; init; }
+
     /// <summary>
     /// Resolves the effective default value at the time of the call. Calls
     /// <see cref="DefaultValueFactory"/> if set, otherwise returns <see cref="DefaultValue"/>.

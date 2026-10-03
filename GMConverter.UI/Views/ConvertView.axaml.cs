@@ -188,7 +188,7 @@ public partial class ConvertView : UserControl
             "mdl" => [new FilePickerFileType("Source MDL") { Patterns = ["*.mdl"] }],
             "psk" => [new FilePickerFileType("Unreal PSK") { Patterns = ["*.psk", "*.pskx"] }],
             "mow" => [new FilePickerFileType("Men of War model") { Patterns = ["*.def", "*.mdl"] }],
-            _ => [new FilePickerFileType("Supported models") { Patterns = ["*.opt", "*.mdl", "*.psk", "*.pskx", "*.def"] }]
+            _ => [new FilePickerFileType(inputFormat.ToUpperInvariant()) { Patterns = [$"*.{inputFormat}"] }]
         };
     }
 

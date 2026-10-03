@@ -13,8 +13,6 @@ namespace GMConverter.UI.Services;
 
 internal sealed class ConversionService(UiLogSink logSink)
 {
-    private const int _maxCoacdPreviewTriangles = 5000;
-
     private int _perfLogAnnounced;
 
     private void AnnouncePerfLog()
@@ -56,43 +54,33 @@ internal sealed class ConversionService(UiLogSink logSink)
                 CreateAnimationPath(settings.AnimationPath)));
         }
 
-        switch (settings.OutputFormat)
+        var exporter = GetExporter(settings.OutputFormat);
+        var options = settings.ExporterOptions;
+        if (settings.OutputFormat is "glb" or "gltf")
         {
-            case "obj":
-                Directory.CreateDirectory(outputPath);
-                using (PerfTimer.Measure("convert.run", "OBJExporter.Export"))
-                {
-                    new OBJExporter().Export(model, outputPath, baseName, ExportOptions.Empty);
-                }
-                return $"Wrote OBJ output to {outputPath}";
-
-            case "glb":
-            case "gltf":
-                Directory.CreateDirectory(outputPath);
-                using (PerfTimer.Measure("convert.run", "GLTFExporter.Export", settings.OutputFormat))
-                {
-                    var gltfOptions = new ExportOptions(new Dictionary<string, object?>
-                    {
-                        ["binary"] = settings.OutputFormat is "glb",
-                    });
-                    new GLTFExporter().Export(model, outputPath, baseName, gltfOptions);
-                }
-                return $"Wrote {(settings.OutputFormat is "glb" ? "GLB" : "glTF")} output to {outputPath}";
-
-            case "source":
-            case "mdl":
-                Directory.CreateDirectory(outputPath);
-                using (PerfTimer.Measure("convert.run", "MDLExporter.Export"))
-                {
-                    var mdlExporter = PluginHost.Registry.GetExporter("mdl")
-                        ?? throw new GMConverterException("Source plugin not loaded: cannot produce MDL output. Install GMConverter.SourceEngine.");
-                    mdlExporter.Export(model, outputPath, baseName, BuildMdlExportOptions(settings, baseName));
-                }
-                return $"Wrote Source compile workspace to {outputPath}";
-
-            default:
-                throw new GMConverterException("Unsupported output format.");
+            var values = new Dictionary<string, object?>(options.AsDictionary())
+            {
+                ["binary"] = settings.OutputFormat == "glb"
+            };
+            options = new ExportOptions(values);
         }
+        Directory.CreateDirectory(outputPath);
+        using (PerfTimer.Measure("convert.run", "Exporter.Export", settings.OutputFormat))
+        {
+            exporter.Export(model, outputPath, baseName, options);
+        }
+        return $"Wrote {settings.OutputFormat.ToUpperInvariant()} output to {outputPath}";
+    }
+
+    internal static IExporter GetExporter(string format)
+    {
+        return format switch
+        {
+            "obj" => new OBJExporter(),
+            "glb" or "gltf" => new GLTFExporter(),
+            _ => PluginHost.Registry.GetExporter(format == "source" ? "mdl" : format)
+                ?? throw new GMConverterException($"Unsupported output format or plugin not loaded: {format}")
+        };
     }
 
     public PreviewLoadResult LoadPreview(ConversionSettings settings)
@@ -226,43 +214,6 @@ internal sealed class ConversionService(UiLogSink logSink)
         }
 
         return new MaterialResolveOptions(fullPath);
-    }
-
-    // Builds the host-side ExportOptions bag from ConversionSettings. Translates UI fields into
-    // the schema's option keys. Lives here (not on the exporter) because the host owns the
-    // mapping from its settings shape to the exporter's bag — the exporter doesn't see settings.
-    // After Source migration to a plugin the host no longer references plugin-private types
-    // (PhysicsOptions/PhysicsMode etc.), so the bag is built directly from primitives.
-    private static ExportOptions BuildMdlExportOptions(ConversionSettings settings, string baseName)
-    {
-        var bag = new Dictionary<string, object?>
-        {
-            ["modelPath"] = settings.ModelPath ?? $"gmconverter/{SanitizePathToken(baseName)}.mdl",
-            ["studioMdlPath"] = settings.StudioMdlPath,
-            ["vtfCmdPath"] = settings.VtfCmdPath,
-            ["buildMaterials"] = settings.BuildMaterials,
-            ["material:maxTextureSize"] = settings.MaxTextureSize,
-            ["material:deduplicateTextures"] = settings.DeduplicateTextures,
-        };
-        if (settings.GeneratePhysics || !string.IsNullOrWhiteSpace(settings.PhysicsMode))
-        {
-            var mode = settings.PhysicsMode?.Trim().ToLowerInvariant() switch
-            {
-                null or "" or "bounds" => "bounds",
-                "coacd" => "coacd",
-                _ => throw new GMConverterException("Unsupported physics mode."),
-            };
-            bag["physics:enabled"] = true;
-            bag["physics:mode"] = mode;
-            bag["physics:mass"] = settings.PhysicsMass;
-            if (mode == "coacd")
-            {
-                bag["physics:coacdThreshold"] = settings.CoacdThreshold;
-                bag["physics:maxConvexPieces"] = settings.MaxConvexPieces;
-                bag["physics:maxHullVertices"] = settings.MaxHullVertices;
-            }
-        }
-        return new ExportOptions(bag);
     }
 
     private static PhysicsPreviewExport ExportPhysicsPreview(ConversionSettings settings, Model model, string previewDirectory, string baseName)

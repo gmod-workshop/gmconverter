@@ -34,7 +34,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.MaxConvexPieces),
         nameof(ConvertViewModel.MaxHullVertices),
         nameof(ConvertViewModel.SelectedMaxTextureSize),
-        nameof(ConvertViewModel.DeduplicateTextures)
+        nameof(ConvertViewModel.DeduplicateTextures),
+        nameof(ConvertViewModel.CurrentExporterOptions)
     };
 
     private static readonly HashSet<string> _explorerSettingsProperties = new(StringComparer.Ordinal)
@@ -278,7 +279,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.MaxConvexPieces,
             Convert.MaxHullVertices,
             ParseMaxTextureSize(Convert.SelectedMaxTextureSize.Value),
-            Convert.DeduplicateTextures);
+            Convert.DeduplicateTextures,
+            Convert.SnapshotExporterOptions());
     }
 
     private static int ParseMaxTextureSize(string value)

@@ -101,6 +101,52 @@ physics-mass = 100
 
 </details>
 
+## Plugins
+
+Unreal and Source Engine support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
+
+Plugin authors reference `GMConverter.SDK`, implement `IPlugin`, and register importers, exporters, or explorers through `IPluginContext`. Exporters declare their settings with `ExporterOptionSchema` and receive an `ExportOptions` bag. The GUI automatically lists registered formats, renders all exporter option groups, and saves option values per format in `ui-settings.json`. Optional numeric bounds and increments on `OptionDescriptor` control the numeric editors.
+
+The CLI adds `--<format>-<option-key>` flags from exporter schemas. Colons in keys become hyphens; the remaining spelling is preserved. Boolean values use explicit `true` or `false`. For example, Source's texture settings are available as:
+
+```powershell
+./GMConverter.CLI --input-format psk --output-format mdl `
+  --input-path "model.psk" --output-path "out/model" `
+  --mdl-material-maxTextureSize 1024 `
+  --mdl-material-deduplicateTextures true
+```
+
+Schema flags override corresponding legacy flags when both are supplied. `source` remains an alias for `mdl`; use the `--mdl-` prefix with either format. glTF's binary/text output follows `--output-format`, and other glTF schema options use the `--glb-` prefix for both `glb` and `gltf`.
+
+Run the exporter integration and headless UI tests with:
+
+```powershell
+dotnet test GMConverter.UI.Tests/GMConverter.UI.Tests.csproj --configuration Release
+```
+
+### Local regression assets
+
+The developer machine has two previously used fixtures under `E:\Tools\umodel\UmodelExport`:
+
+| Model | Input relative to that directory | Matching animation |
+| --- | --- | --- |
+| Bacta dispenser RAS | `bactadispensers/SkeletalMesh/BactaDispenserRAS.psk` | `bactadispensers/MeshAnimation/BactaDispenserRASSet.psa` |
+| Bacta dispenser GEO | `bactadispensers/SkeletalMesh/BactaDispenserGEO.psk` | `bactadispensers/MeshAnimation/BactaDispenserGEOSet.psa` |
+
+Use the whole `UmodelExport` directory for `--material-dir`; the textures and shader sidecars are in sibling directories. Each model includes the Holster and Load animation clips. A useful pre-merge check is RAS to GLB and MDL with bounds collision, then GEO to glTF and MDL with CoACD collision. Use a separate output directory, check compiled MDL/PHY and VTF/VMT files, and confirm that schema flags for texture size and physics mass reach the generated output. CoACD decomposition can take several minutes on these meshes.
+
+At scale 1, RAS geometry is approximately 1.35 meters tall (53.1 Source units), and GEO is approximately 2.56 meters tall (100.6 Source units). Check size against a player in game, both animation clips, and collision before merging.
+
+The UI settings file at `%APPDATA%\GMConverter\ui-settings.json` records previous input/material paths and compiler overrides. Cached Unreal scene manifests can disappear even when their extracted mesh parts remain, so check that the saved input exists before reusing it.
+
+### Bacta liquid material follow-up
+
+In-game testing on 2026-10-03 confirmed that the corrected model scale is good. Mesh appearance and skeletal animations were previously confirmed, but the bacta tank liquid appears opaque and static; it should be semi-transparent and animated. Track this as a separate material-conversion task after the schema-driven plugin work. Whether the visual problem occurred in older releases has not been confirmed.
+
+The local `None/MaterialWithPolyFlags/BactaCanister_Shader.mat` references `BactaCanisterFluid` for both Diffuse and Opacity. Its `.props.txt` is empty, so these extracted sidecars do not describe the original animation or shader parameters. The corrected Source export's `bactacanister_shader.vmt` already contains `$translucent 1`; the opaque appearance needs investigation beyond enabling that flag. The current material contract stores static textures, and Source material export does not emit animation proxies. These material paths were not changed by the schema panel or scale fix.
+
+For the follow-up, inspect the original liquid shader and texture alpha, confirm opacity survives VTF compilation, and determine whether animation uses UV scrolling, texture frames, or another effect before extending the material contract and exporter. Verify the result in Garry's Mod: liquid is visibly semi-transparent, its texture animates over time, and the surrounding tank and Holster/Load skeletal animations retain their appearance and behavior.
+
 ## Format Details
 
 <details>
@@ -130,6 +176,8 @@ Outputs mesh, LOD, texture, face, and vertex counts, plus bounding-box sizes at 
 <summary>PSK / PSKX</summary>
 
 Unreal ActorX PSK/PSKX files are supported as input. The importer reads mesh geometry, UVs, material slots, skeleton bind data, skin weights, and PSKX vertex normals when present.
+
+ActorX coordinates use centimeters and are normalized to meters on import, including bone positions and PSA animation translations. Keep `--scale 1` for the original physical size; Source export converts meters to inches automatically. Scene manifests use the same normalization.
 
 Use `--material-dir` to resolve UModel-style `.mat` sidecars and texture files. Diffuse, normal, specular, opacity, and emissive references are supported. If a material has no explicit normal map reference, nearby diffuse-name `_normal`, `_norm`, or `_bump` textures are used as normal-map fallbacks.
 

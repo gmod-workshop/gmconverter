@@ -27,6 +27,10 @@ All notable changes to this project will be documented in this file.
 - Removed UI-side CoACD physics preview generation. The Source plugin owns CoACD now (`CoacdNative` moved with it), and the UI no longer has direct access to the native; physics preview falls back to a bounds visualisation for both `bounds` and `coacd` modes. The actual export still produces CoACD physics when the user selects that mode. A follow-up could surface a plugin-contributed "preview physics" hook so the UI can render the real shape pre-export.
 - Hardened the plugin native-library loader. `PluginLoadContext.LoadUnmanagedDll` now falls back to a sibling-folder probe (with platform-conventional shared-library names) when `AssemblyDependencyResolver` returns no path. CUE4Parse-Natives ships as a `Content`/`CopyToOutputDirectory` item rather than a `runtimes/<rid>/native/` layout and is not listed in deps.json as a native asset, so the resolver alone would not find it; the fallback closes that gap.
 
+### Fixed
+
+- Normalized standalone Unreal PSK/PSKX geometry, skeletons, and PSA animation translations from centimeters to meters, matching scene imports. Source exports at scale 1 now retain their physical size instead of being 100 times too large. Bounds collision and its preview use a one-inch minimum thickness instead of one meter.
+
 ## [1.7.0] - 2026-05-21
 
 ### Added

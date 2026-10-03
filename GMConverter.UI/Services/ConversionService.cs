@@ -250,7 +250,7 @@ internal sealed class ConversionService(UiLogSink logSink)
         // "preview physics" hook so the UI can render the real shape pre-export, but it's not
         // currently in scope. The Mode string is still read so persistence/round-tripping works.
         _ = settings.PhysicsMode;
-        return [CreateBoundsMesh(model.Bounds().WithMinimumThickness())];
+        return [CreateBoundsMesh(model.Bounds().WithMinimumThickness(0.0254f))];
     }
 
     private static Mesh CreateBoundsMesh(Bounds bounds)

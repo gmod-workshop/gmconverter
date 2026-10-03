@@ -26,8 +26,8 @@ internal sealed class MDLExporter : IExporter
         _textureFactory = textureFactory;
     }
 
-    // Source's "1 unit" = 1 inch. Our importer pipeline produces models in meters (Unreal cm is
-    // scaled by 0.01 in PSKImporter.ParseScene). Multiply by 39.3700787 (in/m) when writing SMD
+    // Source's "1 unit" = 1 inch. Unreal imports normalize centimeters to meters at the import
+    // boundary. Multiply by 39.3700787 (in/m) when writing SMD
     // so the exported MDL renders at its real-world size in-engine.
     private const float _metersToSourceUnits = 39.3700787f;
 
@@ -334,7 +334,7 @@ internal sealed class MDLExporter : IExporter
 
     private static void WriteBoundsPhysicsSmd(Model model, string physicsSmdPath)
     {
-        var bounds = model.Bounds().WithMinimumThickness();
+        var bounds = model.Bounds().WithMinimumThickness(1f / _metersToSourceUnits);
         using var writer = CreatePhysicsSmdWriter(physicsSmdPath);
 
         Vector3[] vertices =

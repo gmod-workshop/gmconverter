@@ -40,6 +40,9 @@ internal sealed class PSKImporter : IImporter
     public Model Parse(string inputPath, ModelParseOptions options)
     {
         using var scope = PerfTimer.Measure("psk.import", "Parse", inputPath);
+        // ActorX geometry, bone positions, animation translations, and scene offsets use
+        // centimeters. Normalize once at the import boundary; exporters consume meters.
+        options = options with { ScaleFactor = options.ScaleFactor * 0.01f };
         return IsSceneManifest(inputPath) ? ParseScene(inputPath, options) : ParseSingle(inputPath, options, null);
     }
 
@@ -49,11 +52,7 @@ internal sealed class PSKImporter : IImporter
         var manifest = ReadSceneManifest(inputPath);
         PerfTimer.Log("psk.import", $"manifest entries={manifest.Entries.Count}");
 
-        // UE/Fortnite source assets are authored in centimeters, but glTF/standard mesh formats use
-        // meters — so a scene that imports with default ScaleFactor=1.0 lands 100× too large. Fold
-        // a cm→m factor into ScaleFactor for UE scenes specifically, on top of any user override.
-        var sceneOptions = options with { ScaleFactor = options.ScaleFactor * 0.01f };
-        var materialResolver = PSKMaterialResolver.Create(sceneOptions.Materials, _textureFactory);
+        var materialResolver = PSKMaterialResolver.Create(options.Materials, _textureFactory);
 
         // Parse entries in parallel — each ParseSingle reads its own PSK file from disk, builds
         // its own Mesh/Material/Texture objects, and only reads from the shared materialResolver
@@ -78,7 +77,7 @@ internal sealed class PSKImporter : IImporter
                 "psk.import",
                 "ParseScene.Entry",
                 $"{entryIndex + 1}/{manifest.Entries.Count} {Path.GetFileName(entryPath)}");
-            parsedModels[entryIndex] = ParseSingle(entryPath, sceneOptions, entry.Transform, materialResolver);
+            parsedModels[entryIndex] = ParseSingle(entryPath, options, entry.Transform, materialResolver);
         });
 
         List<Mesh> meshes = [];

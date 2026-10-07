@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.
 - Fixed UE2 Explorer mesh exports failing to convert when materials use DXT textures. The exporter wrote raw DDS sidecars, which the PSK importer cannot decode; DXT1/DXT3/DXT5 textures are now decoded and written as PNG.
 - Fixed Republic Commando shader bump maps being dropped from UE2 Explorer exports. Their two-byte height format is now decoded and converted to a tangent-space normal map, so Source and glTF exports receive normal detail.
 - Fixed static Unreal Engine 2 self-illumination being ignored. Shaders that gate `SelfIllumination` with a `SelfIlluminationMask` alpha (lit panels, indicator eyes) now export a per-pixel glow texture, written to Source as `$selfillum` with a `$selfillummask`.
+- Fixed PSK materials with an explicit `Normal` sidecar entry also using the normal map as their specular texture, which produced bogus phong and envmap settings in Source. The packed-texture term `orm` matched the `Normal` key.
 
 ## [1.7.0] - 2026-05-21
 

@@ -200,6 +200,23 @@ public sealed class UnrealUnitsTests
         Assert.DoesNotContain("$detail", vmt);
     }
 
+    [Fact]
+    public void NormalSidecarKeyIsNotMistakenForPackedSpecular()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nNormal=panel_bump\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 255);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel_bump.tga"), alpha: 255);
+
+        var material = Assert.Single(PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+
+        Assert.Equal("panel_bump", material.NormalTexture?.Name);
+        Assert.Null(material.SpecularTexture);
+    }
+
     // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the
     // fourth channel carries real opacity; decoders that trust the header discard it.
     private static void WriteUnlabeledAlphaTga(string path, byte alpha)

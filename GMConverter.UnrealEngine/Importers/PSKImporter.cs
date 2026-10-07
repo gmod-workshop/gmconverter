@@ -670,7 +670,7 @@ internal sealed class PSKImporter : IImporter
                     TryLoadRelatedTexture(references, ["Diffuse"], ["_normal", "_norm", "_bump"], hasAlpha: false);
                 specularTexture = TryLoadLayerTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], hasAlpha: false) ??
-                    TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false);
+                    TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false, excludedKeyTerms: ["norm", "nrm"]);
                 emissiveTexture = TryBakeMaskedSelfIllumination(references, separatelyScrolled: emissiveUvScrollRate is not null) ??
                     TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
@@ -959,15 +959,19 @@ internal sealed class PSKImporter : IImporter
             return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, pixels, hasAlpha: false);
         }
 
+        // excludedKeyTerms guards substring collisions between channels, e.g. the packed-texture
+        // term "orm" also matches "Normal", which would load a normal map as specular.
         private Texture? TryLoadTextureByName(
             Dictionary<string, string> references,
             IReadOnlyCollection<string> keyTerms,
-            bool hasAlpha)
+            bool hasAlpha,
+            IReadOnlyCollection<string>? excludedKeyTerms = null)
         {
             foreach (var (key, textureReference) in references)
             {
                 if (IsNullReference(textureReference) ||
-                    !keyTerms.Any(term => key.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                    !keyTerms.Any(term => key.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                    (excludedKeyTerms?.Any(term => key.Contains(term, StringComparison.OrdinalIgnoreCase)) ?? false))
                 {
                     continue;
                 }

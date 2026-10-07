@@ -750,7 +750,7 @@ internal sealed class MDLExporter : IExporter
             // spec texture's alpha (via ToSourcePhongExponent), which means basetexture alpha is
             // free for $translucent — so glass parts can be transparent AND phong-lit at the
             // same time.
-            material.DiffuseTexture.WritePng(pngPath);
+            SourceMaterialEmission.BaseTexture(material, _textureFactory).WritePng(pngPath);
 
             // Normal map gets the envmap mask packed into its alpha channel when both are
             // available: Source's VertexLitGeneric won't accept a separate $envmapmask alongside
@@ -794,15 +794,13 @@ internal sealed class MDLExporter : IExporter
                     normalMapAlphaMask: material.NormalTexture is not null);
             }
 
-            if (material.IsIlluminated)
-            {
-                SourceMaterialEmission.Write(writer, material, $"{sourceTexturePath}_illum");
-            }
+            SourceMaterialEmission.Write(writer, material, $"{sourceTexturePath}_illum");
 
             SourceMaterialProxies.WriteUvScroll(writer, material);
             writer.WriteLine("}");
 
-            material.EmissiveTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_illum.png"));
+            SourceMaterialEmission.IllumTexture(material, _textureFactory)?
+                .WritePng(Path.Combine(materialDirectory, $"{material.Name}_illum.png"));
         }
     }
 

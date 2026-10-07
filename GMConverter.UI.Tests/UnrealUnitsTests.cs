@@ -167,7 +167,7 @@ public sealed class UnrealUnitsTests
     }
 
     [Fact]
-    public void StaticMaskedSelfIlluminationBecomesSourceSelfIllumMask()
+    public void StaticMaskedSelfIlluminationBecomesSourceBaseAlphaSelfIllum()
     {
         _ = ExporterOptionsTests.CreateViewModel();
         var (psk, _) = WriteFixture();
@@ -194,10 +194,18 @@ public sealed class UnrealUnitsTests
                 ["buildMaterials"] = false
             })));
 
+        // Garry's Mod reads self-illumination from alpha, so opaque glow lives in the base alpha
+        // (coverage = glow / albedo = 48 / 240 -> the original mask alpha 51) with no extra mask.
         var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
         Assert.Contains("\"$selfillum\" \"1\"", vmt);
-        Assert.Contains("\"$selfillummask\" \"gmconverter/test_illum\"", vmt);
+        Assert.DoesNotContain("$selfillummask", vmt);
+        Assert.DoesNotContain("$translucent", vmt);
         Assert.DoesNotContain("$detail", vmt);
+        Assert.Empty(Directory.GetFiles(output, "test_illum.png", SearchOption.AllDirectories));
+        using var basePng = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+            Directory.GetFiles(output, "test.png", SearchOption.AllDirectories).Single());
+        Assert.Equal(51, basePng[0, 0].A);
+        Assert.Equal(80, basePng[0, 0].R);
     }
 
     [Fact]

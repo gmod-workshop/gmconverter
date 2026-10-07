@@ -374,7 +374,9 @@ internal static class UnrealMaterialExporter
         string channelName,
         Dictionary<string, string> textureReferences)
     {
-        if (!materialObject.ClassName.Equals("TexPanner", StringComparison.OrdinalIgnoreCase))
+        var isPanner = materialObject.ClassName.Equals("TexPanner", StringComparison.OrdinalIgnoreCase);
+        var isPanner2D = materialObject.ClassName.Equals("TexPanner2D", StringComparison.OrdinalIgnoreCase);
+        if (!isPanner && !isPanner2D)
         {
             return;
         }
@@ -393,10 +395,22 @@ internal static class UnrealMaterialExporter
             return;
         }
 
-        var rate = properties.FirstFloat("PanRate") ?? _defaultPanRate;
-        var yaw = (properties.FirstInteger("PanDirection.Yaw") ?? 0) / _rotatorUnitsPerRadian;
-        var u = rate * MathF.Cos(yaw);
-        var v = rate * MathF.Sin(yaw);
+        float u;
+        float v;
+        if (isPanner2D)
+        {
+            // Republic Commando's TexPanner2D stores per-axis speeds directly.
+            u = properties.FirstFloat("SpeedU") ?? 0f;
+            v = properties.FirstFloat("SpeedV") ?? 0f;
+        }
+        else
+        {
+            var rate = properties.FirstFloat("PanRate") ?? _defaultPanRate;
+            var yaw = (properties.FirstInteger("PanDirection.Yaw") ?? 0) / _rotatorUnitsPerRadian;
+            u = rate * MathF.Cos(yaw);
+            v = rate * MathF.Sin(yaw);
+        }
+
         if (MathF.Abs(u) < 1e-6f && MathF.Abs(v) < 1e-6f)
         {
             return;

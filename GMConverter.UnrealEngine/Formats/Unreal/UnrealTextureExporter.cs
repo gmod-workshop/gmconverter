@@ -1,5 +1,8 @@
 using System.Text;
+using CUE4Parse_Conversion.Textures.DXT;
 using GMConverter.SDK.Common;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
 
@@ -17,7 +20,9 @@ internal static class UnrealTextureExporter
         }
 
         var textureName = NameHelpers.SanitizeMaterialName(texture.ObjectName);
-        var outputPath = Path.Combine(outputDirectory, textureName + ".dds");
+        // PNG rather than DDS: the importers decode textures with ImageSharp, which has no DDS
+        // support, so a DDS sidecar left every UE2 Explorer material untextured or failing.
+        var outputPath = Path.Combine(outputDirectory, textureName + ".png");
         using var stream = File.OpenRead(texture.Package.FilePath);
         using var binaryReader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: false);
         var reader = new UnrealObjectReader(texture.Package, binaryReader, texture.Export);
@@ -45,8 +50,9 @@ internal static class UnrealTextureExporter
             return null;
         }
 
-        var fourCc = GetDdsFourCc(format.Value);
-        if (fourCc is null)
+        var topMip = mips[0];
+        var rgba = DecodeDxt(format.Value, topMip);
+        if (rgba is null)
         {
             return null;
         }
@@ -54,9 +60,8 @@ internal static class UnrealTextureExporter
         if (!File.Exists(outputPath))
         {
             Directory.CreateDirectory(outputDirectory);
-            using var outputStream = File.Create(outputPath);
-            using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);
-            WriteDds(writer, mips, fourCc);
+            using var image = Image.LoadPixelData<Rgba32>(rgba, topMip.Width, topMip.Height);
+            image.SaveAsPng(outputPath);
         }
 
         return new UnrealExportedTexture(textureName, TextureFormatHasAlpha(format.Value));
@@ -72,15 +77,61 @@ internal static class UnrealTextureExporter
         return new UnrealTextureMip(data, width, height);
     }
 
-    private static string? GetDdsFourCc(int textureFormat)
+    // Returns tightly packed RGBA8 for the mip, or null for formats the exporter doesn't handle.
+    private static byte[]? DecodeDxt(int textureFormat, UnrealTextureMip mip)
     {
+        var data = mip.Data.ToArray();
+        var requiredSize = CalculateDxtMipSize(mip.Width, mip.Height, textureFormat == _texfDxt1 ? 8 : 16);
+        if (data.Length < requiredSize)
+        {
+            return null;
+        }
+
         return textureFormat switch
         {
-            _texfDxt1 => "DXT1",
-            _texfDxt3 => "DXT3",
-            _texfDxt5 => "DXT5",
+            _texfDxt1 => DXTDecoder.DXT1(data, mip.Width, mip.Height, 1),
+            _texfDxt3 => DecodeDxt3(data, mip.Width, mip.Height),
+            _texfDxt5 => DXTDecoder.DXT5(data, mip.Width, mip.Height, 1),
             _ => null
         };
+    }
+
+    // DXT3 pairs 4-bit explicit alpha with a color block that always uses four-color mode, as
+    // DXT5's does. Repack each block as DXT5 with opaque interpolated alpha, decode the color with
+    // the DXT5 decoder, then write the explicit alpha back.
+    private static byte[] DecodeDxt3(byte[] data, int width, int height)
+    {
+        var blocksWide = Math.Max(1, (width + 3) / 4);
+        var blocksHigh = Math.Max(1, (height + 3) / 4);
+        var asDxt5 = new byte[blocksWide * blocksHigh * 16];
+        for (var block = 0; block < blocksWide * blocksHigh; block++)
+        {
+            var offset = block * 16;
+            asDxt5[offset] = byte.MaxValue;
+            asDxt5[offset + 1] = byte.MaxValue;
+            Array.Copy(data, offset + 8, asDxt5, offset + 8, 8);
+        }
+
+        var rgba = DXTDecoder.DXT5(asDxt5, width, height, 1);
+        for (var blockY = 0; blockY < blocksHigh; blockY++)
+        {
+            for (var blockX = 0; blockX < blocksWide; blockX++)
+            {
+                var alphaBits = BitConverter.ToUInt64(data, ((blockY * blocksWide) + blockX) * 16);
+                for (var texel = 0; texel < 16; texel++)
+                {
+                    var x = (blockX * 4) + (texel % 4);
+                    var y = (blockY * 4) + (texel / 4);
+                    if (x < width && y < height)
+                    {
+                        var alpha = (byte)((alphaBits >> (texel * 4)) & 0xF);
+                        rgba[(((y * width) + x) * 4) + 3] = (byte)(alpha * 17);
+                    }
+                }
+            }
+        }
+
+        return rgba;
     }
 
     private static bool TextureFormatHasAlpha(int textureFormat)
@@ -88,48 +139,8 @@ internal static class UnrealTextureExporter
         return textureFormat is _texfDxt3 or _texfDxt5;
     }
 
-    private static void WriteDds(BinaryWriter writer, IReadOnlyList<UnrealTextureMip> mips, string fourCc)
+    private static int CalculateDxtMipSize(int width, int height, int blockSize)
     {
-        var firstMip = mips[0];
-        var linearSize = CalculateDxtMipSize(firstMip.Width, firstMip.Height, fourCc);
-
-        writer.Write(Encoding.ASCII.GetBytes("DDS "));
-        writer.Write(124);
-        writer.Write(0x00081007 | (mips.Count > 1 ? 0x00020000 : 0));
-        writer.Write(firstMip.Height);
-        writer.Write(firstMip.Width);
-        writer.Write(linearSize);
-        writer.Write(0);
-        writer.Write(mips.Count);
-        for (var i = 0; i < 11; i++)
-        {
-            writer.Write(0);
-        }
-
-        writer.Write(32);
-        writer.Write(0x00000004);
-        writer.Write(Encoding.ASCII.GetBytes(fourCc));
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-
-        writer.Write(0x00001000 | (mips.Count > 1 ? 0x00400008 : 0));
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-        writer.Write(0);
-
-        foreach (var mip in mips)
-        {
-            writer.Write(mip.Data.ToArray());
-        }
-    }
-
-    private static int CalculateDxtMipSize(int width, int height, string fourCc)
-    {
-        var blockSize = fourCc.Equals("DXT1", StringComparison.OrdinalIgnoreCase) ? 8 : 16;
         return Math.Max(1, (width + 3) / 4) * Math.Max(1, (height + 3) / 4) * blockSize;
     }
 

@@ -10,8 +10,18 @@ namespace GMConverter.UnrealEngine.Formats.Unreal;
 internal static class UnrealTextureExporter
 {
     private const int _texfDxt1 = 3;
+    private const int _texfRgba8 = 5;
     private const int _texfDxt3 = 7;
     private const int _texfDxt5 = 8;
+
+    // Single-channel 16-bit grayscale. Republic Commando's effect gradients only use 15 bits:
+    // every sampled texture tops out at exactly 32767, so that is full scale.
+    private const int _texfG16 = 10;
+    private const float _g16FullScale = 32767f;
+
+    // Republic Commando format 12: a signed two-channel tangent-space normal map. A curl test on
+    // Kaminoan_Bump showed byte 1 is X and byte 0 is Y with Y pointing up the image (OpenGL).
+    private const int _texfRepublicCommandoNormal = 12;
 
     // Republic Commando stores shader Bumpmap textures in format 14 as two bytes per texel: a
     // height map (byte 1, closely tracking the diffuse luminance) and a sparse panel-edge mask
@@ -85,27 +95,99 @@ internal static class UnrealTextureExporter
     }
 
     // Returns tightly packed RGBA8 for the mip, or null for formats the exporter doesn't handle.
+    // Paletted P8 is not decoded: in Republic Commando it only appears in font atlases and editor
+    // labels, never on a mesh.
     private static byte[]? DecodeMip(int textureFormat, UnrealTextureMip mip)
     {
         var data = mip.Data.ToArray();
-        if (textureFormat == _texfRepublicCommandoBump)
+        return textureFormat switch
         {
-            return DecodeRepublicCommandoBump(data, mip.Width, mip.Height);
-        }
+            _texfDxt1 or _texfDxt3 or _texfDxt5 => DecodeDxt(textureFormat, data, mip.Width, mip.Height),
+            _texfRgba8 => DecodeBgra8(data, mip.Width, mip.Height),
+            _texfG16 => DecodeG16(data, mip.Width, mip.Height),
+            _texfRepublicCommandoNormal => DecodeRepublicCommandoNormal(data, mip.Width, mip.Height),
+            _texfRepublicCommandoBump => DecodeRepublicCommandoBump(data, mip.Width, mip.Height),
+            _ => null
+        };
+    }
 
-        var requiredSize = CalculateDxtMipSize(mip.Width, mip.Height, textureFormat == _texfDxt1 ? 8 : 16);
-        if (data.Length < requiredSize)
+    private static byte[]? DecodeDxt(int textureFormat, byte[] data, int width, int height)
+    {
+        if (data.Length < CalculateDxtMipSize(width, height, textureFormat == _texfDxt1 ? 8 : 16))
         {
             return null;
         }
 
         return textureFormat switch
         {
-            _texfDxt1 => DXTDecoder.DXT1(data, mip.Width, mip.Height, 1),
-            _texfDxt3 => DecodeDxt3(data, mip.Width, mip.Height),
-            _texfDxt5 => DXTDecoder.DXT5(data, mip.Width, mip.Height, 1),
-            _ => null
+            _texfDxt1 => DXTDecoder.DXT1(data, width, height, 1),
+            _texfDxt3 => DecodeDxt3(data, width, height),
+            _ => DXTDecoder.DXT5(data, width, height, 1)
         };
+    }
+
+    // TEXF_RGBA8 is stored in D3D order (B, G, R, A); verified on the HoloBlue/HoloRed gradients.
+    private static byte[]? DecodeBgra8(byte[] data, int width, int height)
+    {
+        if (data.Length != width * height * 4)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < data.Length; i += 4)
+        {
+            (data[i], data[i + 2]) = (data[i + 2], data[i]);
+        }
+
+        return data;
+    }
+
+    private static byte[]? DecodeG16(byte[] data, int width, int height)
+    {
+        var texelCount = width * height;
+        if (data.Length != texelCount * 2)
+        {
+            return null;
+        }
+
+        var rgba = new byte[texelCount * 4];
+        for (var i = 0; i < texelCount; i++)
+        {
+            var value = data[i * 2] | (data[(i * 2) + 1] << 8);
+            var gray = (byte)Math.Min(255, (int)MathF.Round(value * 255f / _g16FullScale));
+            rgba[i * 4] = gray;
+            rgba[(i * 4) + 1] = gray;
+            rgba[(i * 4) + 2] = gray;
+            rgba[(i * 4) + 3] = byte.MaxValue;
+        }
+
+        return rgba;
+    }
+
+    private static byte[]? DecodeRepublicCommandoNormal(byte[] data, int width, int height)
+    {
+        var texelCount = width * height;
+        if (data.Length != texelCount * 2)
+        {
+            return null;
+        }
+
+        static float Signed(byte value) => Math.Max(-1f, (sbyte)value / 127f);
+        static byte Encode(float component) => (byte)Math.Clamp(MathF.Round(((component * 0.5f) + 0.5f) * 255f), 0f, 255f);
+
+        var rgba = new byte[texelCount * 4];
+        for (var i = 0; i < texelCount; i++)
+        {
+            var x = Signed(data[(i * 2) + 1]);
+            var y = Signed(data[i * 2]);
+            var z = MathF.Sqrt(Math.Max(0f, 1f - (x * x) - (y * y)));
+            rgba[i * 4] = Encode(x);
+            rgba[(i * 4) + 1] = Encode(y);
+            rgba[(i * 4) + 2] = Encode(z);
+            rgba[(i * 4) + 3] = byte.MaxValue;
+        }
+
+        return rgba;
     }
 
     private static byte[]? DecodeRepublicCommandoBump(byte[] data, int width, int height)
@@ -165,7 +247,7 @@ internal static class UnrealTextureExporter
 
     private static bool TextureFormatHasAlpha(int textureFormat)
     {
-        return textureFormat is _texfDxt3 or _texfDxt5;
+        return textureFormat is _texfDxt3 or _texfDxt5 or _texfRgba8;
     }
 
     private static int CalculateDxtMipSize(int width, int height, int blockSize)

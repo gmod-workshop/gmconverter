@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 - Wired Microsoft.Extensions.DependencyInjection into the plugin system. `IPluginContext` now exposes an `IServiceProvider Services` populated by the host with `ITextureFactory`, `ILoggerFactory`, and any future host-side services. Plugins consume these via constructor injection — `context.RegisterImporter<PSKImporter>()` activates `PSKImporter` against the provider, resolving its ctor params automatically. Named context properties for individual services (e.g. `TextureFactory`, `LoggerFactory`) were dropped in favor of a single `Services` source of truth; adding a new host capability is now a one-line registration in `PluginLoader` with zero impact on existing plugins.
 - Moved the format-agnostic helpers `NameHelpers`, `PathHelpers`, `PerfTimer`, and `ExplorerFileSystem` from `GMConverter.Common`/`GMConverter.Explorer` (Core) to `GMConverter.SDK.Common`/`GMConverter.SDK.Explorer` so plugins (and any future engine plugin) can share them without taking a Core reference.
 - Added scrolling-texture support for Unreal Engine 2 materials. `TexPanner` rates and directions on a material's diffuse chain are recorded in UE2 Explorer material sidecars (`UvScroll=<u>,<v>`), carried on the new SDK `Material.UvScrollRate`, and written to Source VMTs as `TextureScroll` proxies, so animated liquids such as Republic Commando's bacta dispenser scroll in game.
-- Added independently scrolling glow layers for Unreal Engine 2 shaders whose `SelfIlluminationMask` is panned separately from the rest of the material, such as the bubbles in Republic Commando's bacta liquid. The mask is baked with the self-illumination colour, carried on the new SDK `Material.EmissiveUvScrollRate`, and written to Source as an unlit additive `$detail` layer with its own `TextureScroll`. Static UE2 self-illumination is not converted yet.
+- Added independently scrolling glow layers for Unreal Engine 2 shaders whose `SelfIlluminationMask` is panned separately from the rest of the material, such as the bubbles in Republic Commando's bacta liquid. The mask is baked with the self-illumination colour, carried on the new SDK `Material.EmissiveUvScrollRate`, and written to Source as an unlit additive `$detail` layer with its own `TextureScroll`.
 
 ### Changed
 
@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - Preserved opacity from 32-bit UModel TGA textures whose headers declare no alpha bits. Translucent PSK materials such as the bacta dispenser liquid previously compiled to fully opaque VTFs despite `$translucent`.
 - Fixed UE2 Explorer mesh exports failing to convert when materials use DXT textures. The exporter wrote raw DDS sidecars, which the PSK importer cannot decode; DXT1/DXT3/DXT5 textures are now decoded and written as PNG.
 - Fixed Republic Commando shader bump maps being dropped from UE2 Explorer exports. Their two-byte height format is now decoded and converted to a tangent-space normal map, so Source and glTF exports receive normal detail.
+- Fixed static Unreal Engine 2 self-illumination being ignored. Shaders that gate `SelfIllumination` with a `SelfIlluminationMask` alpha (lit panels, indicator eyes) now export a per-pixel glow texture, written to Source as `$selfillum` with a `$selfillummask`.
 
 ## [1.7.0] - 2026-05-21
 

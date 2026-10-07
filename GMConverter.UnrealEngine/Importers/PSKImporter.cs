@@ -671,7 +671,7 @@ internal sealed class PSKImporter : IImporter
                 specularTexture = TryLoadLayerTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false);
-                emissiveTexture = (emissiveUvScrollRate is null ? null : TryBakeMaskedSelfIllumination(references)) ??
+                emissiveTexture = TryBakeMaskedSelfIllumination(references, separatelyScrolled: emissiveUvScrollRate is not null) ??
                     TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false);
@@ -895,10 +895,11 @@ internal sealed class PSKImporter : IImporter
         }
 
         // UE2 shaders take glow colour from SelfIllumination and gate it with SelfIlluminationMask's
-        // alpha. Only called when the mask scrolls separately from the colour, so a per-pixel
-        // product can't be baked; bake the colour texture's average tint into the mask instead,
-        // which keeps the masked shapes (and their own scroll) while matching the glow colour.
-        private Texture? TryBakeMaskedSelfIllumination(Dictionary<string, string> references)
+        // alpha. When both share coordinates the glow is their per-pixel product. When the mask
+        // scrolls separately that product can't be baked, so the colour texture's average tint is
+        // applied to the mask instead, keeping the masked shapes (and their own scroll) and the
+        // overall glow colour.
+        private Texture? TryBakeMaskedSelfIllumination(Dictionary<string, string> references, bool separatelyScrolled)
         {
             if (!references.TryGetValue("SelfIllumination", out var colorReference) ||
                 !references.TryGetValue("SelfIlluminationMask", out var maskReference) ||
@@ -916,6 +917,26 @@ internal sealed class PSKImporter : IImporter
             }
 
             var colorPixels = color.GetRgbaPixels();
+            if (!separatelyScrolled)
+            {
+                if (color.Width != mask.Width || color.Height != mask.Height)
+                {
+                    return null;
+                }
+
+                var maskPixels = mask.GetRgbaPixels();
+                for (var i = 0; i < colorPixels.Length; i += 4)
+                {
+                    var coverage = maskPixels[i + 3] / 255.0;
+                    colorPixels[i] = (byte)Math.Round(colorPixels[i] * coverage);
+                    colorPixels[i + 1] = (byte)Math.Round(colorPixels[i + 1] * coverage);
+                    colorPixels[i + 2] = (byte)Math.Round(colorPixels[i + 2] * coverage);
+                    colorPixels[i + 3] = byte.MaxValue;
+                }
+
+                return _textureFactory.FromRgba($"{mask.Name}_glow", color.Width, color.Height, colorPixels, hasAlpha: false);
+            }
+
             var texelCount = Math.Max(1, colorPixels.Length / 4);
             Span<double> tint = stackalloc double[3];
             for (var i = 0; i < colorPixels.Length; i += 4)

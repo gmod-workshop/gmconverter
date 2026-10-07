@@ -78,15 +78,6 @@ internal static class UnrealMaterialExporter
             textureReferences,
             []);
 
-        // Self-illumination is only exported as a separately scrolling glow layer for now. Static
-        // UE2 self-illumination (glow colour gated by a texture's own alpha) needs a per-pixel
-        // bake that the importer does not do yet, so leave those materials unlit as before.
-        if (!textureReferences.ContainsKey(EmissiveUvScrollKey))
-        {
-            textureReferences.Remove("SelfIllumination");
-            textureReferences.Remove("SelfIlluminationMask");
-        }
-
         return new UnrealExportedMaterial(materialName, textureReferences);
     }
 

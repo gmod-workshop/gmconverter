@@ -166,6 +166,40 @@ public sealed class UnrealUnitsTests
         Assert.Contains("\"texturescrollrate\" \"0.2\"", vmt);
     }
 
+    [Fact]
+    public void StaticMaskedSelfIlluminationBecomesSourceSelfIllumMask()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"),
+            "Diffuse=panel\nSelfIllumination=panel\nSelfIlluminationMask=panel\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var material = Assert.Single(model.Materials);
+        Assert.Null(material.EmissiveUvScrollRate);
+
+        // Glow = colour (R80 G220 B240) x the mask's own alpha (51/255 = 0.2), per pixel.
+        Assert.Equal([16, 44, 48, 255], material.EmissiveTexture!.GetRgbaPixels()[..4]);
+
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+
+        var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
+        Assert.Contains("\"$selfillum\" \"1\"", vmt);
+        Assert.Contains("\"$selfillummask\" \"gmconverter/test_illum\"", vmt);
+        Assert.DoesNotContain("$detail", vmt);
+    }
+
     // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the
     // fourth channel carries real opacity; decoders that trust the header discard it.
     private static void WriteUnlabeledAlphaTga(string path, byte alpha)

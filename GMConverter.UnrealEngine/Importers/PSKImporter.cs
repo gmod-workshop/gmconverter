@@ -601,6 +601,7 @@ internal sealed class PSKImporter : IImporter
             var usesCueMaterial = false;
             System.Numerics.Vector2? bakedUv0Scale = null;
             System.Numerics.Vector2? uvScrollRate = null;
+            System.Numerics.Vector2? emissiveUvScrollRate = null;
             string? materialAlias = null;
             if (TryGetLocalSidecar(material, meshPath, ".json", out var localCueMaterialPath))
             {
@@ -614,12 +615,14 @@ internal sealed class PSKImporter : IImporter
             else if (TryGetLocalSidecar(material, meshPath, ".mat", out var localMaterialPath))
             {
                 references = ReadMaterialReferences(localMaterialPath);
-                uvScrollRate = ReadUvScrollRate(localMaterialPath);
+                uvScrollRate = ReadUvScrollRate(localMaterialPath, UnrealMaterialExporter.UvScrollKey);
+                emissiveUvScrollRate = ReadUvScrollRate(localMaterialPath, UnrealMaterialExporter.EmissiveUvScrollKey);
             }
             else if (TryGetSidecar(_materialSidecars, material, out var materialPath))
             {
                 references = ReadMaterialReferences(materialPath);
-                uvScrollRate = ReadUvScrollRate(materialPath);
+                uvScrollRate = ReadUvScrollRate(materialPath, UnrealMaterialExporter.UvScrollKey);
+                emissiveUvScrollRate = ReadUvScrollRate(materialPath, UnrealMaterialExporter.EmissiveUvScrollKey);
             }
             else if (TryGetSidecar(_cueMaterialSidecars, material, out var cueMaterialPath))
             {
@@ -668,7 +671,8 @@ internal sealed class PSKImporter : IImporter
                 specularTexture = TryLoadLayerTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false);
-                emissiveTexture = TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
+                emissiveTexture = (emissiveUvScrollRate is null ? null : TryBakeMaskedSelfIllumination(references)) ??
+                    TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false);
             }
@@ -719,7 +723,8 @@ internal sealed class PSKImporter : IImporter
                     : MaterialNormalTextureConvention.OpenGl,
                 bakedUv0Scale: bakedUv0Scale,
                 specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f,
-                uvScrollRate: uvScrollRate);
+                uvScrollRate: uvScrollRate,
+                emissiveUvScrollRate: emissiveUvScrollRate);
         }
 
         // Fortnite's SpecularMasks.R doesn't drive specular intensity in the in-game renderer (FP's
@@ -887,6 +892,50 @@ internal sealed class PSKImporter : IImporter
             }
 
             return normalized.EndsWith("_H", StringComparison.OrdinalIgnoreCase) ? "8" : null;
+        }
+
+        // UE2 shaders take glow colour from SelfIllumination and gate it with SelfIlluminationMask's
+        // alpha. Only called when the mask scrolls separately from the colour, so a per-pixel
+        // product can't be baked; bake the colour texture's average tint into the mask instead,
+        // which keeps the masked shapes (and their own scroll) while matching the glow colour.
+        private Texture? TryBakeMaskedSelfIllumination(Dictionary<string, string> references)
+        {
+            if (!references.TryGetValue("SelfIllumination", out var colorReference) ||
+                !references.TryGetValue("SelfIlluminationMask", out var maskReference) ||
+                IsNullReference(colorReference) ||
+                IsNullReference(maskReference))
+            {
+                return null;
+            }
+
+            using var color = TryLoadTexture(colorReference, hasAlpha: false);
+            using var mask = TryLoadTexture(maskReference, hasAlpha: true);
+            if (color is null || mask is null)
+            {
+                return null;
+            }
+
+            var colorPixels = color.GetRgbaPixels();
+            var texelCount = Math.Max(1, colorPixels.Length / 4);
+            Span<double> tint = stackalloc double[3];
+            for (var i = 0; i < colorPixels.Length; i += 4)
+            {
+                tint[0] += colorPixels[i];
+                tint[1] += colorPixels[i + 1];
+                tint[2] += colorPixels[i + 2];
+            }
+
+            var pixels = mask.GetRgbaPixels();
+            for (var i = 0; i < pixels.Length; i += 4)
+            {
+                var coverage = pixels[i + 3] / 255.0;
+                pixels[i] = (byte)Math.Round(tint[0] / texelCount * coverage);
+                pixels[i + 1] = (byte)Math.Round(tint[1] / texelCount * coverage);
+                pixels[i + 2] = (byte)Math.Round(tint[2] / texelCount * coverage);
+                pixels[i + 3] = byte.MaxValue;
+            }
+
+            return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, pixels, hasAlpha: false);
         }
 
         private Texture? TryLoadTextureByName(
@@ -1368,7 +1417,8 @@ internal sealed class PSKImporter : IImporter
                 }
 
                 var key = trimmed[..separator].Trim();
-                if (key.Equals(UnrealMaterialExporter.UvScrollKey, StringComparison.OrdinalIgnoreCase))
+                if (key.Equals(UnrealMaterialExporter.UvScrollKey, StringComparison.OrdinalIgnoreCase) ||
+                    key.Equals(UnrealMaterialExporter.EmissiveUvScrollKey, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -1385,9 +1435,9 @@ internal sealed class PSKImporter : IImporter
             return references;
         }
 
-        private static System.Numerics.Vector2? ReadUvScrollRate(string materialPath)
+        private static System.Numerics.Vector2? ReadUvScrollRate(string materialPath, string key)
         {
-            var prefix = UnrealMaterialExporter.UvScrollKey + "=";
+            var prefix = key + "=";
             var line = File.ReadLines(materialPath)
                 .Select(l => l.Trim())
                 .FirstOrDefault(l => l.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));

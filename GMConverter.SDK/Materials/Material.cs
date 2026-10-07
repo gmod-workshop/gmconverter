@@ -14,7 +14,8 @@ public sealed class Material(
     MaterialNormalTextureConvention normalTextureConvention = MaterialNormalTextureConvention.OpenGl,
     System.Numerics.Vector2? bakedUv0Scale = null,
     float specularFactor = 1.0f,
-    System.Numerics.Vector2? uvScrollRate = null)
+    System.Numerics.Vector2? uvScrollRate = null,
+    System.Numerics.Vector2? emissiveUvScrollRate = null)
 {
     public string Name { get; } = name;
 
@@ -52,6 +53,11 @@ public sealed class Material(
     // is independent of each format's UV origin; e.g. a UE2 TexPanner with PanRate 0.1 along U is
     // (0.1, 0). Exporters without animated materials ignore it.
     public System.Numerics.Vector2? UvScrollRate { get; } = uvScrollRate;
+
+    // Scroll for EmissiveTexture alone, in the same units and space as UvScrollRate. When set, the
+    // emissive layer moves independently of the rest of the material, so exporters should apply
+    // it as a separately transformed layer rather than a mask sampled with the base coordinates.
+    public System.Numerics.Vector2? EmissiveUvScrollRate { get; } = emissiveUvScrollRate;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

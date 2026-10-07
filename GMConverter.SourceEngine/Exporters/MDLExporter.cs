@@ -796,8 +796,7 @@ internal sealed class MDLExporter : IExporter
 
             if (material.IsIlluminated)
             {
-                writer.WriteLine("    \"$selfillum\" \"1\"");
-                writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{sourceTexturePath}_illum\""));
+                SourceMaterialEmission.Write(writer, material, $"{sourceTexturePath}_illum");
             }
 
             SourceMaterialProxies.WriteUvScroll(writer, material);

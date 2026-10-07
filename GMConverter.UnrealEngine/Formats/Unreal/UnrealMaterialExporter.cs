@@ -5,9 +5,12 @@ namespace GMConverter.UnrealEngine.Formats.Unreal;
 
 internal static class UnrealMaterialExporter
 {
-    // Sidecar key carrying a constant UV scroll as "U,V" texture sizes per second (invariant
+    // Sidecar keys carrying a constant UV scroll as "U,V" texture sizes per second (invariant
     // culture). Kept out of the texture channels because reference values are name-normalized.
+    // UvScroll follows the diffuse chain; EmissiveUvScroll follows the self-illumination mask,
+    // which UE2 shaders often pan independently (e.g. bubbles drifting through a liquid).
     internal const string UvScrollKey = "UvScroll";
+    internal const string EmissiveUvScrollKey = "EmissiveUvScroll";
 
     // UE2 TexPanner defaults: PanRate 0.1 and a zero PanDirection, which pans along +U.
     private const float _defaultPanRate = 0.1f;
@@ -21,7 +24,9 @@ internal static class UnrealMaterialExporter
         ["Specular"] = "Specular",
         ["SpecularityMask"] = "Specular",
         ["Bumpmap"] = "Normal",
-        ["Detail"] = "Diffuse"
+        ["Detail"] = "Diffuse",
+        ["SelfIllumination"] = "SelfIllumination",
+        ["SelfIlluminationMask"] = "SelfIlluminationMask"
     };
 
     public static IReadOnlyList<string> ExportMaterials(
@@ -72,6 +77,15 @@ internal static class UnrealMaterialExporter
             resolver,
             textureReferences,
             []);
+
+        // Self-illumination is only exported as a separately scrolling glow layer for now. Static
+        // UE2 self-illumination (glow colour gated by a texture's own alpha) needs a per-pixel
+        // bake that the importer does not do yet, so leave those materials unlit as before.
+        if (!textureReferences.ContainsKey(EmissiveUvScrollKey))
+        {
+            textureReferences.Remove("SelfIllumination");
+            textureReferences.Remove("SelfIlluminationMask");
+        }
 
         return new UnrealExportedMaterial(materialName, textureReferences);
     }
@@ -307,16 +321,29 @@ internal static class UnrealMaterialExporter
         PopulateTextureReferences(materialObject, outputDirectory, resolver, textureReferences, visitedObjects);
     }
 
-    // Source and glTF scroll a whole material rather than one channel, so only the panner on the
-    // diffuse chain is kept; the first one found wins, matching TryAdd for texture channels.
+    // Only the diffuse and self-illumination-mask chains map to exporter layers that can scroll
+    // independently; the first panner found on each wins, matching TryAdd for texture channels.
     private static void RecordTexturePanner(
         UnrealResolvedObject materialObject,
         UnrealPropertyCollection properties,
         string channelName,
         Dictionary<string, string> textureReferences)
     {
-        if (!materialObject.ClassName.Equals("TexPanner", StringComparison.OrdinalIgnoreCase) ||
-            !channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        if (!materialObject.ClassName.Equals("TexPanner", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string scrollKey;
+        if (channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        {
+            scrollKey = UvScrollKey;
+        }
+        else if (channelName.Equals("SelfIlluminationMask", StringComparison.OrdinalIgnoreCase))
+        {
+            scrollKey = EmissiveUvScrollKey;
+        }
+        else
         {
             return;
         }
@@ -330,7 +357,7 @@ internal static class UnrealMaterialExporter
             return;
         }
 
-        textureReferences.TryAdd(UvScrollKey, FormattableString.Invariant($"{u:R},{v:R}"));
+        textureReferences.TryAdd(scrollKey, FormattableString.Invariant($"{u:R},{v:R}"));
     }
 
     private static UnrealPropertyCollection? ReadObjectProperties(UnrealResolvedObject materialObject)

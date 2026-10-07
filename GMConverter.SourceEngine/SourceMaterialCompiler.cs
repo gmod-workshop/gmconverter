@@ -210,8 +210,7 @@ internal sealed class SourceMaterialCompiler
 
         if (material.IsIlluminated && illumTexturePath is not null)
         {
-            writer.WriteLine("    \"$selfillum\" \"1\"");
-            writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{illumTexturePath}\""));
+            SourceMaterialEmission.Write(writer, material, illumTexturePath);
         }
 
         SourceMaterialProxies.WriteUvScroll(writer, material);

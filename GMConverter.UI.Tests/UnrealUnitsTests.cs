@@ -127,6 +127,45 @@ public sealed class UnrealUnitsTests
         Assert.Contains("\"texturescrollangle\" \"-90\"", vmt);
     }
 
+    [Fact]
+    public void MaskedSelfIlluminationScrollsAsSourceDetailLayer()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"),
+            "Diffuse=fluid\nSelfIllumination=fluid\nSelfIlluminationMask=bubbles\nUvScroll=0.1,0\nEmissiveUvScroll=0.2,0\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "fluid.tga"), alpha: 255);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "bubbles.tga"), alpha: 128);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var material = Assert.Single(model.Materials);
+        Assert.Equal(new Vector2(0.2f, 0), material.EmissiveUvScrollRate);
+
+        // Glow = the colour texture's average tint (R80 G220 B240) scaled by mask alpha 128/255.
+        var glow = material.EmissiveTexture!.GetRgbaPixels();
+        Assert.Equal([40, 110, 120, 255], glow[..4]);
+
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+
+        var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
+        Assert.DoesNotContain("$selfillum", vmt);
+        Assert.Contains("\"$detail\" \"gmconverter/test_illum\"", vmt);
+        Assert.Contains("\"$detailblendmode\" \"5\"", vmt);
+        Assert.Contains("\"texturescrollvar\" \"$basetexturetransform\"", vmt);
+        Assert.Contains("\"texturescrollvar\" \"$detailtexturetransform\"", vmt);
+        Assert.Contains("\"texturescrollrate\" \"0.2\"", vmt);
+    }
+
     // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the
     // fourth channel carries real opacity; decoders that trust the header discard it.
     private static void WriteUnlabeledAlphaTga(string path, byte alpha)

@@ -15,6 +15,12 @@
 - Update `CHANGELOG.md` as user-facing changes are made. Keep changelog entries scoped to the same feature or fix as the code changes.
 - Use Conventional Commits for commit messages and PR titles, such as `feat: add batch export` or `fix: preserve material paths`.
 
+## Documentation
+
+- Keep `README.md` limited to what a user needs to install and run the program: supported formats, CLI/GUI usage, options, and format caveats.
+- Do not add developer-only content to `README.md`: test instructions, plugin SDK internals, local fixture paths, machine-specific notes, investigation logs, or follow-up task notes.
+- Put follow-up work and investigation findings in the PR description or a GitHub issue instead.
+
 ## Required Checks
 
 Run these before handing work back:
@@ -22,9 +28,10 @@ Run these before handing work back:
 ```powershell
 dotnet format GMConverter.slnx --verify-no-changes --severity warn --no-restore
 dotnet build GMConverter.slnx --configuration Release --no-restore
+dotnet test GMConverter.UI.Tests/GMConverter.UI.Tests.csproj --configuration Release --no-build
 ```
 
-If either command fails, fix the reported issue or clearly report the remaining blocker.
+If any command fails, fix the reported issue or clearly report the remaining blocker.
 
 ## Project Notes
 

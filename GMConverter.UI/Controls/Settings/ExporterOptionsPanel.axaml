@@ -1,0 +1,118 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:GMConverter.UI.ViewModels.Options"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             mc:Ignorable="d"
+             d:DesignWidth="600"
+             x:Name="Self"
+             x:Class="GMConverter.UI.Controls.Settings.ExporterOptionsPanel"
+             x:DataType="vm:ExporterOptionsViewModel">
+  <UserControl.DataTemplates>
+    <!-- Per-OptionViewModel DataTemplates. Avalonia's implicit DataTemplate matching picks the
+         right one at render time based on the runtime type of each item in the ItemsControl. -->
+
+    <DataTemplate DataType="vm:StringOptionViewModel">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+        <TextBox Text="{Binding Value, Mode=TwoWay}"
+                 shad:ControlAssist.Label="{Binding Label}"/>
+        <TextBlock Text="{Binding Description}"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted"
+                   FontSize="12"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:PathOptionViewModel">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <TextBox Text="{Binding Value, Mode=TwoWay}"
+                   shad:ControlAssist.Label="{Binding Label}"/>
+          <Button Grid.Column="1"
+                  Classes="Outline"
+                  Content="Browse"
+                  Click="BrowsePath_Click"
+                  VerticalAlignment="Bottom"/>
+        </Grid>
+        <TextBlock Text="{Binding Description}"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted"
+                   FontSize="12"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:BoolOptionViewModel">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+        <CheckBox Content="{Binding Label}"
+                  IsChecked="{Binding Value, Mode=TwoWay}"/>
+        <TextBlock Text="{Binding Description}"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted"
+                   FontSize="12"
+                   Margin="24,0,0,0"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:IntOptionViewModel">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+        <NumericUpDown Value="{Binding Value, Mode=TwoWay}"
+                       Minimum="{Binding Minimum}"
+                       Maximum="{Binding Maximum}"
+                       Increment="{Binding Increment}"
+                       shad:ControlAssist.Label="{Binding Label}"/>
+        <TextBlock Text="{Binding Description}"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted"
+                   FontSize="12"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:FloatOptionViewModel">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+        <NumericUpDown Value="{Binding Value, Mode=TwoWay}"
+                       Minimum="{Binding Minimum}"
+                       Maximum="{Binding Maximum}"
+                       Increment="{Binding Increment}"
+                       FormatString="0.####"
+                       shad:ControlAssist.Label="{Binding Label}"/>
+        <TextBlock Text="{Binding Description}"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted"
+                   FontSize="12"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="vm:EnumOptionViewModel">
+      <StackPanel Spacing="4" Margin="0,0,0,12">
+        <ComboBox ItemsSource="{Binding Choices}"
+                  SelectedItem="{Binding Value, Mode=TwoWay}"
+                  HorizontalAlignment="Stretch"
+                  shad:ControlAssist.Label="{Binding Label}"/>
+        <TextBlock Text="{Binding Description}"
+                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Classes="muted"
+                   FontSize="12"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <!-- Optional group filtering supports embedding slices of an exporter's schema.
+       Empty schemas produce no controls. -->
+  <ItemsControl ItemsSource="{Binding #Self.FilteredGroups}">
+    <ItemsControl.ItemTemplate>
+      <DataTemplate DataType="vm:OptionGroupViewModel">
+        <StackPanel Spacing="12" Margin="0,0,0,16">
+          <TextBlock Classes="section-header" Text="{Binding Label}"/>
+          <ItemsControl ItemsSource="{Binding Options}"/>
+        </StackPanel>
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+</UserControl>

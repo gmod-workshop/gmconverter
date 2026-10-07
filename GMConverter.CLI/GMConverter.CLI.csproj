@@ -48,4 +48,17 @@
             SkipUnchangedFiles="true" />
     </Target>
 
+  <!-- Plugin payloads are external runtime files, including for single-file hosts. -->
+  <Target Name="IncludeBundledPluginsInPublish" AfterTargets="ComputeFilesToPublish"
+          DependsOnTargets="CopyBundledPlugins">
+      <ItemGroup>
+          <PublishPluginPayload Include="$(OutputPath)plugins\**\*" />
+          <ResolvedFileToPublish Include="@(PublishPluginPayload)">
+              <RelativePath>plugins\%(PublishPluginPayload.RecursiveDir)%(PublishPluginPayload.Filename)%(PublishPluginPayload.Extension)</RelativePath>
+              <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+              <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+          </ResolvedFileToPublish>
+      </ItemGroup>
+  </Target>
+
 </Project>

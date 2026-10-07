@@ -23,7 +23,7 @@
                     HorizontalAlignment="Stretch"
                     MaxWidth="{StaticResource PageMaxWidth}"
                     Spacing="16">
-          <shad:Card HasShadow="True">
+          <shad:Card HasShadow="True" IsEnabled="{Binding IsIdle}">
             <shad:Card.Header>
               <StackPanel Spacing="4">
                 <shad:CardTitle>Config</shad:CardTitle>
@@ -49,7 +49,15 @@
             </shad:Card.Footer>
           </shad:Card>
 
-          <settings:SourceEngineSettings/>
+          <shad:Card HasShadow="True" IsEnabled="{Binding IsIdle}">
+            <shad:Card.Header>
+              <StackPanel Spacing="4">
+                <shad:CardTitle>Exporter defaults</shad:CardTitle>
+                <shad:CardDescription>Options for the output format selected in Convert.</shad:CardDescription>
+              </StackPanel>
+            </shad:Card.Header>
+            <settings:ExporterOptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
+          </shad:Card>
         </StackPanel>
       </controls:ScrollProgress.ScrollContent>
     </controls:ScrollProgress>

@@ -101,6 +101,21 @@ physics-mass = 100
 
 </details>
 
+## Plugins
+
+Unreal and Source Engine support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
+
+The CLI adds `--<format>-<option-key>` flags from exporter schemas. Colons in keys become hyphens; the remaining spelling is preserved. Boolean values use explicit `true` or `false`. For example, Source's texture settings are available as:
+
+```powershell
+./GMConverter.CLI --input-format psk --output-format mdl `
+  --input-path "model.psk" --output-path "out/model" `
+  --mdl-material-maxTextureSize 1024 `
+  --mdl-material-deduplicateTextures true
+```
+
+Schema flags override corresponding legacy flags when both are supplied. `source` remains an alias for `mdl`; use the `--mdl-` prefix with either format. glTF's binary/text output follows `--output-format`, and other glTF schema options use the `--glb-` prefix for both `glb` and `gltf`.
+
 ## Format Details
 
 <details>
@@ -130,6 +145,8 @@ Outputs mesh, LOD, texture, face, and vertex counts, plus bounding-box sizes at 
 <summary>PSK / PSKX</summary>
 
 Unreal ActorX PSK/PSKX files are supported as input. The importer reads mesh geometry, UVs, material slots, skeleton bind data, skin weights, and PSKX vertex normals when present.
+
+ActorX coordinates use centimeters and are normalized to meters on import, including bone positions and PSA animation translations. Keep `--scale 1` for the original physical size; Source export converts meters to inches automatically. Scene manifests use the same normalization.
 
 Use `--material-dir` to resolve UModel-style `.mat` sidecars and texture files. Diffuse, normal, specular, opacity, and emissive references are supported. If a material has no explicit normal map reference, nearby diffuse-name `_normal`, `_norm`, or `_bump` textures are used as normal-map fallbacks.
 

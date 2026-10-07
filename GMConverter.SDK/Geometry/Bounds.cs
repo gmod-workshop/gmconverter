@@ -39,7 +39,9 @@ public sealed record Bounds(Vector3 Min, Vector3 Max)
         return new Bounds(new Vector3(minX, minY, minZ), new Vector3(maxX, maxY, maxZ));
     }
 
-    public Bounds WithMinimumThickness()
+    public Bounds WithMinimumThickness() => WithMinimumThickness(_minimumThickness);
+
+    public Bounds WithMinimumThickness(float minimumThickness)
     {
         var minX = Min.X;
         var minY = Min.Y;
@@ -48,22 +50,22 @@ public sealed record Bounds(Vector3 Min, Vector3 Max)
         var maxY = Max.Y;
         var maxZ = Max.Z;
 
-        EnsureThickness(ref minX, ref maxX);
-        EnsureThickness(ref minY, ref maxY);
-        EnsureThickness(ref minZ, ref maxZ);
+        EnsureThickness(ref minX, ref maxX, minimumThickness);
+        EnsureThickness(ref minY, ref maxY, minimumThickness);
+        EnsureThickness(ref minZ, ref maxZ, minimumThickness);
 
         return new Bounds(new Vector3(minX, minY, minZ), new Vector3(maxX, maxY, maxZ));
     }
 
-    private static void EnsureThickness(ref float min, ref float max)
+    private static void EnsureThickness(ref float min, ref float max, float minimumThickness)
     {
-        if (max - min >= _minimumThickness)
+        if (max - min >= minimumThickness)
         {
             return;
         }
 
         var center = (min + max) / 2.0f;
-        min = center - _minimumThickness / 2.0f;
-        max = center + _minimumThickness / 2.0f;
+        min = center - minimumThickness / 2.0f;
+        max = center + minimumThickness / 2.0f;
     }
 }

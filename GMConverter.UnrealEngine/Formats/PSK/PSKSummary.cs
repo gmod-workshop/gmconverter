@@ -41,7 +41,7 @@ internal sealed record PSKSummary(
 
     public override string ToString()
     {
-        var size = Bounds.Max - Bounds.Min;
+        var size = (Bounds.Max - Bounds.Min) * 0.01f;
         var builder = new StringBuilder();
         builder.AppendLine(CultureInfo.InvariantCulture, $"File: {FilePath}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"Points: {PointCount}");
@@ -54,7 +54,7 @@ internal sealed record PSKSummary(
         builder.AppendLine(CultureInfo.InvariantCulture, $"Vertex colors: {VertexColorCount}");
         builder.AppendLine(CultureInfo.InvariantCulture, $"Extra UV channels: {ExtraUvChannelCount}");
         builder.AppendLine(CultureInfo.InvariantCulture,
-            $"Size at --scale 1: {size.X:0.###} x {size.Y:0.###} x {size.Z:0.###}");
+            $"Size at --scale 1 (meters): {size.X:0.###} x {size.Y:0.###} x {size.Z:0.###}");
         return builder.ToString().TrimEnd();
     }
 }

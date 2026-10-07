@@ -3,8 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Exporters;
 using GMConverter.Importers;
+using GMConverter.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
+using GMConverter.SDK.Importers;
 using GMConverter.UI.Models;
 using GMConverter.UI.Services;
 
@@ -108,35 +110,32 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _onPreviewLoaded = onPreviewLoaded;
 
         _selectedInputFormat = InputFormats[0];
-        _selectedOutputFormat = OutputFormats.First(format => format.Value == "mdl");
+        _selectedOutputFormat = OutputFormats.FirstOrDefault(format => format.Value == "mdl")
+            ?? OutputFormats.First(format => format.Value == "glb");
         _selectedAxisMode = AxisModes[0];
         _selectedPhysicsMode = PhysicsModes[0];
         _selectedMaxTextureSize = MaxTextureSizes.First(option => option.Value == "1024");
+        RefreshCurrentExporterOptions();
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
-    [
-        new("opt", "OPT", new OPTImporter().InputName),
-        // "psk" + "mdl" are plugin-contributed (UnrealEngine + SourceEngine plugins). The display
-        // names are hardcoded here because constructing a plugin importer at UI-init time would
-        // require pulling it from PluginHost.Registry and handling the not-loaded case. TODO:
-        // replace this whole static list with a dynamic projection over (built-in importers +
-        // PluginHost.Registry.Importers).
-        new("mdl", "MDL", "Source Engine"),
-        new("psk", "PSK", "Unreal Engine"),
-        new("mow", "MOW", new MOWImporter().InputName)
-    ];
+        [.. new IImporter[] { new OPTImporter(), new MOWImporter() }
+            .Concat(PluginHost.Registry.Importers)
+            .DistinctBy(importer => importer.InputFormat, StringComparer.OrdinalIgnoreCase)
+            .Select(importer => new DisplayOption(importer.InputFormat, importer.InputFormat.ToUpperInvariant(), importer.InputName))];
 
     public ObservableCollection<DisplayOption> OutputFormats { get; } =
     [
         new("info", "Info", "Summary"),
-        new(new OBJExporter().OutputFormat, "OBJ", new OBJExporter().OutputName),
+        new("obj", "OBJ", new OBJExporter().OutputName),
         new("glb", "GLB", new GLTFExporter().OutputName),
         new("gltf", "glTF", new GLTFExporter().OutputName),
-        // Source plugin contributes the MDL exporter. Display name hardcoded for the same TODO
-        // reason as the importer list above.
-        new("source", "Source", "Source Engine"),
-        new("mdl", "MDL", "Source Engine")
+        .. PluginHost.Registry.Exporters
+            .Where(exporter => exporter.OutputFormat is not ("info" or "obj" or "glb" or "gltf"))
+            .Select(exporter => new DisplayOption(exporter.OutputFormat, exporter.OutputFormat.ToUpperInvariant(), exporter.OutputName)),
+        .. PluginHost.Registry.GetExporter("mdl") is { } source
+            ? new[] { new DisplayOption("source", "Source", source.OutputName) }
+            : []
     ];
 
     public ObservableCollection<DisplayOption> AxisModes { get; } =
@@ -175,6 +174,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
     partial void OnSelectedOutputFormatChanged(DisplayOption value)
     {
+        RefreshCurrentExporterOptions();
         OnPropertyChanged(nameof(IsSourceOutput));
         OnPropertyChanged(nameof(IsPhysicsEnabled));
         OnPropertyChanged(nameof(IsCoacdEnabled));
@@ -188,12 +188,14 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
     partial void OnGeneratePhysicsChanged(bool value)
     {
+        PushTypedPropertyToBag("physics:enabled", value);
         OnPropertyChanged(nameof(IsPhysicsEnabled));
         OnPropertyChanged(nameof(IsCoacdEnabled));
     }
 
     partial void OnSelectedPhysicsModeChanged(DisplayOption value)
     {
+        PushTypedPropertyToBag("physics:mode", value?.Value);
         OnPropertyChanged(nameof(IsPhysicsEnabled));
         OnPropertyChanged(nameof(IsCoacdEnabled));
     }
@@ -210,9 +212,10 @@ public sealed partial class ConvertViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanRunCommand))]
     private async Task RunConversionAsync()
     {
+        var settings = CaptureSettings();
         await RunBusyAsync("Running conversion...", () =>
         {
-            var result = _conversionService.RunConversion(CaptureSettings());
+            var result = _conversionService.RunConversion(settings);
             _logSink.Append(result);
         });
     }
@@ -270,7 +273,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _setStatusMessage("Loading preview...");
         _logSink.Append("Loading preview...");
 
-        var result = await Task.Run(() => _conversionService.LoadPreview(CaptureSettings()));
+        var settings = CaptureSettings();
+        var result = await Task.Run(() => _conversionService.LoadPreview(settings));
         _onPreviewLoaded(result, InputPath);
         _setStatusMessage("Preview loaded.");
         _logSink.Append("Preview loaded.");
@@ -299,7 +303,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
             MaxConvexPieces,
             MaxHullVertices,
             ParseMaxTextureSize(SelectedMaxTextureSize.Value),
-            DeduplicateTextures);
+            DeduplicateTextures,
+            CurrentExporterOptions.BuildExportOptions());
     }
 
     private static int ParseMaxTextureSize(string value)
@@ -415,6 +420,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
             MaxConvexPieces = settings.MaxConvexPieces;
             MaxHullVertices = settings.MaxHullVertices;
         }
+        LoadExporterOptions(settings.ExporterOptions);
     }
 
     internal void ApplyExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)

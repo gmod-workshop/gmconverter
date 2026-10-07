@@ -1,3 +1,4 @@
+using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Importers;
 
 namespace GMConverter.UI.Services;
@@ -23,4 +24,5 @@ internal sealed record ConversionSettings(
     int MaxConvexPieces,
     int MaxHullVertices,
     int MaxTextureSize,
-    bool DeduplicateTextures);
+    bool DeduplicateTextures,
+    ExportOptions ExporterOptions);

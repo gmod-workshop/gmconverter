@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.
 - Fixed self-illuminated Source materials rendering fully lit in Garry's Mod. Static glow was written as a separate `$selfillummask`, but the game reads self-illumination from an alpha channel that was solid white. Opaque materials now store glow coverage in the base texture's alpha with plain `$selfillum`; translucent ones keep a mask with coverage in every channel.
 - Fixed inside-out parts rendering nearly black in PSK imports. Closed shells whose winding is inverted relative to a clear majority of the mesh's closed shells (such as one of the bacta dispenser's eyelid doors in Republic Commando) are now rewound on import. Open surfaces and PSKX files with authored normals are left unchanged.
 - Fixed the UE2 property reader discarding bool properties, so flags such as FinalBlend `AlphaTest` and `TwoSided` were always read as unset. FinalBlend's additive "Translucent" mode is also no longer treated as alpha blending.
+- Fixed UE2 materials whose glow comes through a `Combiner` (such as Republic Commando's droid dispensers) losing their self-illumination and having the glow's scroll applied to the diffuse texture. Nested combiners now keep their channel, a glow colour texture smaller than its mask is resampled instead of dropped, and a `SelfIlluminationMask` that cannot be baked no longer falls back to lighting the whole surface.
 
 ## [1.7.0] - 2026-05-21
 

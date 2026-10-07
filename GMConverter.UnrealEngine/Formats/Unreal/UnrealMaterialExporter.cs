@@ -363,7 +363,28 @@ internal static class UnrealMaterialExporter
             return;
         }
 
-        PopulateTextureReferences(materialObject, outputDirectory, resolver, textureReferences, visitedObjects);
+        // A Combiner inside a channel stays in that channel; treating it as a whole material would
+        // file its texture (and any panner inside it) under Diffuse.
+        if (materialObject.ClassName.Equals("Combiner", StringComparison.OrdinalIgnoreCase))
+        {
+            PopulateFirstAvailableReference(
+                materialObject.Package,
+                properties,
+                ["Material2", "Material1", "Mask"],
+                channelName,
+                outputDirectory,
+                resolver,
+                textureReferences,
+                visitedObjects);
+            return;
+        }
+
+        // Other nested materials (e.g. a Shader used as a diffuse) are only meaningful as a whole
+        // material on the diffuse chain; elsewhere there is no channel to map them onto.
+        if (channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        {
+            PopulateTextureReferences(materialObject, outputDirectory, resolver, textureReferences, visitedObjects);
+        }
     }
 
     // Only the diffuse and self-illumination-mask chains map to exporter layers that can scroll

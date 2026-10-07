@@ -674,8 +674,11 @@ internal sealed class PSKImporter : IImporter
                 specularTexture = TryLoadLayerTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false, excludedKeyTerms: ["norm", "nrm"]);
-                emissiveTexture = TryBakeMaskedSelfIllumination(references, separatelyScrolled: sidecarSettings.EmissiveUvScrollRate is not null) ??
-                    TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
+                // A SelfIlluminationMask confines the glow; if the masked bake can't be built, an
+                // unmasked fallback would light the whole surface, so leave the material unlit.
+                emissiveTexture = references.ContainsKey("SelfIlluminationMask")
+                    ? TryBakeMaskedSelfIllumination(references, separatelyScrolled: sidecarSettings.EmissiveUvScrollRate is not null)
+                    : TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false);
             }
@@ -924,22 +927,27 @@ internal sealed class PSKImporter : IImporter
             var colorPixels = color.GetRgbaPixels();
             if (!separatelyScrolled)
             {
-                if (color.Width != mask.Width || color.Height != mask.Height)
-                {
-                    return null;
-                }
-
+                // Bake at the mask's resolution, sampling the colour texture nearest-neighbour when
+                // the two differ (e.g. a small glow pattern gated by a large diffuse's alpha).
                 var maskPixels = mask.GetRgbaPixels();
-                for (var i = 0; i < colorPixels.Length; i += 4)
+                var glow = new byte[maskPixels.Length];
+                for (var y = 0; y < mask.Height; y++)
                 {
-                    var coverage = maskPixels[i + 3] / 255.0;
-                    colorPixels[i] = (byte)Math.Round(colorPixels[i] * coverage);
-                    colorPixels[i + 1] = (byte)Math.Round(colorPixels[i + 1] * coverage);
-                    colorPixels[i + 2] = (byte)Math.Round(colorPixels[i + 2] * coverage);
-                    colorPixels[i + 3] = byte.MaxValue;
+                    var colorY = Math.Min(color.Height - 1, y * color.Height / mask.Height);
+                    for (var x = 0; x < mask.Width; x++)
+                    {
+                        var colorX = Math.Min(color.Width - 1, x * color.Width / mask.Width);
+                        var c = ((colorY * color.Width) + colorX) * 4;
+                        var m = ((y * mask.Width) + x) * 4;
+                        var coverage = maskPixels[m + 3] / 255.0;
+                        glow[m] = (byte)Math.Round(colorPixels[c] * coverage);
+                        glow[m + 1] = (byte)Math.Round(colorPixels[c + 1] * coverage);
+                        glow[m + 2] = (byte)Math.Round(colorPixels[c + 2] * coverage);
+                        glow[m + 3] = byte.MaxValue;
+                    }
                 }
 
-                return _textureFactory.FromRgba($"{mask.Name}_glow", color.Width, color.Height, colorPixels, hasAlpha: false);
+                return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, glow, hasAlpha: false);
             }
 
             var texelCount = Math.Max(1, colorPixels.Length / 4);

@@ -227,6 +227,40 @@ public sealed class UnrealUnitsTests
         Assert.Null(material.SpecularTexture);
     }
 
+    [Fact]
+    public void MaskedSelfIlluminationResamplesSmallerGlowColourToMask()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nSelfIllumination=flash\nSelfIlluminationMask=panel\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51, size: 4);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "flash.tga"), alpha: 255, size: 2, blue: 0, green: 200, red: 100);
+
+        var material = Assert.Single(PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+
+        // Glow = the 2x2 flash colour (R100 G200 B0) sampled up to the 4x4 mask, x alpha 51/255.
+        var glow = material.EmissiveTexture!;
+        Assert.Equal((4, 4), (glow.Width, glow.Height));
+        Assert.Equal([20, 40, 0, 255], glow.GetRgbaPixels()[^4..]);
+    }
+
+    [Fact]
+    public void SelfIlluminationMaskWithoutColourLeavesMaterialUnlit()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nSelfIlluminationMask=panel\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
+
+        var material = Assert.Single(PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+
+        Assert.Null(material.EmissiveTexture);
+    }
+
     [Theory]
     [InlineData("Blend=Masked\nAlphaRef=127\n", "\"$alphatest\" \"1\"", "\"$alphatestreference\" \"0.498\"")]
     [InlineData("Blend=Additive\n", "\"$additive\" \"1\"", null)]
@@ -352,18 +386,18 @@ public sealed class UnrealUnitsTests
 
     // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the
     // fourth channel carries real opacity; decoders that trust the header discard it.
-    private static void WriteUnlabeledAlphaTga(string path, byte alpha)
+    private static void WriteUnlabeledAlphaTga(string path, byte alpha, int size = 2, byte blue = 240, byte green = 220, byte red = 80)
     {
         using var writer = new BinaryWriter(File.Create(path));
         writer.Write([0, 0, 2]);
         writer.Write(new byte[9]);
-        writer.Write((ushort)2);
-        writer.Write((ushort)2);
+        writer.Write((ushort)size);
+        writer.Write((ushort)size);
         writer.Write((byte)32);
         writer.Write((byte)0x20);
-        for (var index = 0; index < 4; index++)
+        for (var index = 0; index < size * size; index++)
         {
-            writer.Write([240, 220, 80, alpha]);
+            writer.Write([blue, green, red, alpha]);
         }
     }
 

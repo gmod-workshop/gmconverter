@@ -775,10 +775,7 @@ internal sealed class MDLExporter : IExporter
                 writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{sourceTexturePath}_normal\""));
             }
 
-            if (material.HasAlpha)
-            {
-                writer.WriteLine("    \"$translucent\" \"1\"");
-            }
+            SourceMaterialBlend.Write(writer, material);
 
             if (UseSourcePhong(material))
             {

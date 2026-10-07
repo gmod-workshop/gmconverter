@@ -11,6 +11,8 @@ namespace GMConverter.UI.Tests;
 
 public sealed class UnrealUnitsTests
 {
+    private static readonly string[] _sourceBlendParameters = ["$additive", "$alphatest\"", "$translucent"];
+
     [Fact]
     public void SourceCollisionThicknessPreservesSmallModelsAndPadsFlatAxes()
     {
@@ -223,6 +225,41 @@ public sealed class UnrealUnitsTests
 
         Assert.Equal("panel_bump", material.NormalTexture?.Name);
         Assert.Null(material.SpecularTexture);
+    }
+
+    [Theory]
+    [InlineData("Blend=Masked\nAlphaRef=127\n", "\"$alphatest\" \"1\"", "\"$alphatestreference\" \"0.498\"")]
+    [InlineData("Blend=Additive\n", "\"$additive\" \"1\"", null)]
+    [InlineData("Blend=Translucent\n", "\"$translucent\" \"1\"", null)]
+    public void SidecarBlendModeReachesSourceVmt(string blendLines, string expected, string? alsoExpected)
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nOpacity=panel\n" + blendLines);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 200);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+
+        var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
+        Assert.Contains(expected, vmt);
+        if (alsoExpected is not null)
+        {
+            Assert.Contains(alsoExpected, vmt);
+        }
+
+        // Exactly one Source blend mode is written.
+        Assert.Equal(1, _sourceBlendParameters.Count(vmt.Contains));
     }
 
     [Fact]

@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Moved the format-agnostic helpers `NameHelpers`, `PathHelpers`, `PerfTimer`, and `ExplorerFileSystem` from `GMConverter.Common`/`GMConverter.Explorer` (Core) to `GMConverter.SDK.Common`/`GMConverter.SDK.Explorer` so plugins (and any future engine plugin) can share them without taking a Core reference.
 - Added scrolling-texture support for Unreal Engine 2 materials. `TexPanner` rates and directions on a material's diffuse chain are recorded in UE2 Explorer material sidecars (`UvScroll=<u>,<v>`), carried on the new SDK `Material.UvScrollRate`, and written to Source VMTs as `TextureScroll` proxies, so animated liquids such as Republic Commando's bacta dispenser scroll in game.
 - Added independently scrolling glow layers for Unreal Engine 2 shaders whose `SelfIlluminationMask` is panned separately from the rest of the material, such as the bubbles in Republic Commando's bacta liquid. The mask is baked with the self-illumination colour, carried on the new SDK `Material.EmissiveUvScrollRate`, and written to Source as an unlit additive `$detail` layer with its own `TextureScroll`.
+- Added material blend modes. The SDK `Material` now carries `BlendMode` (alpha blend, alpha test, or additive) and `AlphaCutoff`. Unreal Engine 2 Shader and FinalBlend blending (including masked cut-outs and additive glows) is recorded in UE2 Explorer sidecars and written to Source as `$translucent`, `$alphatest`/`$alphatestreference`, or `$additive`; glTF exports alpha-tested materials with `MASK`. Materials without a blend mode keep the previous alpha-based behaviour.
 
 ### Changed
 
@@ -39,6 +40,7 @@ All notable changes to this project will be documented in this file.
 - Fixed PSK materials with an explicit `Normal` sidecar entry also using the normal map as their specular texture, which produced bogus phong and envmap settings in Source. The packed-texture term `orm` matched the `Normal` key.
 - Fixed self-illuminated Source materials rendering fully lit in Garry's Mod. Static glow was written as a separate `$selfillummask`, but the game reads self-illumination from an alpha channel that was solid white. Opaque materials now store glow coverage in the base texture's alpha with plain `$selfillum`; translucent ones keep a mask with coverage in every channel.
 - Fixed inside-out parts rendering nearly black in PSK imports. Closed shells whose winding is inverted relative to a clear majority of the mesh's closed shells (such as one of the bacta dispenser's eyelid doors in Republic Commando) are now rewound on import. Open surfaces and PSKX files with authored normals are left unchanged.
+- Fixed the UE2 property reader discarding bool properties, so flags such as FinalBlend `AlphaTest` and `TwoSided` were always read as unset. FinalBlend's additive "Translucent" mode is also no longer treated as alpha blending.
 
 ## [1.7.0] - 2026-05-21
 

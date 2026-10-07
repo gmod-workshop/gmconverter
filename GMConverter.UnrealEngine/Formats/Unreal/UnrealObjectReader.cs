@@ -74,8 +74,10 @@ internal sealed class UnrealObjectReader
                 SkipArrayIndex();
             }
 
+            // Bool properties carry their value in the tag's array flag and have no payload.
             if (propertyType == 3)
             {
+                properties.AddInteger(propertyName, hasArrayIndex ? 1 : 0);
                 continue;
             }
 

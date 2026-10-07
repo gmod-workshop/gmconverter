@@ -15,7 +15,9 @@ public sealed class Material(
     System.Numerics.Vector2? bakedUv0Scale = null,
     float specularFactor = 1.0f,
     System.Numerics.Vector2? uvScrollRate = null,
-    System.Numerics.Vector2? emissiveUvScrollRate = null)
+    System.Numerics.Vector2? emissiveUvScrollRate = null,
+    MaterialBlendMode blendMode = MaterialBlendMode.Unspecified,
+    float alphaCutoff = 0.5f)
 {
     public string Name { get; } = name;
 
@@ -58,6 +60,11 @@ public sealed class Material(
     // emissive layer moves independently of the rest of the material, so exporters should apply
     // it as a separately transformed layer rather than a mask sampled with the base coordinates.
     public System.Numerics.Vector2? EmissiveUvScrollRate { get; } = emissiveUvScrollRate;
+
+    public MaterialBlendMode BlendMode { get; } = blendMode;
+
+    // Diffuse alpha threshold in [0, 1] for MaterialBlendMode.AlphaTest.
+    public float AlphaCutoff { get; } = alphaCutoff;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

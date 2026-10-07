@@ -543,7 +543,12 @@ internal sealed class GLTFExporter : IExporter
             ApplyUvScale(builder.UseChannel(KnownChannel.Emissive), uvScale);
         }
 
-        if (material.HasAlpha)
+        // Core glTF has no additive mode, so additive materials keep the alpha-based fallback.
+        if (material.BlendMode == MaterialBlendMode.AlphaTest && material.HasAlpha)
+        {
+            builder.WithAlpha(AlphaMode.MASK, material.AlphaCutoff);
+        }
+        else if (material.HasAlpha)
         {
             builder.WithAlpha(AlphaMode.BLEND, 0.5f);
         }

@@ -196,10 +196,7 @@ internal sealed class SourceMaterialCompiler
             writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{normalTexturePath}\""));
         }
 
-        if (material.HasAlpha)
-        {
-            writer.WriteLine("    \"$translucent\" \"1\"");
-        }
+        SourceMaterialBlend.Write(writer, material);
 
         if (specTexturePath is not null && UseSourcePhong(material))
         {

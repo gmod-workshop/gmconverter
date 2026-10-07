@@ -606,8 +606,7 @@ internal sealed class PSKImporter : IImporter
             IReadOnlyDictionary<string, CueMaterialColor> colors = new Dictionary<string, CueMaterialColor>(StringComparer.OrdinalIgnoreCase);
             var usesCueMaterial = false;
             System.Numerics.Vector2? bakedUv0Scale = null;
-            System.Numerics.Vector2? uvScrollRate = null;
-            System.Numerics.Vector2? emissiveUvScrollRate = null;
+            var sidecarSettings = SidecarMaterialSettings.Default;
             string? materialAlias = null;
             if (TryGetLocalSidecar(material, meshPath, ".json", out var localCueMaterialPath))
             {
@@ -621,14 +620,12 @@ internal sealed class PSKImporter : IImporter
             else if (TryGetLocalSidecar(material, meshPath, ".mat", out var localMaterialPath))
             {
                 references = ReadMaterialReferences(localMaterialPath);
-                uvScrollRate = ReadUvScrollRate(localMaterialPath, UnrealMaterialExporter.UvScrollKey);
-                emissiveUvScrollRate = ReadUvScrollRate(localMaterialPath, UnrealMaterialExporter.EmissiveUvScrollKey);
+                sidecarSettings = ReadSidecarSettings(localMaterialPath);
             }
             else if (TryGetSidecar(_materialSidecars, material, out var materialPath))
             {
                 references = ReadMaterialReferences(materialPath);
-                uvScrollRate = ReadUvScrollRate(materialPath, UnrealMaterialExporter.UvScrollKey);
-                emissiveUvScrollRate = ReadUvScrollRate(materialPath, UnrealMaterialExporter.EmissiveUvScrollKey);
+                sidecarSettings = ReadSidecarSettings(materialPath);
             }
             else if (TryGetSidecar(_cueMaterialSidecars, material, out var cueMaterialPath))
             {
@@ -677,7 +674,7 @@ internal sealed class PSKImporter : IImporter
                 specularTexture = TryLoadLayerTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false, excludedKeyTerms: ["norm", "nrm"]);
-                emissiveTexture = TryBakeMaskedSelfIllumination(references, separatelyScrolled: emissiveUvScrollRate is not null) ??
+                emissiveTexture = TryBakeMaskedSelfIllumination(references, separatelyScrolled: sidecarSettings.EmissiveUvScrollRate is not null) ??
                     TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false);
@@ -729,8 +726,10 @@ internal sealed class PSKImporter : IImporter
                     : MaterialNormalTextureConvention.OpenGl,
                 bakedUv0Scale: bakedUv0Scale,
                 specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f,
-                uvScrollRate: uvScrollRate,
-                emissiveUvScrollRate: emissiveUvScrollRate);
+                uvScrollRate: sidecarSettings.UvScrollRate,
+                emissiveUvScrollRate: sidecarSettings.EmissiveUvScrollRate,
+                blendMode: sidecarSettings.BlendMode,
+                alphaCutoff: sidecarSettings.AlphaCutoff);
         }
 
         // Fortnite's SpecularMasks.R doesn't drive specular intensity in the in-game renderer (FP's
@@ -1448,8 +1447,7 @@ internal sealed class PSKImporter : IImporter
                 }
 
                 var key = trimmed[..separator].Trim();
-                if (key.Equals(UnrealMaterialExporter.UvScrollKey, StringComparison.OrdinalIgnoreCase) ||
-                    key.Equals(UnrealMaterialExporter.EmissiveUvScrollKey, StringComparison.OrdinalIgnoreCase))
+                if (_sidecarSettingKeys.Contains(key))
                 {
                     continue;
                 }
@@ -1466,19 +1464,67 @@ internal sealed class PSKImporter : IImporter
             return references;
         }
 
-        private static System.Numerics.Vector2? ReadUvScrollRate(string materialPath, string key)
+        // Non-texture sidecar entries written by the UE2 material exporter. Read raw, since texture
+        // reference values are name-normalized, and kept out of the texture lookups.
+        private static readonly HashSet<string> _sidecarSettingKeys = new(StringComparer.OrdinalIgnoreCase)
         {
-            var prefix = key + "=";
-            var line = File.ReadLines(materialPath)
-                .Select(l => l.Trim())
-                .FirstOrDefault(l => l.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-            var parts = line?[prefix.Length..].Split(',', StringSplitOptions.TrimEntries);
+            UnrealMaterialExporter.UvScrollKey,
+            UnrealMaterialExporter.EmissiveUvScrollKey,
+            UnrealMaterialExporter.BlendKey,
+            UnrealMaterialExporter.AlphaRefKey
+        };
+
+        private static SidecarMaterialSettings ReadSidecarSettings(string materialPath)
+        {
+            Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in File.ReadLines(materialPath))
+            {
+                var separator = line.IndexOf('=');
+                if (separator > 0 && _sidecarSettingKeys.Contains(line[..separator].Trim()))
+                {
+                    values.TryAdd(line[..separator].Trim(), line[(separator + 1)..].Trim());
+                }
+            }
+
             var inv = System.Globalization.CultureInfo.InvariantCulture;
-            return parts is { Length: 2 } &&
-                float.TryParse(parts[0], System.Globalization.NumberStyles.Float, inv, out var u) &&
-                float.TryParse(parts[1], System.Globalization.NumberStyles.Float, inv, out var v)
-                ? new System.Numerics.Vector2(u, v)
-                : null;
+            System.Numerics.Vector2? ParseScroll(string key)
+            {
+                var parts = values.GetValueOrDefault(key)?.Split(',', StringSplitOptions.TrimEntries);
+                return parts is { Length: 2 } &&
+                    float.TryParse(parts[0], System.Globalization.NumberStyles.Float, inv, out var u) &&
+                    float.TryParse(parts[1], System.Globalization.NumberStyles.Float, inv, out var v)
+                    ? new System.Numerics.Vector2(u, v)
+                    : null;
+            }
+
+            var blendMode = values.GetValueOrDefault(UnrealMaterialExporter.BlendKey)?.ToLowerInvariant() switch
+            {
+                "translucent" => MaterialBlendMode.AlphaBlend,
+                "masked" => MaterialBlendMode.AlphaTest,
+                "additive" => MaterialBlendMode.Additive,
+                _ => MaterialBlendMode.Unspecified
+            };
+
+            // UE2 keeps pixels whose alpha exceeds AlphaRef; a zero reference still drops fully
+            // transparent texels, so never let the cutoff reach zero.
+            var alphaCutoff = int.TryParse(values.GetValueOrDefault(UnrealMaterialExporter.AlphaRefKey), System.Globalization.NumberStyles.Integer, inv, out var alphaRef)
+                ? Math.Clamp(alphaRef, 1, 255) / 255f
+                : SidecarMaterialSettings.Default.AlphaCutoff;
+
+            return new SidecarMaterialSettings(
+                ParseScroll(UnrealMaterialExporter.UvScrollKey),
+                ParseScroll(UnrealMaterialExporter.EmissiveUvScrollKey),
+                blendMode,
+                alphaCutoff);
+        }
+
+        private sealed record SidecarMaterialSettings(
+            System.Numerics.Vector2? UvScrollRate,
+            System.Numerics.Vector2? EmissiveUvScrollRate,
+            MaterialBlendMode BlendMode,
+            float AlphaCutoff)
+        {
+            public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f);
         }
 
         private static CueMaterial ReadCueMaterial(string materialPath)

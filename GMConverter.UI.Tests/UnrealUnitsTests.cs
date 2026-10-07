@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using GMConverter.Plugins;
 using GMConverter.SDK.Animation;
+using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 
@@ -90,6 +91,40 @@ public sealed class UnrealUnitsTests
         Assert.True(material.HasAlpha);
         var pixels = material.DiffuseTexture!.GetRgbaPixels();
         Assert.All(Enumerable.Range(0, pixels.Length / 4), index => Assert.Equal(128, pixels[(index * 4) + 3]));
+    }
+
+    [Fact]
+    public void SidecarUvScrollBecomesSourceTextureScrollProxy()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=fluid\nUvScroll=0,-0.2\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "fluid.tga"), alpha: 255);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var material = Assert.Single(model.Materials);
+        Assert.Equal(new Vector2(0, -0.2f), material.UvScrollRate);
+        Assert.NotNull(material.DiffuseTexture);
+
+        // buildMaterials=false makes the exporter write PNG + VMT itself before studiomdl runs;
+        // the stub compiler then fails, which is irrelevant to the material output under test.
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+
+        var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
+        Assert.Contains("\"TextureScroll\"", vmt);
+        Assert.Contains("\"texturescrollvar\" \"$basetexturetransform\"", vmt);
+        Assert.Contains("\"texturescrollrate\" \"0.2\"", vmt);
+        Assert.Contains("\"texturescrollangle\" \"-90\"", vmt);
     }
 
     // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the

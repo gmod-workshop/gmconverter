@@ -9,6 +9,7 @@ using GMConverter.SDK.Textures;
 using GMConverter.UnrealEngine.Common;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
+using GMConverter.UnrealEngine.Formats.Unreal;
 using SixLabors.ImageSharp;
 
 namespace GMConverter.UnrealEngine.Importers;
@@ -599,6 +600,7 @@ internal sealed class PSKImporter : IImporter
             IReadOnlyDictionary<string, CueMaterialColor> colors = new Dictionary<string, CueMaterialColor>(StringComparer.OrdinalIgnoreCase);
             var usesCueMaterial = false;
             System.Numerics.Vector2? bakedUv0Scale = null;
+            System.Numerics.Vector2? uvScrollRate = null;
             string? materialAlias = null;
             if (TryGetLocalSidecar(material, meshPath, ".json", out var localCueMaterialPath))
             {
@@ -612,10 +614,12 @@ internal sealed class PSKImporter : IImporter
             else if (TryGetLocalSidecar(material, meshPath, ".mat", out var localMaterialPath))
             {
                 references = ReadMaterialReferences(localMaterialPath);
+                uvScrollRate = ReadUvScrollRate(localMaterialPath);
             }
             else if (TryGetSidecar(_materialSidecars, material, out var materialPath))
             {
                 references = ReadMaterialReferences(materialPath);
+                uvScrollRate = ReadUvScrollRate(materialPath);
             }
             else if (TryGetSidecar(_cueMaterialSidecars, material, out var cueMaterialPath))
             {
@@ -714,7 +718,8 @@ internal sealed class PSKImporter : IImporter
                     ? MaterialNormalTextureConvention.DirectX
                     : MaterialNormalTextureConvention.OpenGl,
                 bakedUv0Scale: bakedUv0Scale,
-                specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f);
+                specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f,
+                uvScrollRate: uvScrollRate);
         }
 
         // Fortnite's SpecularMasks.R doesn't drive specular intensity in the in-game renderer (FP's
@@ -1363,6 +1368,11 @@ internal sealed class PSKImporter : IImporter
                 }
 
                 var key = trimmed[..separator].Trim();
+                if (key.Equals(UnrealMaterialExporter.UvScrollKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var value = NormalizeReference(trimmed[(separator + 1)..]);
                 if (value.Length == 0)
                 {
@@ -1373,6 +1383,21 @@ internal sealed class PSKImporter : IImporter
             }
 
             return references;
+        }
+
+        private static System.Numerics.Vector2? ReadUvScrollRate(string materialPath)
+        {
+            var prefix = UnrealMaterialExporter.UvScrollKey + "=";
+            var line = File.ReadLines(materialPath)
+                .Select(l => l.Trim())
+                .FirstOrDefault(l => l.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            var parts = line?[prefix.Length..].Split(',', StringSplitOptions.TrimEntries);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            return parts is { Length: 2 } &&
+                float.TryParse(parts[0], System.Globalization.NumberStyles.Float, inv, out var u) &&
+                float.TryParse(parts[1], System.Globalization.NumberStyles.Float, inv, out var v)
+                ? new System.Numerics.Vector2(u, v)
+                : null;
         }
 
         private static CueMaterial ReadCueMaterial(string materialPath)

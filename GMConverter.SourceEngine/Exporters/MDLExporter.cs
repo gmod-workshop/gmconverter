@@ -800,6 +800,7 @@ internal sealed class MDLExporter : IExporter
                 writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{sourceTexturePath}_illum\""));
             }
 
+            SourceMaterialProxies.WriteUvScroll(writer, material);
             writer.WriteLine("}");
 
             material.EmissiveTexture?.WritePng(Path.Combine(materialDirectory, $"{material.Name}_illum.png"));

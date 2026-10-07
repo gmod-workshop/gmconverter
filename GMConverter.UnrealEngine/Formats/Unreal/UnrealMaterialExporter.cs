@@ -5,6 +5,14 @@ namespace GMConverter.UnrealEngine.Formats.Unreal;
 
 internal static class UnrealMaterialExporter
 {
+    // Sidecar key carrying a constant UV scroll as "U,V" texture sizes per second (invariant
+    // culture). Kept out of the texture channels because reference values are name-normalized.
+    internal const string UvScrollKey = "UvScroll";
+
+    // UE2 TexPanner defaults: PanRate 0.1 and a zero PanDirection, which pans along +U.
+    private const float _defaultPanRate = 0.1f;
+    private const float _rotatorUnitsPerRadian = 32768f / MathF.PI;
+
     private static readonly IReadOnlyDictionary<string, string> _shaderChannels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["Diffuse"] = "Diffuse",
@@ -166,6 +174,7 @@ internal static class UnrealMaterialExporter
             return false;
         }
 
+        RecordTexturePanner(materialObject, properties, "Diffuse", textureReferences);
         PopulateTextureReference(
             resolver.Resolve(materialObject.Package, wrappedMaterialReference.Value),
             "Diffuse",
@@ -284,6 +293,7 @@ internal static class UnrealMaterialExporter
         var wrappedMaterialReference = properties.FirstObjectReference("Material");
         if (wrappedMaterialReference is not null && wrappedMaterialReference.Value != 0)
         {
+            RecordTexturePanner(materialObject, properties, channelName, textureReferences);
             PopulateTextureReference(
                 resolver.Resolve(materialObject.Package, wrappedMaterialReference.Value),
                 channelName,
@@ -295,6 +305,32 @@ internal static class UnrealMaterialExporter
         }
 
         PopulateTextureReferences(materialObject, outputDirectory, resolver, textureReferences, visitedObjects);
+    }
+
+    // Source and glTF scroll a whole material rather than one channel, so only the panner on the
+    // diffuse chain is kept; the first one found wins, matching TryAdd for texture channels.
+    private static void RecordTexturePanner(
+        UnrealResolvedObject materialObject,
+        UnrealPropertyCollection properties,
+        string channelName,
+        Dictionary<string, string> textureReferences)
+    {
+        if (!materialObject.ClassName.Equals("TexPanner", StringComparison.OrdinalIgnoreCase) ||
+            !channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var rate = properties.FirstFloat("PanRate") ?? _defaultPanRate;
+        var yaw = (properties.FirstInteger("PanDirection.Yaw") ?? 0) / _rotatorUnitsPerRadian;
+        var u = rate * MathF.Cos(yaw);
+        var v = rate * MathF.Sin(yaw);
+        if (MathF.Abs(u) < 1e-6f && MathF.Abs(v) < 1e-6f)
+        {
+            return;
+        }
+
+        textureReferences.TryAdd(UvScrollKey, FormattableString.Invariant($"{u:R},{v:R}"));
     }
 
     private static UnrealPropertyCollection? ReadObjectProperties(UnrealResolvedObject materialObject)

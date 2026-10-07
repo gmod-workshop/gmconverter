@@ -214,6 +214,7 @@ internal sealed class SourceMaterialCompiler
             writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{illumTexturePath}\""));
         }
 
+        SourceMaterialProxies.WriteUvScroll(writer, material);
         writer.WriteLine("}");
     }
 

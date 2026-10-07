@@ -13,7 +13,8 @@ public sealed class Material(
     MaterialSpecularTexturePacking specularTexturePacking = MaterialSpecularTexturePacking.Standard,
     MaterialNormalTextureConvention normalTextureConvention = MaterialNormalTextureConvention.OpenGl,
     System.Numerics.Vector2? bakedUv0Scale = null,
-    float specularFactor = 1.0f)
+    float specularFactor = 1.0f,
+    System.Numerics.Vector2? uvScrollRate = null)
 {
     public string Name { get; } = name;
 
@@ -45,6 +46,12 @@ public sealed class Material(
     // set this when the source asset's specular convention doesn't line up with the glTF default
     // — e.g. Fortnite materials need ≈0.01 to match the very subtle in-game highlights.
     public float SpecularFactor { get; } = specularFactor;
+
+    // Constant texture-coordinate scroll applied to the material's textures, in texture widths and
+    // heights per second. Expressed in image space (U to the right, V down the stored image) so it
+    // is independent of each format's UV origin; e.g. a UE2 TexPanner with PanRate 0.1 along U is
+    // (0.1, 0). Exporters without animated materials ignore it.
+    public System.Numerics.Vector2? UvScrollRate { get; } = uvScrollRate;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

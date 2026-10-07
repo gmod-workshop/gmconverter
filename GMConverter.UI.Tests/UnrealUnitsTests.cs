@@ -322,6 +322,34 @@ public sealed class UnrealUnitsTests
         }
     }
 
+    [Fact]
+    public void SmdEulerAnglesKeepRotationAtNinetyDegreePitch()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        // A bone pitched straight up is gimbal locked: roll and yaw spin about the same axis, so
+        // the SMD angles must fold the whole spin into one of them rather than emit atan2 noise.
+        var rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6f) *
+            Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);
+        var (psk, _) = WriteFixture(rotation);
+        var directory = Path.GetDirectoryName(psk)!;
+        var model = PluginHost.Registry.GetImporter("psk")!.Parse(psk, new ModelParseOptions(1f));
+        var expected = model.Skeleton!.Bones[0].LocalBindPose.Rotation;
+
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?> { ["studioMdlPath"] = stubStudioMdl })));
+
+        var smd = File.ReadAllLines(Directory.GetFiles(output, "triangle.smd", SearchOption.AllDirectories).Single());
+        var bone = smd[Array.IndexOf(smd, "time 0") + 1].Split(' ').Select(value => float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        // Source's AngleMatrix composes roll about X, then pitch about Y, then yaw about Z.
+        var actual = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, bone[6]) *
+            Quaternion.CreateFromAxisAngle(Vector3.UnitY, bone[5]) *
+            Quaternion.CreateFromAxisAngle(Vector3.UnitX, bone[4]);
+        Assert.Equal(1f, MathF.Abs(Quaternion.Dot(Quaternion.Normalize(expected), actual)), 4);
+    }
+
     // Four closed tetrahedra 100 cm apart; all but `invertedShell` use the winding the bacta
     // dispenser's correct parts use (negative signed volume in raw ActorX space).
     private static void WriteTetrahedraFixture(string path, int invertedShell)
@@ -401,8 +429,10 @@ public sealed class UnrealUnitsTests
         }
     }
 
-    private static (string Psk, string Psa) WriteFixture()
+    private static (string Psk, string Psa) WriteFixture(Quaternion? rootRotation = null)
     {
+        void WriteRootBone(BinaryWriter writer) => WriteBone(writer, rootRotation ?? Quaternion.Identity);
+
         var directory = Path.Join(Path.GetTempPath(), "GMConverter.UnitTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var psk = Path.Join(directory, "triangle.psk");
@@ -439,7 +469,7 @@ public sealed class UnrealUnitsTests
                 WriteFixedString(w, "test", 64);
                 w.Write(new byte[24]);
             });
-            WriteSection(writer, "REFSKELT", 120, 1, WriteBone);
+            WriteSection(writer, "REFSKELT", 120, 1, WriteRootBone);
             WriteSection(writer, "RAWWEIGHTS", 12, 3, w =>
             {
                 for (var index = 0; index < 3; index++)
@@ -453,7 +483,7 @@ public sealed class UnrealUnitsTests
         using (var writer = new BinaryWriter(File.Create(psa)))
         {
             WriteSection(writer, "ANIMHEAD", 0, 0, _ => { });
-            WriteSection(writer, "BONENAMES", 120, 1, WriteBone);
+            WriteSection(writer, "BONENAMES", 120, 1, WriteRootBone);
             WriteSection(writer, "ANIMINFO", 168, 1, w =>
             {
                 WriteFixedString(w, "move", 64);
@@ -487,12 +517,17 @@ public sealed class UnrealUnitsTests
 
     private static void WriteBone(BinaryWriter writer)
     {
+        WriteBone(writer, Quaternion.Identity);
+    }
+
+    private static void WriteBone(BinaryWriter writer, Quaternion rotation)
+    {
         WriteFixedString(writer, "root", 64);
         writer.Write(0);
         writer.Write(0);
         writer.Write(0);
-        WriteVector(writer, 0, 0, 0);
-        writer.Write(1f);
+        WriteVector(writer, rotation.X, rotation.Y, rotation.Z);
+        writer.Write(rotation.W);
         WriteVector(writer, 25, 0, 0);
         writer.Write(1f);
         WriteVector(writer, 1, 1, 1);

@@ -30,6 +30,7 @@ internal sealed class MDLExporter : IExporter
     // boundary. Multiply by 39.3700787 (in/m) when writing SMD
     // so the exported MDL renders at its real-world size in-engine.
     private const float _metersToSourceUnits = 39.3700787f;
+    private const double _gimbalLockThreshold = 0.001;
 
     public string OutputFormat => "mdl";
 
@@ -701,21 +702,38 @@ internal sealed class MDLExporter : IExporter
     private static Vector3 ToEulerRadians(Quaternion rotation)
     {
         rotation = NormalizeQuaternion(rotation);
+        double x = rotation.X;
+        double y = rotation.Y;
+        double z = rotation.Z;
+        double w = rotation.W;
 
-        var sinrCosp = 2.0 * (rotation.W * rotation.X + rotation.Y * rotation.Z);
-        var cosrCosp = 1.0 - 2.0 * (rotation.X * rotation.X + rotation.Y * rotation.Y);
-        var x = Math.Atan2(sinrCosp, cosrCosp);
+        // Mirrors Source's MatrixAngles: read the angles from the rotation matrix's forward and left
+        // columns. At ±90° pitch roll and yaw spin about the same axis, so the quaternion formulas
+        // degenerate to atan2(0, 0); fold the whole spin into yaw instead of emitting noise.
+        var forwardX = 1.0 - 2.0 * (y * y + z * z);
+        var forwardY = 2.0 * (x * y + w * z);
+        var forwardZ = 2.0 * (x * z - w * y);
+        var leftX = 2.0 * (x * y - w * z);
+        var leftY = 1.0 - 2.0 * (x * x + z * z);
+        var leftZ = 2.0 * (y * z + w * x);
+        var upZ = 1.0 - 2.0 * (x * x + y * y);
 
-        var sinp = 2.0 * (rotation.W * rotation.Y - rotation.Z * rotation.X);
-        var y = Math.Abs(sinp) >= 1.0
-            ? Math.CopySign(Math.PI / 2.0, sinp)
-            : Math.Asin(sinp);
+        var forwardLength = Math.Sqrt(forwardX * forwardX + forwardY * forwardY);
+        var pitch = Math.Atan2(-forwardZ, forwardLength);
+        double roll;
+        double yaw;
+        if (forwardLength > _gimbalLockThreshold)
+        {
+            roll = Math.Atan2(leftZ, upZ);
+            yaw = Math.Atan2(forwardY, forwardX);
+        }
+        else
+        {
+            roll = 0.0;
+            yaw = Math.Atan2(-leftX, leftY);
+        }
 
-        var sinyCosp = 2.0 * (rotation.W * rotation.Z + rotation.X * rotation.Y);
-        var cosyCosp = 1.0 - 2.0 * (rotation.Y * rotation.Y + rotation.Z * rotation.Z);
-        var z = Math.Atan2(sinyCosp, cosyCosp);
-
-        return new Vector3((float)x, (float)y, (float)z);
+        return new Vector3((float)roll, (float)pitch, (float)yaw);
     }
 
     private static Quaternion NormalizeQuaternion(Quaternion rotation)

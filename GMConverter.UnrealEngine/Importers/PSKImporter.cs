@@ -148,11 +148,17 @@ internal sealed class PSKImporter : IImporter
         var hasNegativeScale = sceneTransform is not null &&
             sceneTransform.Scale.X * sceneTransform.Scale.Y * sceneTransform.Scale.Z < 0f;
 
-        foreach (var face in psk.Faces)
+        // Closed shells shipped inside-out relative to the rest of the mesh are read with their
+        // corners in the opposite order, which also flips the face normal derived from them.
+        var invertedFaces = PSKShellWinding.FindInvertedFaces(psk);
+
+        for (var faceIndex = 0; faceIndex < psk.Faces.Count; faceIndex++)
         {
-            if (!TryGetCorner(psk, face.WedgeIndices[2], weightLookup, options, sceneTransform, out var a) ||
+            var face = psk.Faces[faceIndex];
+            var (first, last) = invertedFaces.Contains(faceIndex) ? (0, 2) : (2, 0);
+            if (!TryGetCorner(psk, face.WedgeIndices[first], weightLookup, options, sceneTransform, out var a) ||
                 !TryGetCorner(psk, face.WedgeIndices[1], weightLookup, options, sceneTransform, out var b) ||
-                !TryGetCorner(psk, face.WedgeIndices[0], weightLookup, options, sceneTransform, out var c))
+                !TryGetCorner(psk, face.WedgeIndices[last], weightLookup, options, sceneTransform, out var c))
             {
                 skippedFaces++;
                 continue;

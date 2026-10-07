@@ -225,6 +225,94 @@ public sealed class UnrealUnitsTests
         Assert.Null(material.SpecularTexture);
     }
 
+    [Fact]
+    public void InsideOutClosedShellIsRewoundToMatchTheMesh()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var directory = Path.Join(Path.GetTempPath(), "GMConverter.UnitTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var psk = Path.Join(directory, "shells.psk");
+        WriteTetrahedraFixture(psk, invertedShell: 2);
+
+        var model = PluginHost.Registry.GetImporter("psk")!.Parse(psk, new ModelParseOptions(1f));
+        var mesh = Assert.Single(model.Meshes);
+        var triangles = mesh.Triangles.ToArray();
+        Assert.Equal(16, triangles.Length);
+
+        // Shells sit 1 m apart and are 10 cm across, so cluster faces by centroid distance; every
+        // face must point away from its own shell's centre once the inside-out one is rewound.
+        Vector3 Centroid(Triangle t) => (mesh.Vertices[t.A].Position + mesh.Vertices[t.B].Position + mesh.Vertices[t.C].Position) / 3f;
+        var shells = triangles.GroupBy(t => triangles.First(o => Vector3.Distance(Centroid(o), Centroid(t)) < 0.5f)).ToArray();
+        Assert.Equal(4, shells.Length);
+        foreach (var shell in shells)
+        {
+            var centre = shell.Aggregate(Vector3.Zero, (sum, t) => sum + Centroid(t)) / shell.Count();
+            Assert.All(shell, t => Assert.True(Vector3.Dot(mesh.Vertices[t.A].Normal, Centroid(t) - centre) > 0));
+        }
+    }
+
+    // Four closed tetrahedra 100 cm apart; all but `invertedShell` use the winding the bacta
+    // dispenser's correct parts use (negative signed volume in raw ActorX space).
+    private static void WriteTetrahedraFixture(string path, int invertedShell)
+    {
+        Vector3[] corners = [new(0, 0, 0), new(10, 0, 0), new(0, 10, 0), new(0, 0, 10)];
+        int[][] negativeVolumeFaces = [[0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2]];
+        using var writer = new BinaryWriter(File.Create(path));
+        WriteSection(writer, "ACTRHEAD", 0, 0, _ => { });
+        WriteSection(writer, "PNTS0000", 12, 16, w =>
+        {
+            for (var shell = 0; shell < 4; shell++)
+            {
+                foreach (var corner in corners)
+                {
+                    WriteVector(w, corner.X + (shell * 100), corner.Y, corner.Z);
+                }
+            }
+        });
+        WriteSection(writer, "VTXW0000", 16, 16, w =>
+        {
+            for (var point = 0; point < 16; point++)
+            {
+                w.Write(point);
+                w.Write(0f);
+                w.Write(0f);
+                w.Write(0);
+            }
+        });
+        WriteSection(writer, "FACE0000", 12, 16, w =>
+        {
+            for (var shell = 0; shell < 4; shell++)
+            {
+                foreach (var face in negativeVolumeFaces)
+                {
+                    int[] order = shell == invertedShell ? [.. face.Reverse()] : face;
+                    foreach (var corner in order)
+                    {
+                        w.Write((ushort)((shell * 4) + corner));
+                    }
+
+                    w.Write((ushort)0);
+                    w.Write(1);
+                }
+            }
+        });
+        WriteSection(writer, "MATT0000", 88, 1, w =>
+        {
+            WriteFixedString(w, "test", 64);
+            w.Write(new byte[24]);
+        });
+        WriteSection(writer, "REFSKELT", 120, 1, WriteBone);
+        WriteSection(writer, "RAWWEIGHTS", 12, 16, w =>
+        {
+            for (var point = 0; point < 16; point++)
+            {
+                w.Write(1f);
+                w.Write(point);
+                w.Write(0);
+            }
+        });
+    }
+
     // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the
     // fourth channel carries real opacity; decoders that trust the header discard it.
     private static void WriteUnlabeledAlphaTga(string path, byte alpha)

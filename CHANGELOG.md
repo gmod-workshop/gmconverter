@@ -38,6 +38,7 @@ All notable changes to this project will be documented in this file.
 - Fixed static Unreal Engine 2 self-illumination being ignored. Shaders that gate `SelfIllumination` with a `SelfIlluminationMask` alpha (lit panels, indicator eyes) now export a per-pixel glow texture.
 - Fixed PSK materials with an explicit `Normal` sidecar entry also using the normal map as their specular texture, which produced bogus phong and envmap settings in Source. The packed-texture term `orm` matched the `Normal` key.
 - Fixed self-illuminated Source materials rendering fully lit in Garry's Mod. Static glow was written as a separate `$selfillummask`, but the game reads self-illumination from an alpha channel that was solid white. Opaque materials now store glow coverage in the base texture's alpha with plain `$selfillum`; translucent ones keep a mask with coverage in every channel.
+- Fixed inside-out parts rendering nearly black in PSK imports. Closed shells whose winding is inverted relative to a clear majority of the mesh's closed shells (such as one of the bacta dispenser's eyelid doors in Republic Commando) are now rewound on import. Open surfaces and PSKX files with authored normals are left unchanged.
 
 ## [1.7.0] - 2026-05-21
 

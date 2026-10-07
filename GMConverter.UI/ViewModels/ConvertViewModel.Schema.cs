@@ -136,14 +136,11 @@ public sealed partial class ConvertViewModel
         _syncingFromTyped = true;
         try
         {
-            foreach (var group in vm.Groups)
+            foreach (var option in vm.Groups.SelectMany(g => g.Options))
             {
-                foreach (var option in group.Options)
+                if (TryReadTypedProperty(option.Key, out var value))
                 {
-                    if (TryReadTypedProperty(option.Key, out var value))
-                    {
-                        option.TryLoad(value);
-                    }
+                    option.TryLoad(value);
                 }
             }
         }
@@ -241,22 +238,19 @@ public sealed partial class ConvertViewModel
         {
             return;
         }
-        foreach (var group in vm.Groups)
+        var option = vm.Groups.SelectMany(g => g.Options).FirstOrDefault(o => o.Key == key);
+        if (option is null)
         {
-            var option = group.Options.FirstOrDefault(o => o.Key == key);
-            if (option is not null)
-            {
-                _syncingFromTyped = true;
-                try
-                {
-                    option.TryLoad(value);
-                }
-                finally
-                {
-                    _syncingFromTyped = false;
-                }
-                return;
-            }
+            return;
+        }
+        _syncingFromTyped = true;
+        try
+        {
+            option.TryLoad(value);
+        }
+        finally
+        {
+            _syncingFromTyped = false;
         }
     }
 

@@ -61,14 +61,11 @@ public sealed class ExporterOptionsViewModel
     /// </summary>
     public void LoadFrom(IReadOnlyDictionary<string, object?> persisted)
     {
-        foreach (var group in Groups)
+        foreach (var option in Groups.SelectMany(g => g.Options))
         {
-            foreach (var option in group.Options)
+            if (persisted.TryGetValue(option.Key, out var value))
             {
-                if (persisted.TryGetValue(option.Key, out var value))
-                {
-                    option.TryLoad(value);
-                }
+                option.TryLoad(value);
             }
         }
     }

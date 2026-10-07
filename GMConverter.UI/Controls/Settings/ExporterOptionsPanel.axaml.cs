@@ -62,12 +62,9 @@ public partial class ExporterOptionsPanel : UserControl
             ? null
             : Groups.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        foreach (var group in vm.Groups)
+        foreach (var group in vm.Groups.Where(g => filter is null || filter.Contains(g.Key, StringComparer.OrdinalIgnoreCase)))
         {
-            if (filter is null || filter.Contains(group.Key, StringComparer.OrdinalIgnoreCase))
-            {
-                FilteredGroups.Add(group);
-            }
+            FilteredGroups.Add(group);
         }
     }
 

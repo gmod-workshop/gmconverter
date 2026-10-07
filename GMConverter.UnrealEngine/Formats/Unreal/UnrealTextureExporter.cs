@@ -1,6 +1,7 @@
 using System.Text;
 using CUE4Parse_Conversion.Textures.DXT;
 using GMConverter.SDK.Common;
+using GMConverter.UnrealEngine.Common;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -11,6 +12,12 @@ internal static class UnrealTextureExporter
     private const int _texfDxt1 = 3;
     private const int _texfDxt3 = 7;
     private const int _texfDxt5 = 8;
+
+    // Republic Commando stores shader Bumpmap textures in format 14 as two bytes per texel: a
+    // height map (byte 1, closely tracking the diffuse luminance) and a sparse panel-edge mask
+    // (byte 0). Stock UE2 tables call 14 TEXF_3DC, which is one byte per texel, so the payload
+    // size tells the two apart.
+    private const int _texfRepublicCommandoBump = 14;
 
     public static UnrealExportedTexture? ExportTexture(UnrealResolvedObject texture, string outputDirectory)
     {
@@ -51,7 +58,7 @@ internal static class UnrealTextureExporter
         }
 
         var topMip = mips[0];
-        var rgba = DecodeDxt(format.Value, topMip);
+        var rgba = DecodeMip(format.Value, topMip);
         if (rgba is null)
         {
             return null;
@@ -78,9 +85,14 @@ internal static class UnrealTextureExporter
     }
 
     // Returns tightly packed RGBA8 for the mip, or null for formats the exporter doesn't handle.
-    private static byte[]? DecodeDxt(int textureFormat, UnrealTextureMip mip)
+    private static byte[]? DecodeMip(int textureFormat, UnrealTextureMip mip)
     {
         var data = mip.Data.ToArray();
+        if (textureFormat == _texfRepublicCommandoBump)
+        {
+            return DecodeRepublicCommandoBump(data, mip.Width, mip.Height);
+        }
+
         var requiredSize = CalculateDxtMipSize(mip.Width, mip.Height, textureFormat == _texfDxt1 ? 8 : 16);
         if (data.Length < requiredSize)
         {
@@ -94,6 +106,23 @@ internal static class UnrealTextureExporter
             _texfDxt5 => DXTDecoder.DXT5(data, mip.Width, mip.Height, 1),
             _ => null
         };
+    }
+
+    private static byte[]? DecodeRepublicCommandoBump(byte[] data, int width, int height)
+    {
+        var texelCount = width * height;
+        if (data.Length != texelCount * 2)
+        {
+            return null;
+        }
+
+        var heights = new byte[texelCount];
+        for (var i = 0; i < texelCount; i++)
+        {
+            heights[i] = data[(i * 2) + 1];
+        }
+
+        return HeightNormalMap.FromHeights(heights, width, height);
     }
 
     // DXT3 pairs 4-bit explicit alpha with a color block that always uses four-color mode, as

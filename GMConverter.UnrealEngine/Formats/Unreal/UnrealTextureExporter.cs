@@ -39,7 +39,7 @@ internal static class UnrealTextureExporter
         var textureName = NameHelpers.SanitizeMaterialName(texture.ObjectName);
         // PNG rather than DDS: the importers decode textures with ImageSharp, which has no DDS
         // support, so a DDS sidecar left every UE2 Explorer material untextured or failing.
-        var outputPath = Path.Combine(outputDirectory, textureName + ".png");
+        var outputPath = Path.Join(outputDirectory, textureName + ".png");
         using var stream = File.OpenRead(texture.Package.FilePath);
         using var binaryReader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: false);
         var reader = new UnrealObjectReader(texture.Package, binaryReader, texture.Export);

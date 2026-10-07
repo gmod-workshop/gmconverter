@@ -815,7 +815,7 @@ internal sealed class MDLExporter : IExporter
             writer.WriteLine("}");
 
             SourceMaterialEmission.IllumTexture(material, _textureFactory)?
-                .WritePng(Path.Combine(materialDirectory, $"{material.Name}_illum.png"));
+                .WritePng(Path.Join(materialDirectory, $"{material.Name}_illum.png"));
         }
     }
 

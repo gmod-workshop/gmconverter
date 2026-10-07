@@ -364,7 +364,7 @@ public sealed class UnrealUnitsTests
             {
                 foreach (var corner in corners)
                 {
-                    WriteVector(w, corner.X + (shell * 100), corner.Y, corner.Z);
+                    WriteVector(w, corner.X + (shell * 100f), corner.Y, corner.Z);
                 }
             }
         });
@@ -382,9 +382,8 @@ public sealed class UnrealUnitsTests
         {
             for (var shell = 0; shell < 4; shell++)
             {
-                foreach (var face in negativeVolumeFaces)
+                foreach (var order in negativeVolumeFaces.Select(int[] (face) => shell == invertedShell ? [.. face.Reverse()] : face))
                 {
-                    int[] order = shell == invertedShell ? [.. face.Reverse()] : face;
                     foreach (var corner in order)
                     {
                         w.Write((ushort)((shell * 4) + corner));

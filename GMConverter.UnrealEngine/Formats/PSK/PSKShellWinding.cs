@@ -26,14 +26,10 @@ internal static class PSKShellWinding
 
         var faces = WeldedFaces(psk);
         var shells = GroupShells(faces);
-        List<(List<int> Faces, int Sign)> closed = [];
-        foreach (var shell in shells)
-        {
-            if (TryGetClosedShellSign(shell, faces, psk.Points, out var sign))
-            {
-                closed.Add((shell, sign));
-            }
-        }
+        var closed = shells
+            .Select(shell => (Faces: shell, Sign: ClosedShellSign(shell, faces, psk.Points)))
+            .Where(shell => shell.Sign != 0)
+            .ToList();
 
         var positiveShells = closed.Count(shell => shell.Sign > 0);
         var negativeShells = closed.Count - positiveShells;
@@ -119,20 +115,19 @@ internal static class PSKShellWinding
     }
 
     // A shell is closed and consistently wound when every directed edge appears exactly once and
-    // its reverse also appears; its signed volume then tells which way the winding faces.
-    private static bool TryGetClosedShellSign(List<int> shell, int[]?[] faces, List<Vector3> points, out int sign)
+    // its reverse also appears; its signed volume then tells which way the winding faces. Returns
+    // the volume's sign, or 0 for open, inconsistently wound or flat shells.
+    private static int ClosedShellSign(List<int> shell, int[]?[] faces, List<Vector3> points)
     {
-        sign = 0;
         HashSet<(int, int)> directedEdges = [];
         double volume = 0;
-        foreach (var f in shell)
+        foreach (var corners in shell.Select(f => faces[f]!))
         {
-            var corners = faces[f]!;
             for (var c = 0; c < 3; c++)
             {
                 if (!directedEdges.Add((corners[c], corners[(c + 1) % 3])))
                 {
-                    return false;
+                    return 0;
                 }
             }
 
@@ -144,10 +139,9 @@ internal static class PSKShellWinding
 
         if (directedEdges.Any(edge => !directedEdges.Contains((edge.Item2, edge.Item1))) || Math.Abs(volume) < 1e-9)
         {
-            return false;
+            return 0;
         }
 
-        sign = Math.Sign(volume);
-        return true;
+        return Math.Sign(volume);
     }
 }

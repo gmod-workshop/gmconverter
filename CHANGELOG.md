@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Normalized standalone Unreal PSK/PSKX geometry, skeletons, and PSA animation translations from centimeters to meters, matching scene imports. Source exports at scale 1 now retain their physical size instead of being 100 times too large. Bounds collision and its preview use a one-inch minimum thickness instead of one meter.
+- Preserved opacity from 32-bit UModel TGA textures whose headers declare no alpha bits. Translucent PSK materials such as the bacta dispenser liquid previously compiled to fully opaque VTFs despite `$translucent`.
 
 ## [1.7.0] - 2026-05-21
 

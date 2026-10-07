@@ -6,10 +6,10 @@ using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Textures;
+using GMConverter.UnrealEngine.Common;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace GMConverter.UnrealEngine.Importers;
 
@@ -1219,7 +1219,7 @@ internal sealed class PSKImporter : IImporter
                 // source's incidental alpha as transparency). Then hand the raw RGBA bytes to
                 // the host's texture factory — the plugin doesn't construct Texture instances
                 // directly; the host owns the concrete impl.
-                using var image = Image.Load<Rgba32>(imagePath);
+                using var image = SidecarImageLoader.Load(imagePath, hasAlpha);
                 if (!hasAlpha)
                 {
                     image.ProcessPixelRows(accessor =>

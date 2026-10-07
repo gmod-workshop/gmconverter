@@ -74,6 +74,41 @@ public sealed class UnrealUnitsTests
         Assert.Equal(userScale, bounds.Max.X - bounds.Min.X, 5);
     }
 
+    [Fact]
+    public void OpacityTextureKeepsAlphaWhenTgaHeaderDeclaresNoAlphaBits()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=fluid\nOpacity=fluid\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "fluid.tga"), alpha: 128);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+
+        var material = Assert.Single(model.Materials);
+        Assert.True(material.HasAlpha);
+        var pixels = material.DiffuseTexture!.GetRgbaPixels();
+        Assert.All(Enumerable.Range(0, pixels.Length / 4), index => Assert.Equal(128, pixels[(index * 4) + 3]));
+    }
+
+    // UModel writes 32-bit TGAs whose image descriptor declares zero alpha bits even when the
+    // fourth channel carries real opacity; decoders that trust the header discard it.
+    private static void WriteUnlabeledAlphaTga(string path, byte alpha)
+    {
+        using var writer = new BinaryWriter(File.Create(path));
+        writer.Write([0, 0, 2]);
+        writer.Write(new byte[9]);
+        writer.Write((ushort)2);
+        writer.Write((ushort)2);
+        writer.Write((byte)32);
+        writer.Write((byte)0x20);
+        for (var index = 0; index < 4; index++)
+        {
+            writer.Write([240, 220, 80, alpha]);
+        }
+    }
+
     private static (string Psk, string Psa) WriteFixture()
     {
         var directory = Path.Join(Path.GetTempPath(), "GMConverter.UnitTests", Guid.NewGuid().ToString("N"));

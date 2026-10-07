@@ -6,10 +6,11 @@ using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Textures;
+using GMConverter.UnrealEngine.Common;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
+using GMConverter.UnrealEngine.Formats.Unreal;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace GMConverter.UnrealEngine.Importers;
 
@@ -147,11 +148,17 @@ internal sealed class PSKImporter : IImporter
         var hasNegativeScale = sceneTransform is not null &&
             sceneTransform.Scale.X * sceneTransform.Scale.Y * sceneTransform.Scale.Z < 0f;
 
-        foreach (var face in psk.Faces)
+        // Closed shells shipped inside-out relative to the rest of the mesh are read with their
+        // corners in the opposite order, which also flips the face normal derived from them.
+        var invertedFaces = PSKShellWinding.FindInvertedFaces(psk);
+
+        for (var faceIndex = 0; faceIndex < psk.Faces.Count; faceIndex++)
         {
-            if (!TryGetCorner(psk, face.WedgeIndices[2], weightLookup, options, sceneTransform, out var a) ||
+            var face = psk.Faces[faceIndex];
+            var (first, last) = invertedFaces.Contains(faceIndex) ? (0, 2) : (2, 0);
+            if (!TryGetCorner(psk, face.WedgeIndices[first], weightLookup, options, sceneTransform, out var a) ||
                 !TryGetCorner(psk, face.WedgeIndices[1], weightLookup, options, sceneTransform, out var b) ||
-                !TryGetCorner(psk, face.WedgeIndices[0], weightLookup, options, sceneTransform, out var c))
+                !TryGetCorner(psk, face.WedgeIndices[last], weightLookup, options, sceneTransform, out var c))
             {
                 skippedFaces++;
                 continue;
@@ -599,6 +606,7 @@ internal sealed class PSKImporter : IImporter
             IReadOnlyDictionary<string, CueMaterialColor> colors = new Dictionary<string, CueMaterialColor>(StringComparer.OrdinalIgnoreCase);
             var usesCueMaterial = false;
             System.Numerics.Vector2? bakedUv0Scale = null;
+            var sidecarSettings = SidecarMaterialSettings.Default;
             string? materialAlias = null;
             if (TryGetLocalSidecar(material, meshPath, ".json", out var localCueMaterialPath))
             {
@@ -612,10 +620,12 @@ internal sealed class PSKImporter : IImporter
             else if (TryGetLocalSidecar(material, meshPath, ".mat", out var localMaterialPath))
             {
                 references = ReadMaterialReferences(localMaterialPath);
+                sidecarSettings = ReadSidecarSettings(localMaterialPath);
             }
             else if (TryGetSidecar(_materialSidecars, material, out var materialPath))
             {
                 references = ReadMaterialReferences(materialPath);
+                sidecarSettings = ReadSidecarSettings(materialPath);
             }
             else if (TryGetSidecar(_cueMaterialSidecars, material, out var cueMaterialPath))
             {
@@ -663,8 +673,12 @@ internal sealed class PSKImporter : IImporter
                     TryLoadRelatedTexture(references, ["Diffuse"], ["_normal", "_norm", "_bump"], hasAlpha: false);
                 specularTexture = TryLoadLayerTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Specular", "SpecularityMask", "SpecularMasks"], hasAlpha: false) ??
-                    TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false);
-                emissiveTexture = TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
+                    TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false, excludedKeyTerms: ["norm", "nrm"]);
+                // A SelfIlluminationMask confines the glow; if the masked bake can't be built, an
+                // unmasked fallback would light the whole surface, so leave the material unlit.
+                emissiveTexture = references.ContainsKey("SelfIlluminationMask")
+                    ? TryBakeMaskedSelfIllumination(references, separatelyScrolled: sidecarSettings.EmissiveUvScrollRate is not null)
+                    : TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
                     TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false);
             }
@@ -714,7 +728,11 @@ internal sealed class PSKImporter : IImporter
                     ? MaterialNormalTextureConvention.DirectX
                     : MaterialNormalTextureConvention.OpenGl,
                 bakedUv0Scale: bakedUv0Scale,
-                specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f);
+                specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f,
+                uvScrollRate: sidecarSettings.UvScrollRate,
+                emissiveUvScrollRate: sidecarSettings.EmissiveUvScrollRate,
+                blendMode: sidecarSettings.BlendMode,
+                alphaCutoff: sidecarSettings.AlphaCutoff);
         }
 
         // Fortnite's SpecularMasks.R doesn't drive specular intensity in the in-game renderer (FP's
@@ -884,15 +902,89 @@ internal sealed class PSKImporter : IImporter
             return normalized.EndsWith("_H", StringComparison.OrdinalIgnoreCase) ? "8" : null;
         }
 
+        // UE2 shaders take glow colour from SelfIllumination and gate it with SelfIlluminationMask's
+        // alpha. When both share coordinates the glow is their per-pixel product. When the mask
+        // scrolls separately that product can't be baked, so the colour texture's average tint is
+        // applied to the mask instead, keeping the masked shapes (and their own scroll) and the
+        // overall glow colour.
+        private Texture? TryBakeMaskedSelfIllumination(Dictionary<string, string> references, bool separatelyScrolled)
+        {
+            if (!references.TryGetValue("SelfIllumination", out var colorReference) ||
+                !references.TryGetValue("SelfIlluminationMask", out var maskReference) ||
+                IsNullReference(colorReference) ||
+                IsNullReference(maskReference))
+            {
+                return null;
+            }
+
+            using var color = TryLoadTexture(colorReference, hasAlpha: false);
+            using var mask = TryLoadTexture(maskReference, hasAlpha: true);
+            if (color is null || mask is null)
+            {
+                return null;
+            }
+
+            var colorPixels = color.GetRgbaPixels();
+            if (!separatelyScrolled)
+            {
+                // Bake at the mask's resolution, sampling the colour texture nearest-neighbour when
+                // the two differ (e.g. a small glow pattern gated by a large diffuse's alpha).
+                var maskPixels = mask.GetRgbaPixels();
+                var glow = new byte[maskPixels.Length];
+                for (var y = 0; y < mask.Height; y++)
+                {
+                    var colorY = Math.Min(color.Height - 1, y * color.Height / mask.Height);
+                    for (var x = 0; x < mask.Width; x++)
+                    {
+                        var colorX = Math.Min(color.Width - 1, x * color.Width / mask.Width);
+                        var c = ((colorY * color.Width) + colorX) * 4;
+                        var m = ((y * mask.Width) + x) * 4;
+                        var coverage = maskPixels[m + 3] / 255.0;
+                        glow[m] = (byte)Math.Round(colorPixels[c] * coverage);
+                        glow[m + 1] = (byte)Math.Round(colorPixels[c + 1] * coverage);
+                        glow[m + 2] = (byte)Math.Round(colorPixels[c + 2] * coverage);
+                        glow[m + 3] = byte.MaxValue;
+                    }
+                }
+
+                return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, glow, hasAlpha: false);
+            }
+
+            var texelCount = Math.Max(1, colorPixels.Length / 4);
+            Span<double> tint = stackalloc double[3];
+            for (var i = 0; i < colorPixels.Length; i += 4)
+            {
+                tint[0] += colorPixels[i];
+                tint[1] += colorPixels[i + 1];
+                tint[2] += colorPixels[i + 2];
+            }
+
+            var pixels = mask.GetRgbaPixels();
+            for (var i = 0; i < pixels.Length; i += 4)
+            {
+                var coverage = pixels[i + 3] / 255.0;
+                pixels[i] = (byte)Math.Round(tint[0] / texelCount * coverage);
+                pixels[i + 1] = (byte)Math.Round(tint[1] / texelCount * coverage);
+                pixels[i + 2] = (byte)Math.Round(tint[2] / texelCount * coverage);
+                pixels[i + 3] = byte.MaxValue;
+            }
+
+            return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, pixels, hasAlpha: false);
+        }
+
+        // excludedKeyTerms guards substring collisions between channels, e.g. the packed-texture
+        // term "orm" also matches "Normal", which would load a normal map as specular.
         private Texture? TryLoadTextureByName(
             Dictionary<string, string> references,
             IReadOnlyCollection<string> keyTerms,
-            bool hasAlpha)
+            bool hasAlpha,
+            IReadOnlyCollection<string>? excludedKeyTerms = null)
         {
             foreach (var (key, textureReference) in references)
             {
                 if (IsNullReference(textureReference) ||
-                    !keyTerms.Any(term => key.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                    !keyTerms.Any(term => key.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                    (excludedKeyTerms?.Any(term => key.Contains(term, StringComparison.OrdinalIgnoreCase)) ?? false))
                 {
                     continue;
                 }
@@ -1219,7 +1311,7 @@ internal sealed class PSKImporter : IImporter
                 // source's incidental alpha as transparency). Then hand the raw RGBA bytes to
                 // the host's texture factory — the plugin doesn't construct Texture instances
                 // directly; the host owns the concrete impl.
-                using var image = Image.Load<Rgba32>(imagePath);
+                using var image = SidecarImageLoader.Load(imagePath, hasAlpha);
                 if (!hasAlpha)
                 {
                     image.ProcessPixelRows(accessor =>
@@ -1363,6 +1455,11 @@ internal sealed class PSKImporter : IImporter
                 }
 
                 var key = trimmed[..separator].Trim();
+                if (_sidecarSettingKeys.Contains(key))
+                {
+                    continue;
+                }
+
                 var value = NormalizeReference(trimmed[(separator + 1)..]);
                 if (value.Length == 0)
                 {
@@ -1373,6 +1470,69 @@ internal sealed class PSKImporter : IImporter
             }
 
             return references;
+        }
+
+        // Non-texture sidecar entries written by the UE2 material exporter. Read raw, since texture
+        // reference values are name-normalized, and kept out of the texture lookups.
+        private static readonly HashSet<string> _sidecarSettingKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            UnrealMaterialExporter.UvScrollKey,
+            UnrealMaterialExporter.EmissiveUvScrollKey,
+            UnrealMaterialExporter.BlendKey,
+            UnrealMaterialExporter.AlphaRefKey
+        };
+
+        private static SidecarMaterialSettings ReadSidecarSettings(string materialPath)
+        {
+            Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in File.ReadLines(materialPath))
+            {
+                var separator = line.IndexOf('=');
+                if (separator > 0 && _sidecarSettingKeys.Contains(line[..separator].Trim()))
+                {
+                    values.TryAdd(line[..separator].Trim(), line[(separator + 1)..].Trim());
+                }
+            }
+
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            System.Numerics.Vector2? ParseScroll(string key)
+            {
+                var parts = values.GetValueOrDefault(key)?.Split(',', StringSplitOptions.TrimEntries);
+                return parts is { Length: 2 } &&
+                    float.TryParse(parts[0], System.Globalization.NumberStyles.Float, inv, out var u) &&
+                    float.TryParse(parts[1], System.Globalization.NumberStyles.Float, inv, out var v)
+                    ? new System.Numerics.Vector2(u, v)
+                    : null;
+            }
+
+            var blendMode = values.GetValueOrDefault(UnrealMaterialExporter.BlendKey)?.ToLowerInvariant() switch
+            {
+                "translucent" => MaterialBlendMode.AlphaBlend,
+                "masked" => MaterialBlendMode.AlphaTest,
+                "additive" => MaterialBlendMode.Additive,
+                _ => MaterialBlendMode.Unspecified
+            };
+
+            // UE2 keeps pixels whose alpha exceeds AlphaRef; a zero reference still drops fully
+            // transparent texels, so never let the cutoff reach zero.
+            var alphaCutoff = int.TryParse(values.GetValueOrDefault(UnrealMaterialExporter.AlphaRefKey), System.Globalization.NumberStyles.Integer, inv, out var alphaRef)
+                ? Math.Clamp(alphaRef, 1, 255) / 255f
+                : SidecarMaterialSettings.Default.AlphaCutoff;
+
+            return new SidecarMaterialSettings(
+                ParseScroll(UnrealMaterialExporter.UvScrollKey),
+                ParseScroll(UnrealMaterialExporter.EmissiveUvScrollKey),
+                blendMode,
+                alphaCutoff);
+        }
+
+        private sealed record SidecarMaterialSettings(
+            System.Numerics.Vector2? UvScrollRate,
+            System.Numerics.Vector2? EmissiveUvScrollRate,
+            MaterialBlendMode BlendMode,
+            float AlphaCutoff)
+        {
+            public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f);
         }
 
         private static CueMaterial ReadCueMaterial(string materialPath)

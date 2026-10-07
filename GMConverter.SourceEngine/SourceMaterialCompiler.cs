@@ -50,10 +50,11 @@ internal sealed class SourceMaterialCompiler
                     continue;
                 }
 
+                var baseTexture = SourceMaterialEmission.BaseTexture(material, _textureFactory);
                 var diffuseBasename = WriteOrReuse(
-                    material.DiffuseTexture,
+                    baseTexture,
                     material.Name,
-                    material.DiffuseTexture.HasAlpha,
+                    baseTexture.HasAlpha,
                     materialSourceDirectory,
                     materialOutputDirectory,
                     contentBasenames);
@@ -90,12 +91,13 @@ internal sealed class SourceMaterialCompiler
                 }
 
                 string? illumBasename = null;
-                if (material.EmissiveTexture is not null)
+                var illumTexture = SourceMaterialEmission.IllumTexture(material, _textureFactory);
+                if (illumTexture is not null)
                 {
                     illumBasename = WriteOrReuse(
-                        material.EmissiveTexture,
+                        illumTexture,
                         $"{material.Name}_illum",
-                        material.EmissiveTexture.HasAlpha,
+                        illumTexture.HasAlpha,
                         materialSourceDirectory,
                         materialOutputDirectory,
                         contentBasenames);
@@ -194,10 +196,7 @@ internal sealed class SourceMaterialCompiler
             writer.WriteLine(FormattableString.Invariant($"    \"$bumpmap\" \"{normalTexturePath}\""));
         }
 
-        if (material.HasAlpha)
-        {
-            writer.WriteLine("    \"$translucent\" \"1\"");
-        }
+        SourceMaterialBlend.Write(writer, material);
 
         if (specTexturePath is not null && UseSourcePhong(material))
         {
@@ -208,12 +207,9 @@ internal sealed class SourceMaterialCompiler
                 normalMapAlphaMask: normalTexturePath is not null);
         }
 
-        if (material.IsIlluminated && illumTexturePath is not null)
-        {
-            writer.WriteLine("    \"$selfillum\" \"1\"");
-            writer.WriteLine(FormattableString.Invariant($"    \"$selfillummask\" \"{illumTexturePath}\""));
-        }
+        SourceMaterialEmission.Write(writer, material, illumTexturePath);
 
+        SourceMaterialProxies.WriteUvScroll(writer, material);
         writer.WriteLine("}");
     }
 

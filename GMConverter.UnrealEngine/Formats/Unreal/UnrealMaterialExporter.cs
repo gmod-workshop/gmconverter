@@ -5,6 +5,32 @@ namespace GMConverter.UnrealEngine.Formats.Unreal;
 
 internal static class UnrealMaterialExporter
 {
+    // Sidecar keys carrying a constant UV scroll as "U,V" texture sizes per second (invariant
+    // culture). Kept out of the texture channels because reference values are name-normalized.
+    // UvScroll follows the diffuse chain; EmissiveUvScroll follows the self-illumination mask,
+    // which UE2 shaders often pan independently (e.g. bubbles drifting through a liquid).
+    internal const string UvScrollKey = "UvScroll";
+    internal const string EmissiveUvScrollKey = "EmissiveUvScroll";
+
+    // Sidecar keys for how the material blends: Blend is "Translucent", "Masked" or "Additive",
+    // and AlphaRef is the masked cutoff in 0-255 (UE2 keeps pixels whose alpha exceeds it).
+    internal const string BlendKey = "Blend";
+    internal const string AlphaRefKey = "AlphaRef";
+
+    // UE2 Shader.OutputBlending (OB_*) and FinalBlend.FrameBufferBlending (FB_*) values.
+    private const int _outputBlendingMasked = 1;
+    private const int _outputBlendingTranslucent = 3;
+    private const int _outputBlendingBrighten = 5;
+    private const int _frameBufferOverwrite = 0;
+    private const int _frameBufferAlphaBlend = 2;
+    private const int _frameBufferAlphaModulate = 3;
+    private const int _frameBufferTranslucent = 4;
+    private const int _frameBufferBrighten = 6;
+
+    // UE2 TexPanner defaults: PanRate 0.1 and a zero PanDirection, which pans along +U.
+    private const float _defaultPanRate = 0.1f;
+    private const float _rotatorUnitsPerRadian = 32768f / MathF.PI;
+
     private static readonly IReadOnlyDictionary<string, string> _shaderChannels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["Diffuse"] = "Diffuse",
@@ -13,7 +39,9 @@ internal static class UnrealMaterialExporter
         ["Specular"] = "Specular",
         ["SpecularityMask"] = "Specular",
         ["Bumpmap"] = "Normal",
-        ["Detail"] = "Diffuse"
+        ["Detail"] = "Diffuse",
+        ["SelfIllumination"] = "SelfIllumination",
+        ["SelfIlluminationMask"] = "SelfIlluminationMask"
     };
 
     public static IReadOnlyList<string> ExportMaterials(
@@ -65,6 +93,15 @@ internal static class UnrealMaterialExporter
             textureReferences,
             []);
 
+        // Alpha-blended and masked materials read coverage from the diffuse alpha; UE2 often
+        // leaves the Opacity channel empty and relies on the diffuse texture's own alpha.
+        if (textureReferences.TryGetValue(BlendKey, out var blend) &&
+            blend is "Translucent" or "Masked" &&
+            textureReferences.TryGetValue("Diffuse", out var diffuse))
+        {
+            textureReferences.TryAdd("Opacity", diffuse);
+        }
+
         return new UnrealExportedMaterial(materialName, textureReferences);
     }
 
@@ -98,6 +135,7 @@ internal static class UnrealMaterialExporter
             return;
         }
 
+        RecordBlend(materialObject, properties, textureReferences);
         if (PopulateWrapperTextureReferences(materialObject, properties, outputDirectory, resolver, textureReferences, visitedObjects))
         {
             return;
@@ -166,6 +204,7 @@ internal static class UnrealMaterialExporter
             return false;
         }
 
+        RecordTexturePanner(materialObject, properties, "Diffuse", textureReferences);
         PopulateTextureReference(
             resolver.Resolve(materialObject.Package, wrappedMaterialReference.Value),
             "Diffuse",
@@ -173,12 +212,6 @@ internal static class UnrealMaterialExporter
             resolver,
             textureReferences,
             visitedObjects);
-
-        if (IsFinalBlendTranslucent(materialObject, properties) &&
-            textureReferences.TryGetValue("Diffuse", out var diffuseTexture))
-        {
-            textureReferences.TryAdd("Opacity", diffuseTexture);
-        }
 
         return true;
     }
@@ -238,16 +271,46 @@ internal static class UnrealMaterialExporter
         }
     }
 
-    private static bool IsFinalBlendTranslucent(UnrealResolvedObject materialObject, UnrealPropertyCollection properties)
+    // The outermost Shader or FinalBlend decides; TryAdd keeps the first one recorded.
+    private static void RecordBlend(
+        UnrealResolvedObject materialObject,
+        UnrealPropertyCollection properties,
+        Dictionary<string, string> textureReferences)
     {
-        if (!materialObject.ClassName.Equals("FinalBlend", StringComparison.OrdinalIgnoreCase))
+        string? blend = null;
+        if (materialObject.ClassName.Equals("FinalBlend", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            var alphaTest = properties.FirstInteger("AlphaTest") is > 0;
+            blend = (properties.FirstInteger("FrameBufferBlending") ?? _frameBufferOverwrite) switch
+            {
+                _frameBufferTranslucent or _frameBufferBrighten => "Additive",
+                _frameBufferAlphaBlend or _frameBufferAlphaModulate => "Translucent",
+                _frameBufferOverwrite when alphaTest => "Masked",
+                _ => null
+            };
+        }
+        else if (materialObject.ClassName.Equals("Shader", StringComparison.OrdinalIgnoreCase))
+        {
+            blend = (properties.FirstInteger("OutputBlending") ?? 0) switch
+            {
+                _outputBlendingMasked => "Masked",
+                _outputBlendingTranslucent => "Translucent",
+                _outputBlendingBrighten => "Additive",
+                _ => null
+            };
         }
 
-        var frameBufferBlending = properties.FirstInteger("FrameBufferBlending");
-        var alphaTest = properties.FirstInteger("AlphaTest");
-        return frameBufferBlending is >= 2 and <= 4 || alphaTest is > 0;
+        if (blend is null || !textureReferences.TryAdd(BlendKey, blend))
+        {
+            return;
+        }
+
+        if (blend == "Masked")
+        {
+            textureReferences.TryAdd(
+                AlphaRefKey,
+                (properties.FirstInteger("AlphaRef") ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
     }
 
     private static void PopulateTextureReference(
@@ -284,6 +347,12 @@ internal static class UnrealMaterialExporter
         var wrappedMaterialReference = properties.FirstObjectReference("Material");
         if (wrappedMaterialReference is not null && wrappedMaterialReference.Value != 0)
         {
+            if (channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+            {
+                RecordBlend(materialObject, properties, textureReferences);
+            }
+
+            RecordTexturePanner(materialObject, properties, channelName, textureReferences);
             PopulateTextureReference(
                 resolver.Resolve(materialObject.Package, wrappedMaterialReference.Value),
                 channelName,
@@ -294,7 +363,81 @@ internal static class UnrealMaterialExporter
             return;
         }
 
-        PopulateTextureReferences(materialObject, outputDirectory, resolver, textureReferences, visitedObjects);
+        // A Combiner inside a channel stays in that channel; treating it as a whole material would
+        // file its texture (and any panner inside it) under Diffuse.
+        if (materialObject.ClassName.Equals("Combiner", StringComparison.OrdinalIgnoreCase))
+        {
+            PopulateFirstAvailableReference(
+                materialObject.Package,
+                properties,
+                ["Material2", "Material1", "Mask"],
+                channelName,
+                outputDirectory,
+                resolver,
+                textureReferences,
+                visitedObjects);
+            return;
+        }
+
+        // Other nested materials (e.g. a Shader used as a diffuse) are only meaningful as a whole
+        // material on the diffuse chain; elsewhere there is no channel to map them onto.
+        if (channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        {
+            PopulateTextureReferences(materialObject, outputDirectory, resolver, textureReferences, visitedObjects);
+        }
+    }
+
+    // Only the diffuse and self-illumination-mask chains map to exporter layers that can scroll
+    // independently; the first panner found on each wins, matching TryAdd for texture channels.
+    private static void RecordTexturePanner(
+        UnrealResolvedObject materialObject,
+        UnrealPropertyCollection properties,
+        string channelName,
+        Dictionary<string, string> textureReferences)
+    {
+        var isPanner = materialObject.ClassName.Equals("TexPanner", StringComparison.OrdinalIgnoreCase);
+        var isPanner2D = materialObject.ClassName.Equals("TexPanner2D", StringComparison.OrdinalIgnoreCase);
+        if (!isPanner && !isPanner2D)
+        {
+            return;
+        }
+
+        string scrollKey;
+        if (channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        {
+            scrollKey = UvScrollKey;
+        }
+        else if (channelName.Equals("SelfIlluminationMask", StringComparison.OrdinalIgnoreCase))
+        {
+            scrollKey = EmissiveUvScrollKey;
+        }
+        else
+        {
+            return;
+        }
+
+        float u;
+        float v;
+        if (isPanner2D)
+        {
+            // Republic Commando's TexPanner2D stores per-axis speeds directly.
+            u = properties.FirstFloat("SpeedU") ?? 0f;
+            v = properties.FirstFloat("SpeedV") ?? 0f;
+        }
+        else
+        {
+            var rate = properties.FirstFloat("PanRate") ?? _defaultPanRate;
+            var yaw = (properties.FirstInteger("PanDirection.Yaw") ?? 0) / _rotatorUnitsPerRadian;
+            u = rate * MathF.Cos(yaw);
+            v = rate * MathF.Sin(yaw);
+        }
+
+        if (MathF.Abs(u) < 1e-6f && MathF.Abs(v) < 1e-6f)
+        {
+            return;
+        }
+
+        textureReferences.TryAdd(scrollKey, FormattableString.Invariant($"{u:R},{v:R}"));
     }
 
     private static UnrealPropertyCollection? ReadObjectProperties(UnrealResolvedObject materialObject)

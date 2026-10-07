@@ -2,9 +2,15 @@ namespace GMConverter.UnrealEngine.Formats.Unreal;
 
 internal sealed class UnrealPropertyCollection
 {
+    private readonly Dictionary<string, List<float>> _floats = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<int>> _integers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<string>> _names = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<int>> _objectReferences = new(StringComparer.OrdinalIgnoreCase);
+
+    public void AddFloat(string propertyName, float value)
+    {
+        AddValue(_floats, propertyName, value);
+    }
 
     public void AddInteger(string propertyName, int value)
     {
@@ -19,6 +25,13 @@ internal sealed class UnrealPropertyCollection
     public void AddObjectReference(string propertyName, int packageIndex)
     {
         AddValue(_objectReferences, propertyName, packageIndex);
+    }
+
+    public float? FirstFloat(string propertyName)
+    {
+        return _floats.TryGetValue(propertyName, out var values) && values.Count > 0
+            ? values[0]
+            : null;
     }
 
     public int? FirstInteger(string propertyName)

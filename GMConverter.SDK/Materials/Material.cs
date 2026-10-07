@@ -13,7 +13,11 @@ public sealed class Material(
     MaterialSpecularTexturePacking specularTexturePacking = MaterialSpecularTexturePacking.Standard,
     MaterialNormalTextureConvention normalTextureConvention = MaterialNormalTextureConvention.OpenGl,
     System.Numerics.Vector2? bakedUv0Scale = null,
-    float specularFactor = 1.0f)
+    float specularFactor = 1.0f,
+    System.Numerics.Vector2? uvScrollRate = null,
+    System.Numerics.Vector2? emissiveUvScrollRate = null,
+    MaterialBlendMode blendMode = MaterialBlendMode.Unspecified,
+    float alphaCutoff = 0.5f)
 {
     public string Name { get; } = name;
 
@@ -45,6 +49,22 @@ public sealed class Material(
     // set this when the source asset's specular convention doesn't line up with the glTF default
     // — e.g. Fortnite materials need ≈0.01 to match the very subtle in-game highlights.
     public float SpecularFactor { get; } = specularFactor;
+
+    // Constant texture-coordinate scroll applied to the material's textures, in texture widths and
+    // heights per second. Expressed in image space (U to the right, V down the stored image) so it
+    // is independent of each format's UV origin; e.g. a UE2 TexPanner with PanRate 0.1 along U is
+    // (0.1, 0). Exporters without animated materials ignore it.
+    public System.Numerics.Vector2? UvScrollRate { get; } = uvScrollRate;
+
+    // Scroll for EmissiveTexture alone, in the same units and space as UvScrollRate. When set, the
+    // emissive layer moves independently of the rest of the material, so exporters should apply
+    // it as a separately transformed layer rather than a mask sampled with the base coordinates.
+    public System.Numerics.Vector2? EmissiveUvScrollRate { get; } = emissiveUvScrollRate;
+
+    public MaterialBlendMode BlendMode { get; } = blendMode;
+
+    // Diffuse alpha threshold in [0, 1] for MaterialBlendMode.AlphaTest.
+    public float AlphaCutoff { get; } = alphaCutoff;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

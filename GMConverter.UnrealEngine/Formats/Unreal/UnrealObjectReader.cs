@@ -54,10 +54,7 @@ internal sealed class UnrealObjectReader
             var hasArrayIndex = (info & 0x80) != 0;
             var propertyName = prefix + name;
 
-            if (propertyType == 10)
-            {
-                _ = ReadName();
-            }
+            var structName = propertyType == 10 ? ReadName() : string.Empty;
 
             var size = ((info >> 4) & 7) switch
             {
@@ -77,8 +74,10 @@ internal sealed class UnrealObjectReader
                 SkipArrayIndex();
             }
 
+            // Bool properties carry their value in the tag's array flag and have no payload.
             if (propertyType == 3)
             {
+                properties.AddInteger(propertyName, hasArrayIndex ? 1 : 0);
                 continue;
             }
 
@@ -98,8 +97,14 @@ internal sealed class UnrealObjectReader
                 case 6:
                     ReadNameProperty(properties, propertyName, size);
                     break;
+                case 4:
+                    ReadFloatProperty(properties, propertyName, size);
+                    break;
                 case 9:
                     ReadArrayProperty(properties, propertyName, size);
+                    break;
+                case 10:
+                    ReadStructProperty(properties, propertyName, structName, size);
                     break;
                 default:
                     Skip(size);
@@ -320,6 +325,49 @@ internal sealed class UnrealObjectReader
         }
 
         Skip(size);
+    }
+
+    private void ReadFloatProperty(UnrealPropertyCollection properties, string propertyName, int size)
+    {
+        if (size == sizeof(float))
+        {
+            properties.AddFloat(propertyName, ReadSingle());
+            return;
+        }
+
+        Skip(size);
+    }
+
+    // Only rotators are decoded today (TexPanner.PanDirection, etc.); other structs are skipped.
+    // Stock UE2 serializes a rotator as three raw ints, while Republic Commando stores struct
+    // values as nested tagged properties, so both layouts land as "{Name}.Pitch/Yaw/Roll".
+    private void ReadStructProperty(UnrealPropertyCollection properties, string propertyName, string structName, int size)
+    {
+        var endPosition = Position + size;
+        if (!structName.Equals("Rotator", StringComparison.OrdinalIgnoreCase))
+        {
+            Skip(size);
+            return;
+        }
+
+        if (size == 3 * sizeof(int))
+        {
+            properties.AddInteger(propertyName + ".Pitch", ReadInt32());
+            properties.AddInteger(propertyName + ".Yaw", ReadInt32());
+            properties.AddInteger(propertyName + ".Roll", ReadInt32());
+            return;
+        }
+
+        try
+        {
+            ReadProperties(properties, propertyName + ".");
+        }
+        catch (GMConverterException)
+        {
+            // Malformed nested data; fall through and resume after the declared struct size.
+        }
+
+        _reader.BaseStream.Seek(endPosition, SeekOrigin.Begin);
     }
 
     private void ReadObjectProperty(UnrealPropertyCollection properties, string propertyName, int size)

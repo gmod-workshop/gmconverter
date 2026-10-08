@@ -221,7 +221,7 @@ internal sealed class MDLExporter : IExporter
                     sourceTools.VtfCmdPath!,
                     _textureFactory,
                     materialOptimization ?? MaterialOptimizationOptions.Default);
-                materialCompiler.Compile(model.Materials, result.MaterialDirectory, result.MaterialRelativeDirectory);
+                materialCompiler.Compile(AllMaterials(model), result.MaterialDirectory, result.MaterialRelativeDirectory);
             }
         }
 
@@ -486,6 +486,7 @@ internal sealed class MDLExporter : IExporter
         }
 
         writer.WriteLine("$surfaceprop \"metal\"");
+        WriteTextureGroup(writer, model);
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
@@ -511,6 +512,45 @@ internal sealed class MDLExporter : IExporter
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
             writer.WriteLine("}");
         }
+    }
+
+    // One skin family per MaterialSkin after the default. Only materials some skin replaces get a
+    // column; studiomdl leaves the rest unchanged in every family.
+    private static void WriteTextureGroup(StreamWriter writer, Model model)
+    {
+        if (model.Skins is not { Count: > 0 } skins)
+        {
+            return;
+        }
+
+        var usedMaterials = model.Meshes
+            .SelectMany(mesh => mesh.Submeshes)
+            .Select(submesh => submesh.MaterialName ?? "default")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var columns = skins
+            .SelectMany(skin => skin.Replacements.Keys)
+            .Where(usedMaterials.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (columns.Length == 0)
+        {
+            return;
+        }
+
+        writer.WriteLine("$texturegroup \"skinfamilies\"");
+        writer.WriteLine("{");
+        WriteSkinFamily(writer, columns);
+        foreach (var skin in skins)
+        {
+            WriteSkinFamily(writer, columns.Select(name => skin.Replacements.TryGetValue(name, out var replacement) ? replacement.Name : name));
+        }
+
+        writer.WriteLine("}");
+    }
+
+    private static void WriteSkinFamily(StreamWriter writer, IEnumerable<string> materialNames)
+    {
+        writer.WriteLine("    { " + string.Join(' ', materialNames.Select(name => $"\"{EscapeQcString(name)}\"")) + " }");
     }
 
     private static (AnimationClip Clip, string SmdPath)[] GetAnimationSmdPaths(
@@ -753,7 +793,7 @@ internal sealed class MDLExporter : IExporter
 
     private void ExportSourceMaterials(Model model, string materialDirectory, string materialRelativeDirectory)
     {
-        foreach (var material in model.Materials)
+        foreach (var material in AllMaterials(model))
         {
             if (material.DiffuseTexture is null)
             {
@@ -809,14 +849,40 @@ internal sealed class MDLExporter : IExporter
                     normalMapAlphaMask: material.NormalTexture is not null);
             }
 
-            SourceMaterialEmission.Write(writer, material, $"{sourceTexturePath}_illum");
+            var extraTextures = SourceMaterialEmission.ExtraTextures(material, _textureFactory);
+            SourceMaterialEmission.Write(writer, material, suffix => ExtraTexturePath(materialRelativeDirectory, material, extraTextures, suffix));
 
             SourceMaterialProxies.WriteUvScroll(writer, material);
             writer.WriteLine("}");
 
-            SourceMaterialEmission.IllumTexture(material, _textureFactory)?
-                .WritePng(Path.Join(materialDirectory, $"{material.Name}_illum.png"));
+            foreach (var extra in extraTextures)
+            {
+                extra.Texture.WritePng(Path.Join(materialDirectory, $"{ExtraTextureBasename(material, extra)}.png"));
+            }
         }
+    }
+
+    private static string ExtraTextureBasename(Material material, SourceMaterialEmission.ExtraTexture extra)
+    {
+        return extra.SharedBasename ?? $"{material.Name}{extra.Suffix}";
+    }
+
+    private static string ExtraTexturePath(
+        string materialRelativeDirectory,
+        Material material,
+        IReadOnlyList<SourceMaterialEmission.ExtraTexture> extraTextures,
+        string suffix)
+    {
+        var extra = extraTextures.First(texture => texture.Suffix == suffix);
+        return $"{materialRelativeDirectory}/{ExtraTextureBasename(material, extra)}".Replace('\\', '/');
+    }
+
+    // The meshes' own materials followed by every skin's replacements, each name once.
+    private static IEnumerable<Material> AllMaterials(Model model)
+    {
+        return model.Materials
+            .Concat(model.Skins?.SelectMany(skin => skin.Replacements.Values) ?? [])
+            .DistinctBy(material => material.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     private static void WriteSurfaceProp(StreamWriter writer, Material material)

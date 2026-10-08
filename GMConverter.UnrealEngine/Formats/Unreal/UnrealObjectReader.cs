@@ -338,19 +338,31 @@ internal sealed class UnrealObjectReader
         Skip(size);
     }
 
-    // Only rotators are decoded today (TexPanner.PanDirection, etc.); other structs are skipped.
-    // Stock UE2 serializes a rotator as three raw ints, while Republic Commando stores struct
-    // values as nested tagged properties, so both layouts land as "{Name}.Pitch/Yaw/Roll".
+    // Only rotators (TexPanner.PanDirection, etc.) and colours (ConstantColor.Color) are decoded
+    // today; other structs are skipped. Stock UE2 serializes a rotator as three raw ints and a colour
+    // as four raw bytes in its declared B, G, R, A order, while Republic Commando may store struct
+    // values as nested tagged properties, so both layouts land as "{Name}.Pitch/Yaw/Roll" and
+    // "{Name}.R/G/B/A".
     private void ReadStructProperty(UnrealPropertyCollection properties, string propertyName, string structName, int size)
     {
         var endPosition = Position + size;
-        if (!structName.Equals("Rotator", StringComparison.OrdinalIgnoreCase))
+        var isColor = structName.Equals("Color", StringComparison.OrdinalIgnoreCase);
+        if (!isColor && !structName.Equals("Rotator", StringComparison.OrdinalIgnoreCase))
         {
             Skip(size);
             return;
         }
 
-        if (size == 3 * sizeof(int))
+        if (isColor && size == 4)
+        {
+            properties.AddInteger(propertyName + ".B", ReadByte());
+            properties.AddInteger(propertyName + ".G", ReadByte());
+            properties.AddInteger(propertyName + ".R", ReadByte());
+            properties.AddInteger(propertyName + ".A", ReadByte());
+            return;
+        }
+
+        if (!isColor && size == 3 * sizeof(int))
         {
             properties.AddInteger(propertyName + ".Pitch", ReadInt32());
             properties.AddInteger(propertyName + ".Yaw", ReadInt32());

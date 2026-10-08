@@ -34,12 +34,12 @@ internal sealed class SourceMaterialCompiler
         Directory.CreateDirectory(materialSourceDirectory);
         Directory.CreateDirectory(materialOutputDirectory);
 
-        // Deduplication maps a (hash, hasAlpha) tuple to the canonical VTF basename already written
+        // Deduplication maps a (hash, hasAlpha, exact) tuple to the canonical VTF basename already written
         // to disk this run. Two materials that produce identical resized PNGs reference the same
         // VTF instead of paying a second compile+disk write. hasAlpha is part of the key because
         // the same RGB content compiled as DXT5 vs DXT1 produces different VTFs and one VMT may
-        // need translucency while the other does not.
-        var contentBasenames = new Dictionary<(ulong Hash, bool HasAlpha), string>();
+        // need translucency while the other does not. Exact is part of it for the same reason.
+        var contentBasenames = new Dictionary<(ulong Hash, bool HasAlpha, bool Exact), string>();
 
         try
         {
@@ -90,17 +90,18 @@ internal sealed class SourceMaterialCompiler
                         contentBasenames);
                 }
 
-                string? illumBasename = null;
-                var illumTexture = SourceMaterialEmission.IllumTexture(material, _textureFactory);
-                if (illumTexture is not null)
+                Dictionary<string, string> extraTexturePaths = [];
+                foreach (var extra in SourceMaterialEmission.ExtraTextures(material, _textureFactory))
                 {
-                    illumBasename = WriteOrReuse(
-                        illumTexture,
-                        $"{material.Name}_illum",
-                        illumTexture.HasAlpha,
+                    var basename = WriteOrReuse(
+                        extra.Texture,
+                        extra.SharedBasename ?? $"{material.Name}{extra.Suffix}",
+                        extra.Texture.HasAlpha,
                         materialSourceDirectory,
                         materialOutputDirectory,
-                        contentBasenames);
+                        contentBasenames,
+                        extra.Exact);
+                    extraTexturePaths[extra.Suffix] = $"{normalizedMaterialDirectory}/{basename}";
                 }
 
                 var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
@@ -109,7 +110,7 @@ internal sealed class SourceMaterialCompiler
                     $"{normalizedMaterialDirectory}/{diffuseBasename}",
                     normalBasename is null ? null : $"{normalizedMaterialDirectory}/{normalBasename}",
                     specBasename is null ? null : $"{normalizedMaterialDirectory}/{specBasename}",
-                    illumBasename is null ? null : $"{normalizedMaterialDirectory}/{illumBasename}",
+                    extraTexturePaths,
                     material);
             }
         }
@@ -128,15 +129,16 @@ internal sealed class SourceMaterialCompiler
         bool hasAlpha,
         string materialSourceDirectory,
         string materialOutputDirectory,
-        Dictionary<(ulong Hash, bool HasAlpha), string> contentBasenames)
+        Dictionary<(ulong Hash, bool HasAlpha, bool Exact), string> contentBasenames,
+        bool exact = false)
     {
-        var resized = _optimization.MaxTextureSize > 0
+        var resized = _optimization.MaxTextureSize > 0 && !exact
             ? texture.Resized(_optimization.MaxTextureSize)
             : texture;
 
         if (_optimization.DeduplicateTextures)
         {
-            var key = (resized.ContentHash(), hasAlpha);
+            var key = (resized.ContentHash(), hasAlpha, exact);
             if (contentBasenames.TryGetValue(key, out var existing))
             {
                 return existing;
@@ -147,7 +149,7 @@ internal sealed class SourceMaterialCompiler
 
         var sourcePath = GetSourceTexturePath(materialSourceDirectory, preferredBasename);
         resized.WritePng(sourcePath);
-        RunVtfCmd(sourcePath, materialOutputDirectory);
+        RunVtfCmd(sourcePath, materialOutputDirectory, exact);
         return preferredBasename;
     }
 
@@ -158,12 +160,13 @@ internal sealed class SourceMaterialCompiler
     // which surfaces in-engine as the missing-texture checker. Format flags are intentionally
     // omitted so VtfCmd auto-picks DXT1/DXT5 from the actual PNG alpha — forcing DXT1 on alpha-
     // bearing sources can trigger the same silent-no-output failure mode.
-    private void RunVtfCmd(string sourcePath, string outputDirectory)
+    // Exact textures (data such as flow maps) are kept uncompressed, unmipped and edge-clamped.
+    private void RunVtfCmd(string sourcePath, string outputDirectory, bool exact)
     {
-        ProcessRunner.Run(
-            _vtfCmdPath,
-            ["-file", sourcePath, "-output", outputDirectory, "-resize", "-silent"],
-            Path.GetDirectoryName(_vtfCmdPath));
+        string[] arguments = exact
+            ? ["-file", sourcePath, "-output", outputDirectory, "-resize", "-format", "BGR888", "-alphaformat", "BGR888", "-nomipmaps", "-flag", "CLAMPS", "-flag", "CLAMPT", "-silent"]
+            : ["-file", sourcePath, "-output", outputDirectory, "-resize", "-silent"];
+        ProcessRunner.Run(_vtfCmdPath, arguments, Path.GetDirectoryName(_vtfCmdPath));
 
         // Wrap with Path.GetFileName so the second arg is unambiguously a leaf name and
         // Path.Combine can't drop outputDirectory if a future caller passes a rooted sourcePath.
@@ -181,7 +184,7 @@ internal sealed class SourceMaterialCompiler
         string baseTexturePath,
         string? normalTexturePath,
         string? specTexturePath,
-        string? illumTexturePath,
+        Dictionary<string, string> extraTexturePaths,
         Material material)
     {
         using var writer = new StreamWriter(vmtPath, false, _utf8NoBom);
@@ -207,7 +210,7 @@ internal sealed class SourceMaterialCompiler
                 normalMapAlphaMask: normalTexturePath is not null);
         }
 
-        SourceMaterialEmission.Write(writer, material, illumTexturePath);
+        SourceMaterialEmission.Write(writer, material, suffix => extraTexturePaths[suffix]);
 
         SourceMaterialProxies.WriteUvScroll(writer, material);
         writer.WriteLine("}");

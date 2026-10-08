@@ -17,7 +17,8 @@ public sealed class Material(
     System.Numerics.Vector2? uvScrollRate = null,
     System.Numerics.Vector2? emissiveUvScrollRate = null,
     MaterialBlendMode blendMode = MaterialBlendMode.Unspecified,
-    float alphaCutoff = 0.5f)
+    float alphaCutoff = 0.5f,
+    MaterialEmissiveLayer? emissiveLayer = null)
 {
     public string Name { get; } = name;
 
@@ -65,6 +66,9 @@ public sealed class Material(
 
     // Diffuse alpha threshold in [0, 1] for MaterialBlendMode.AlphaTest.
     public float AlphaCutoff { get; } = alphaCutoff;
+
+    // Scrolling glow under a fixed mask; EmissiveTexture then holds its unscrolled frame.
+    public MaterialEmissiveLayer? EmissiveLayer { get; } = emissiveLayer;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

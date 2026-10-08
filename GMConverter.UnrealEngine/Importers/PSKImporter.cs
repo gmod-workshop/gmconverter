@@ -83,12 +83,27 @@ internal sealed class PSKImporter : IImporter
 
         List<Mesh> meshes = [];
         Dictionary<string, Material> materials = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, Dictionary<string, Material>> skins = new(StringComparer.OrdinalIgnoreCase);
         foreach (var model in parsedModels)
         {
             meshes.AddRange(model.Meshes);
             foreach (var material in model.Materials)
             {
                 materials.TryAdd(material.Name, material);
+            }
+
+            foreach (var skin in model.Skins ?? [])
+            {
+                if (!skins.TryGetValue(skin.Name, out var replacements))
+                {
+                    replacements = new(StringComparer.OrdinalIgnoreCase);
+                    skins.Add(skin.Name, replacements);
+                }
+
+                foreach (var (materialName, replacement) in skin.Replacements)
+                {
+                    replacements.TryAdd(materialName, replacement);
+                }
             }
         }
 
@@ -100,7 +115,8 @@ internal sealed class PSKImporter : IImporter
         return new Model(
             string.IsNullOrWhiteSpace(manifest.Name) ? Path.GetFileNameWithoutExtension(inputPath) : manifest.Name,
             meshes,
-            materials.Count == 0 ? [new Material("default")] : materials.Values.ToArray());
+            materials.Count == 0 ? [new Material("default")] : materials.Values.ToArray(),
+            Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))]);
     }
 
     private Model ParseSingle(string inputPath, ModelParseOptions options, PSKSceneTransform? sceneTransform)
@@ -205,7 +221,47 @@ internal sealed class PSKImporter : IImporter
 
         var skeleton = BuildSkeleton(psk, options);
 
-        return new Model(modelName, [mesh], materials, skeleton, BuildAnimations(skeleton, options));
+        return new Model(
+            modelName,
+            [mesh],
+            materials,
+            skeleton,
+            BuildAnimations(skeleton, options),
+            BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath));
+    }
+
+    // Each material's sidecar variants become skins named by what follows the shared stem
+    // (bddispenser_off -> bddispenser_on is skin "on"), so variants of several materials that
+    // share a suffix land in the same skin.
+    private static IReadOnlyList<MaterialSkin>? BuildSkins(
+        PSKMaterial[] meshMaterials,
+        Material[] resolvedMaterials,
+        PSKMaterialResolver materialResolver,
+        string meshName,
+        string meshPath)
+    {
+        Dictionary<string, Dictionary<string, Material>> skins = new(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < meshMaterials.Length; i++)
+        {
+            var baseName = resolvedMaterials[i].Name;
+            var stemLength = baseName.LastIndexOf('_') + 1;
+            foreach (var variant in materialResolver.ResolveVariants(meshMaterials[i], meshName, meshPath))
+            {
+                var skinName = stemLength > 0 && variant.Name.Length > stemLength &&
+                    variant.Name.StartsWith(baseName[..stemLength], StringComparison.OrdinalIgnoreCase)
+                    ? variant.Name[stemLength..]
+                    : variant.Name;
+                if (!skins.TryGetValue(skinName, out var replacements))
+                {
+                    replacements = new(StringComparer.OrdinalIgnoreCase);
+                    skins.Add(skinName, replacements);
+                }
+
+                replacements.TryAdd(baseName, variant);
+            }
+        }
+
+        return skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))];
     }
 
     private static bool TryGetCorner(
@@ -648,6 +704,7 @@ internal sealed class PSKImporter : IImporter
             Texture? normalTexture;
             Texture? specularTexture;
             Texture? emissiveTexture;
+            MaterialEmissiveLayer? emissiveLayer = null;
             if (usesCueMaterial)
             {
                 var materialContext = CreateMaterialContext(material.Name, meshName);
@@ -666,6 +723,7 @@ internal sealed class PSKImporter : IImporter
                     TryLoadTexture(references, ["Diffuse"], references.ContainsKey("Opacity")) ??
                     TryLoadTextureByName(references, ["diff", "albedo", "basecolor", "base color", "color"], hasAlpha: references.ContainsKey("Opacity")) ??
                     TryCreateColorTexture(material.Name, colors);
+                diffuseTexture = TryBlendDiffuseOverlay(diffuseTexture, references);
                 normalTexture =
                     TryLoadLayerTexture(references, ["Normal", "NormalMap", "Normals"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Normal", "NormalMap", "Normals"], hasAlpha: false) ??
@@ -676,11 +734,11 @@ internal sealed class PSKImporter : IImporter
                     TryLoadTextureByName(references, ["spec", "rough", "metal", "orm", "mrao", "packed"], hasAlpha: false, excludedKeyTerms: ["norm", "nrm"]);
                 // A SelfIlluminationMask confines the glow; if the masked bake can't be built, an
                 // unmasked fallback would light the whole surface, so leave the material unlit.
-                emissiveTexture = references.ContainsKey("SelfIlluminationMask")
-                    ? TryBakeMaskedSelfIllumination(references, separatelyScrolled: sidecarSettings.EmissiveUvScrollRate is not null)
-                    : TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
+                (emissiveTexture, emissiveLayer) = references.ContainsKey("SelfIlluminationMask")
+                    ? TryBakeMaskedSelfIllumination(references, sidecarSettings)
+                    : (TryLoadLayerTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Emissive", "SelfIllumination", "SelfIlluminationMask", "SFX_RGB"], hasAlpha: false) ??
-                    TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false);
+                    TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false), null);
             }
 
             // Diagnostic: dump every material resolution so we can verify, when something looks wrong
@@ -732,7 +790,22 @@ internal sealed class PSKImporter : IImporter
                 uvScrollRate: sidecarSettings.UvScrollRate,
                 emissiveUvScrollRate: sidecarSettings.EmissiveUvScrollRate,
                 blendMode: sidecarSettings.BlendMode,
-                alphaCutoff: sidecarSettings.AlphaCutoff);
+                alphaCutoff: sidecarSettings.AlphaCutoff,
+                emissiveLayer: emissiveLayer);
+        }
+
+        // Alternate materials listed in the material's sidecar (UE2 state variants), resolved the
+        // same way as mesh materials.
+        public IReadOnlyList<Material> ResolveVariants(PSKMaterial material, string meshName, string meshPath)
+        {
+            if (!TryGetLocalSidecar(material, meshPath, ".mat", out var materialPath) &&
+                !TryGetSidecar(_materialSidecars, material, out materialPath))
+            {
+                return [];
+            }
+
+            return [.. ReadSidecarSettings(materialPath).Variants
+                .Select(name => Resolve(new PSKMaterial(name, name), meshName, meshPath))];
         }
 
         // Fortnite's SpecularMasks.R doesn't drive specular intensity in the in-game renderer (FP's
@@ -906,25 +979,35 @@ internal sealed class PSKImporter : IImporter
         // alpha. When both share coordinates the glow is their per-pixel product. When the mask
         // scrolls separately that product can't be baked, so the colour texture's average tint is
         // applied to the mask instead, keeping the masked shapes (and their own scroll) and the
-        // overall glow colour.
-        private Texture? TryBakeMaskedSelfIllumination(Dictionary<string, string> references, bool separatelyScrolled)
+        // overall glow colour. When the colour scrolls under a fixed mask, the product is baked
+        // unscrolled and the two are also returned as an emissive layer for exporters that can
+        // animate it. A ConstantColor combined into the colour is applied first.
+        private (Texture? Emissive, MaterialEmissiveLayer? Layer) TryBakeMaskedSelfIllumination(
+            Dictionary<string, string> references,
+            SidecarMaterialSettings settings)
         {
             if (!references.TryGetValue("SelfIllumination", out var colorReference) ||
                 !references.TryGetValue("SelfIlluminationMask", out var maskReference) ||
                 IsNullReference(colorReference) ||
                 IsNullReference(maskReference))
             {
-                return null;
+                return (null, null);
             }
 
             using var color = TryLoadTexture(colorReference, hasAlpha: false);
             using var mask = TryLoadTexture(maskReference, hasAlpha: true);
             if (color is null || mask is null)
             {
-                return null;
+                return (null, null);
             }
 
             var colorPixels = color.GetRgbaPixels();
+            if (settings.SelfIlluminationColor is { } constant)
+            {
+                CombinerCompositor.ApplyConstantColor(colorPixels, constant.Color, constant.Operation);
+            }
+
+            var separatelyScrolled = settings.EmissiveUvScrollRate is not null;
             if (!separatelyScrolled)
             {
                 // Bake at the mask's resolution, sampling the colour texture nearest-neighbour when
@@ -947,7 +1030,14 @@ internal sealed class PSKImporter : IImporter
                     }
                 }
 
-                return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, glow, hasAlpha: false);
+                var baked = _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, glow, hasAlpha: false);
+                var layer = settings.SelfIlluminationUvScrollRate is { } scroll && scroll != System.Numerics.Vector2.Zero
+                    ? new MaterialEmissiveLayer(
+                        _textureFactory.FromRgba($"{color.Name}_glow", color.Width, color.Height, colorPixels),
+                        _textureFactory.FromRgba(mask.Name, mask.Width, mask.Height, maskPixels, hasAlpha: true),
+                        scroll)
+                    : null;
+                return (baked, layer);
             }
 
             var texelCount = Math.Max(1, colorPixels.Length / 4);
@@ -969,7 +1059,31 @@ internal sealed class PSKImporter : IImporter
                 pixels[i + 3] = byte.MaxValue;
             }
 
-            return _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, pixels, hasAlpha: false);
+            return (_textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, pixels, hasAlpha: false), null);
+        }
+
+        // A Combiner's masked blend recorded as DiffuseOverlay/DiffuseOverlayMask (e.g. a damage
+        // decal over the body texture) is baked into the diffuse.
+        private Texture? TryBlendDiffuseOverlay(Texture? diffuse, Dictionary<string, string> references)
+        {
+            if (diffuse is null ||
+                !references.TryGetValue("DiffuseOverlay", out var overlayReference) ||
+                !references.TryGetValue("DiffuseOverlayMask", out var maskReference))
+            {
+                return diffuse;
+            }
+
+            using var overlay = TryLoadTexture(overlayReference, hasAlpha: false);
+            using var mask = TryLoadTexture(maskReference, hasAlpha: true);
+            if (overlay is null || mask is null)
+            {
+                return diffuse;
+            }
+
+            using (diffuse)
+            {
+                return CombinerCompositor.BlendWithMask(diffuse, overlay, mask, _textureFactory);
+            }
         }
 
         // excludedKeyTerms guards substring collisions between channels, e.g. the packed-texture
@@ -1478,6 +1592,10 @@ internal sealed class PSKImporter : IImporter
         {
             UnrealMaterialExporter.UvScrollKey,
             UnrealMaterialExporter.EmissiveUvScrollKey,
+            UnrealMaterialExporter.SelfIlluminationUvScrollKey,
+            UnrealMaterialExporter.SelfIlluminationColorKey,
+            UnrealMaterialExporter.SelfIlluminationColorOperationKey,
+            UnrealMaterialExporter.VariantsKey,
             UnrealMaterialExporter.BlendKey,
             UnrealMaterialExporter.AlphaRefKey
         };
@@ -1519,21 +1637,40 @@ internal sealed class PSKImporter : IImporter
                 ? Math.Clamp(alphaRef, 1, 255) / 255f
                 : SidecarMaterialSettings.Default.AlphaCutoff;
 
+            var colorParts = values.GetValueOrDefault(UnrealMaterialExporter.SelfIlluminationColorKey)?.Split(',', StringSplitOptions.TrimEntries);
+            var colorOperation = values.GetValueOrDefault(UnrealMaterialExporter.SelfIlluminationColorOperationKey);
+            byte[] color = new byte[3];
+            var selfIlluminationColor = colorParts is { Length: 3 } && colorOperation is not null &&
+                colorParts.Select((part, index) => byte.TryParse(part, System.Globalization.NumberStyles.Integer, inv, out color[index])).All(parsed => parsed)
+                ? new SidecarConstantColor(color, colorOperation)
+                : null;
+
+            var variants = values.GetValueOrDefault(UnrealMaterialExporter.VariantsKey)?
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
+
             return new SidecarMaterialSettings(
                 ParseScroll(UnrealMaterialExporter.UvScrollKey),
                 ParseScroll(UnrealMaterialExporter.EmissiveUvScrollKey),
                 blendMode,
-                alphaCutoff);
+                alphaCutoff,
+                ParseScroll(UnrealMaterialExporter.SelfIlluminationUvScrollKey),
+                selfIlluminationColor,
+                variants);
         }
 
         private sealed record SidecarMaterialSettings(
             System.Numerics.Vector2? UvScrollRate,
             System.Numerics.Vector2? EmissiveUvScrollRate,
             MaterialBlendMode BlendMode,
-            float AlphaCutoff)
+            float AlphaCutoff,
+            System.Numerics.Vector2? SelfIlluminationUvScrollRate,
+            SidecarConstantColor? SelfIlluminationColor,
+            IReadOnlyList<string> Variants)
         {
-            public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f);
+            public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f, null, null, []);
         }
+
+        private sealed record SidecarConstantColor(byte[] Color, string Operation);
 
         private static CueMaterial ReadCueMaterial(string materialPath)
         {

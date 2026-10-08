@@ -339,7 +339,11 @@ public sealed class UnrealUnitsTests
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
         _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
-            new Dictionary<string, object?> { ["studioMdlPath"] = stubStudioMdl })));
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
 
         var smd = File.ReadAllLines(Directory.GetFiles(output, "triangle.smd", SearchOption.AllDirectories).Single());
         var bone = smd[Array.IndexOf(smd, "time 0") + 1].Split(' ').Select(value => float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
@@ -348,6 +352,111 @@ public sealed class UnrealUnitsTests
             Quaternion.CreateFromAxisAngle(Vector3.UnitY, bone[5]) *
             Quaternion.CreateFromAxisAngle(Vector3.UnitX, bone[4]);
         Assert.Equal(1f, MathF.Abs(Quaternion.Dot(Quaternion.Normalize(expected), actual)), 4);
+    }
+
+    [Fact]
+    public void ScrollingSelfIlluminationColourBecomesSourceEmissiveBlend()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"),
+            "Diffuse=panel\nSelfIllumination=flash\nSelfIlluminationMask=panel\n" +
+            "SelfIlluminationColor=100,50,0\nSelfIlluminationColorOperation=Add\nSelfIlluminationUvScroll=0,0.3\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51, size: 4);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "flash.tga"), alpha: 255, size: 2, blue: 0, green: 200, red: 100);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var material = Assert.Single(model.Materials);
+
+        // Colour = flash (R100 G200 B0) + constant (R100 G50 B0), clamped; it scrolls under the
+        // fixed mask, and the static fallback is that colour x mask alpha 51/255.
+        var layer = Assert.IsType<GMConverter.SDK.Materials.MaterialEmissiveLayer>(material.EmissiveLayer);
+        Assert.Equal(new Vector2(0, 0.3f), layer.ScrollRate);
+        Assert.Equal([200, 250, 0, 255], layer.Color.GetRgbaPixels()[..4]);
+        Assert.Equal(51, layer.Mask.GetRgbaPixels()[3]);
+        Assert.Equal([40, 50, 0, 255], material.EmissiveTexture!.GetRgbaPixels()[..4]);
+
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+
+        var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
+        Assert.Contains("\"$selfillumtint\" \"[0 0 0]\"", vmt);
+        Assert.Contains("\"$emissiveblendenabled\" \"1\"", vmt);
+        Assert.Contains("\"$emissiveblendtexture\" \"gmconverter/test_glow\"", vmt);
+        Assert.Contains("\"$emissiveblendbasetexture\" \"gmconverter/test_glowmask\"", vmt);
+        Assert.Contains("\"$emissiveblendflowtexture\" \"gmconverter/gmconverter_flow\"", vmt);
+        Assert.Contains("\"$emissiveblendscrollvector\" \"[0 0.3]\"", vmt);
+        Assert.DoesNotContain("$detail", vmt);
+
+        // The base alpha blacks out the masked area under $selfillum; the flow map's texels hold
+        // their own UV so the pass samples the colour at the mesh UV.
+        using var basePng = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+            Directory.GetFiles(output, "test.png", SearchOption.AllDirectories).Single());
+        Assert.Equal(51, basePng[0, 0].A);
+        using var flowPng = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+            Directory.GetFiles(output, "gmconverter_flow.png", SearchOption.AllDirectories).Single());
+        Assert.Equal((0, 0), (flowPng[0, 0].R, flowPng[0, 0].G));
+        Assert.Equal((128, 64), (flowPng[128, 64].R, flowPng[128, 64].G));
+    }
+
+    [Fact]
+    public void MaskedDiffuseOverlayIsBlendedIntoDiffuse()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nDiffuseOverlay=scorch\nDiffuseOverlayMask=scorch\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 255);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "scorch.tga"), alpha: 51, blue: 0, green: 0, red: 200);
+
+        var material = Assert.Single(PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+
+        // lerp(panel R80 G220 B240, scorch R200 G0 B0, 51/255 = 0.2).
+        Assert.Equal([104, 176, 192], material.DiffuseTexture!.GetRgbaPixels()[..3]);
+    }
+
+    [Fact]
+    public void SidecarVariantsBecomeSourceSkinFamilies()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nVariants=test_on,test_dest\n");
+        File.WriteAllText(Path.Join(directory, "test_on.mat"), "Diffuse=panel\nSelfIllumination=panel\nSelfIlluminationMask=panel\n");
+        File.WriteAllText(Path.Join(directory, "test_dest.mat"), "Diffuse=scorch\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "scorch.tga"), alpha: 255, blue: 0, green: 0, red: 200);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+
+        Assert.Equal("test", Assert.Single(model.Materials).Name);
+        Assert.Equal(["test_on", "test_dest"], model.Skins!.Select(skin => skin.Replacements["test"].Name));
+
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+
+        var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        Assert.Contains("$texturegroup \"skinfamilies\"\n{\n    { \"test\" }\n    { \"test_on\" }\n    { \"test_dest\" }\n}", qc.ReplaceLineEndings("\n"));
+        Assert.Contains("$selfillum", File.ReadAllText(Directory.GetFiles(output, "test_on.vmt", SearchOption.AllDirectories).Single()));
+        Assert.Single(Directory.GetFiles(output, "test_dest.vmt", SearchOption.AllDirectories));
     }
 
     // Four closed tetrahedra 100 cm apart; all but `invertedShell` use the winding the bacta

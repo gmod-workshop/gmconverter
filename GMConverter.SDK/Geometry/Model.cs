@@ -10,7 +10,8 @@ public sealed record Model(
     IReadOnlyList<Mesh> Meshes,
     IReadOnlyList<Material> Materials,
     Skeleton? Skeleton = null,
-    IReadOnlyList<AnimationClip>? Animations = null)
+    IReadOnlyList<AnimationClip>? Animations = null,
+    IReadOnlyList<MaterialSkin>? Skins = null)
 {
     public IReadOnlyList<Texture> Textures => Materials
         .SelectMany(material => material.Textures)

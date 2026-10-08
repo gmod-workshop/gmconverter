@@ -5,6 +5,8 @@ namespace GMConverter.SourceEngine;
 
 internal static class SourceMaterialProxies
 {
+    private const float _epsilon = 1e-6f;
+
     // Material transforms are in image space (V down the stored texture), which is also the space
     // Source applies texture transforms in, so rates, offsets and angles carry over unchanged.
     // A plain scroll keeps the long-standing TextureScroll proxy; anything else (static tiling,
@@ -99,7 +101,7 @@ internal static class SourceMaterialProxies
             _variables.Add(Line(rotate, Format(transform.RotationDegrees)));
             _variables.Add(Line(translate, "[0 0]"));
 
-            if (transform.RotationRateDegrees != 0f)
+            if (MathF.Abs(transform.RotationRateDegrees) > _epsilon)
             {
                 AddWrappedRamp($"{prefix}_rotate_ramp", transform.RotationRateDegrees, transform.RotationDegrees, 360f, rotate);
             }
@@ -159,7 +161,7 @@ internal static class SourceMaterialProxies
         private void AddAxis(string prefix, string axis, int component, float scrollRate, float baseScale, MaterialOscillation? oscillation, string scale, string translate)
         {
             List<string> terms = [];
-            if (scrollRate != 0f)
+            if (MathF.Abs(scrollRate) > _epsilon)
             {
                 var ramp = $"{prefix}_{axis}_scroll";
                 _variables.Add(Line(ramp, "0"));
@@ -167,7 +169,7 @@ internal static class SourceMaterialProxies
                 terms.Add(ramp);
             }
 
-            if (oscillation is { Amplitude: not 0f } osc)
+            if (oscillation is { } osc && MathF.Abs(osc.Amplitude) > _epsilon)
             {
                 var period = osc.Rate > 0f ? 1f / osc.Rate : 1f;
                 var timeOffset = osc.Rate > 0f ? osc.Phase / (2f * MathF.PI * osc.Rate) : 0f;

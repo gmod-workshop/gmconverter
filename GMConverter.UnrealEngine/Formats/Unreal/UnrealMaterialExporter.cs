@@ -83,6 +83,7 @@ internal static class UnrealMaterialExporter
     // not itself a texture.
     private const int _defaultTextureSize = 256;
     private const int _maxChainDepth = 8;
+    private const float _epsilon = 1e-6f;
 
     private static readonly IReadOnlyDictionary<string, string> _shaderChannels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -717,7 +718,7 @@ internal static class UnrealMaterialExporter
             v = rate * MathF.Sin(yaw);
         }
 
-        if (MathF.Abs(u) < 1e-6f && MathF.Abs(v) < 1e-6f)
+        if (MathF.Abs(u) < _epsilon && MathF.Abs(v) < _epsilon)
         {
             return;
         }
@@ -758,7 +759,7 @@ internal static class UnrealMaterialExporter
             case "TexScaler":
                 var scaleU = properties.FirstFloat("UScale") ?? 1f;
                 var scaleV = properties.FirstFloat("VScale") ?? 1f;
-                if (scaleU != 1f || scaleV != 1f)
+                if (MathF.Abs(scaleU - 1f) > _epsilon || MathF.Abs(scaleV - 1f) > _epsilon)
                 {
                     AppendTransform(textureReferences, key, FormattableString.Invariant($"scale={scaleU:R},{scaleV:R}"));
                 }
@@ -776,7 +777,7 @@ internal static class UnrealMaterialExporter
                 // The pivot is given in texels of the rotated texture.
                 var offsetU = properties.FirstFloat("UOffset") ?? 0f;
                 var offsetV = properties.FirstFloat("VOffset") ?? 0f;
-                if (offsetU != 0f || offsetV != 0f)
+                if (MathF.Abs(offsetU) > _epsilon || MathF.Abs(offsetV) > _epsilon)
                 {
                     var (width, height) = WrappedTextureSize(materialObject, resolver);
                     AppendTransform(textureReferences, key, FormattableString.Invariant($"center={offsetU / width:R},{offsetV / height:R}"));
@@ -790,7 +791,7 @@ internal static class UnrealMaterialExporter
     private static void RecordOscillation(UnrealPropertyCollection properties, string axis, string key, Dictionary<string, string> textureReferences)
     {
         var amplitude = properties.FirstFloat($"{axis}OscillationAmplitude") ?? _defaultOscillationAmplitude;
-        if (amplitude == 0f)
+        if (MathF.Abs(amplitude) < _epsilon)
         {
             return;
         }

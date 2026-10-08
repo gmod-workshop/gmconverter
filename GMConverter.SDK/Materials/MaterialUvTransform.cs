@@ -9,6 +9,8 @@ namespace GMConverter.SDK.Materials;
 /// </summary>
 public sealed record MaterialUvTransform
 {
+    private const float _epsilon = 1e-6f;
+
     public Vector2 Scale { get; init; } = Vector2.One;
 
     public Vector2 Center { get; init; }
@@ -24,7 +26,7 @@ public sealed record MaterialUvTransform
 
     public MaterialOscillation? V { get; init; }
 
-    public bool IsAnimated => RotationRateDegrees != 0f || ScrollRate != Vector2.Zero || U is not null || V is not null;
+    public bool IsAnimated => MathF.Abs(RotationRateDegrees) > _epsilon || ScrollRate != Vector2.Zero || U is not null || V is not null;
 
-    public bool IsIdentity => !IsAnimated && Scale == Vector2.One && RotationDegrees == 0f;
+    public bool IsIdentity => !IsAnimated && Vector2.Distance(Scale, Vector2.One) < _epsilon && MathF.Abs(RotationDegrees) < _epsilon;
 }

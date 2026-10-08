@@ -37,7 +37,7 @@ internal static class SourceMaterialDetail
             _ => 1.0
         };
         var texture = layer.Texture;
-        if (scale != 1.0)
+        if (layer.Blend is MaterialLayerBlend.Multiply or MaterialLayerBlend.Multiply4X)
         {
             var pixels = texture.GetRgbaPixels();
             for (var i = 0; i < pixels.Length; i += 4)

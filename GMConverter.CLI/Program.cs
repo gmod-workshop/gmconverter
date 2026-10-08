@@ -135,7 +135,7 @@ internal static class Program
         HashSet<string> usedNames,
         List<SchemaArgument> arguments)
     {
-        foreach (var descriptor in schema.AllOptions)
+        foreach (var descriptor in schema.AllOptions.Where(descriptor => !IsHostControlled(format, descriptor)))
         {
             var isBool = descriptor.Type == OptionType.Bool;
             var argument = CreateSchemaOption($"--{prefix}-{descriptor.Key.Replace(':', '-')}", descriptor.Description ?? descriptor.Label, isBool);
@@ -158,6 +158,12 @@ internal static class Program
             rootCommand.Options.Add(argument);
             arguments.Add(new SchemaArgument(format, descriptor, argument));
         }
+    }
+
+    // glTF's binary/text choice follows --output-format, so its own flag would be ignored.
+    private static bool IsHostControlled(string format, OptionDescriptor descriptor)
+    {
+        return format == "glb" && descriptor.Key == "binary";
     }
 
     // Boolean flags also work bare (--physics means --physics true).

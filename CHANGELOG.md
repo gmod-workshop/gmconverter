@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - The GUI and CLI no longer have Source-specific code; every Source option comes from the Source plugin.
   - The legacy CLI flags (`--model-path`, `--studiomdl-path`, `--vtfcmd-path`, `--no-materials`, `--physics`, `--physics-mode`, `--physics-mass`, `--coacd-threshold`, `--max-convex-pieces`, `--coacd-max-hull-vertices`) still work, as aliases of the matching `--mdl-` options. Any boolean option flag can now be given bare, and enum values are matched case-insensitively.
   - `--physics-mode` no longer turns physics on by itself; add `--physics`.
+  - The CLI no longer offers `--glb-binary`, which `--output-format` always overrode.
   - The collision overlay in the GUI preview now comes from the exporter, so it shows the real CoACD hulls again instead of only the bounding box.
   - Saved GUI settings keep only options you changed. Settings from older versions, including StudioMDL/VTFCmd paths and physics and texture options, are carried over once. The saved model path is not: it was tied to the last model, and a blank model path now becomes `gmconverter/<name>.mdl` at export.
   - On a fresh install the GUI starts from the Source plugin's defaults: no texture resize and no texture deduplication, the same as the CLI. It previously defaulted to a 1024 resize with deduplication.

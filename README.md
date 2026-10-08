@@ -37,32 +37,76 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 ```
 
 <details>
-<summary>CLI Options</summary>
+<summary>Common Options</summary>
+
+These apply to every input and output format.
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
 | `--input-format <format>` | Input format: `opt`, `mdl`, `psk`, or `mow`. | `--input-format psk` | Required |
-| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `source`, or `mdl`. | `--output-format mdl` | Required |
+| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`). | `--output-format mdl` | Required |
 | `--input-path <path>` | Input model path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
 | `--name <base-name>` | Override generated file names. | `--name bacta_dispenser` | Input file name |
-| `--model-path <path/name.mdl>` | MDL path under the game `models` directory. | `--model-path "gmconverter/model.mdl"` | `gmconverter/<name>.mdl` |
-| `--studiomdl-path <path>` | Optional `cestudiomdl.exe` override. | `--studiomdl-path "E:\Tools\cestudiomdl.exe"` | Auto-downloaded to `tools` |
-| `--vtfcmd-path <path>` | Optional `VTFCmd.exe` override. | `--vtfcmd-path "E:\Tools\VTFCmd.exe"` | Auto-downloaded to `tools` when materials are built |
 | `--material-dir <path>` | Recursive search directory for sidecar materials and textures. | `--material-dir "E:\Tools\umodel\UmodelExport"` | None |
-| `--animation-path <path.psa>` | PSA animation file to import alongside PSK/PSKX. Alias for `--psk-import-animationPath`. | `--animation-path "MeshAnimation\model.psa"` | None |
 | `--scale <factor>` | Scale exported geometry. | `--scale 0.5` | `1` |
 | `--no-scale` | Compatibility alias for scale `1`. | `--no-scale` | Off |
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
-| `--no-materials` | Skip VTF/VMT compilation. | `--no-materials` | Off |
-| `--physics` | Generate bounds collision for Source output. | `--physics` | Off |
-| `--physics-mode <mode>` | Collision generation mode: `bounds` or `coacd`. Takes effect with `--physics`. | `--physics --physics-mode coacd` | `bounds` |
-| `--physics-mass <value>` | Physics mass for Source collision. | `--physics-mass 250` | `100` |
-| `--coacd-threshold <value>` | CoACD termination threshold. | `--coacd-threshold 0.05` | `0.05` |
-| `--max-convex-pieces <count>` | Maximum CoACD convex hull count. Use `-1` for no limit. | `--max-convex-pieces 16` | `16` |
-| `--coacd-max-hull-vertices <count>` | Maximum vertices per CoACD hull. | `--coacd-max-hull-vertices 16` | `16` |
 
 </details>
+
+### Format Options
+
+Each importer and exporter adds its own options, which only apply when that format is selected:
+
+- Exporter options are `--<format>-<option>`, for example `--mdl-physics-mode`.
+- Importer options are `--<format>-import-<option>`, for example `--psk-import-animationPath`. The extra `import` keeps them apart from exporter options, since a format such as `mdl` can be both read and written.
+- Many options also have a shorter alias, such as `--physics-mode`. Either spelling works.
+- Boolean options can be given bare (`--physics`) or with `true`/`false`. An alias starting with `--no-` sets the opposite value.
+
+Passing an option for a format that isn't selected is an error. The same keys and aliases work in [config files](#gui), and in the GUI they appear under **Import options** and **Export options** on the Convert page.
+
+<details>
+<summary>PSK / PSKX Import Options</summary>
+
+| Option | Alias | Description | Default |
+| --- | --- | --- | --- |
+| `--psk-import-animationPath <path.psa>` | `--animation-path` | PSA animation file to import alongside the mesh. | None |
+
+</details>
+
+<details>
+<summary>MDL (Source) Export Options</summary>
+
+| Option | Alias | Description | Default |
+| --- | --- | --- | --- |
+| `--mdl-modelPath <path/name.mdl>` | `--model-path` | MDL path under the game `models` directory. | `gmconverter/<name>.mdl` |
+| `--mdl-studioMdlPath <path>` | `--studiomdl-path`, `--studiomdl` | `cestudiomdl.exe` override. | Auto-downloaded to `tools` |
+| `--mdl-vtfCmdPath <path>` | `--vtfcmd-path`, `--vtfcmd` | `VTFCmd.exe` override. | Auto-downloaded to `tools` when materials are built |
+| `--mdl-buildMaterials <true\|false>` | `--no-materials` (sets `false`) | Compile VTFs and VMTs alongside the MDL. | `true` |
+| `--mdl-material-maxTextureSize <size>` | `--max-texture-size` | Cap the longest texture edge before VTF compile: `0`, `512`, `1024`, `2048`, or `4096`. `0` disables resizing. | `0` |
+| `--mdl-material-deduplicateTextures [true\|false]` | `--deduplicate-textures` | Reuse one VTF for byte-identical textures. | `false` |
+| `--mdl-physics-enabled [true\|false]` | `--physics` | Generate a collision model. | `false` |
+| `--mdl-physics-mode <mode>` | `--physics-mode` | Collision mode: `bounds` or `coacd`. Takes effect with `--physics`. See [Physics](#physics). | `bounds` |
+| `--mdl-physics-mass <value>` | `--physics-mass` | Physics mass in kilograms. | `100` |
+| `--mdl-physics-coacdThreshold <value>` | `--coacd-threshold` | CoACD termination threshold. | `0.05` |
+| `--mdl-physics-maxConvexPieces <count>` | `--max-convex-pieces` | Maximum CoACD convex hull count. Use `-1` for no limit. | `16` |
+| `--mdl-physics-maxHullVertices <count>` | `--coacd-max-hull-vertices`, `--max-hull-vertices` | Maximum vertices per CoACD hull. | `16` |
+
+</details>
+
+<details>
+<summary>glTF / GLB Export Options</summary>
+
+These use the `--glb-` prefix for both `glb` and `gltf` output. Binary or text output follows `--output-format`.
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--glb-bakeUvTransforms [true\|false]` | Fold per-material UV scale and offset into the mesh UVs, for viewers that ignore `KHR_texture_transform`. | `false` |
+
+</details>
+
+OPT, MOW and MDL import, and OBJ export, have no format options.
 
 ## GUI
 
@@ -80,7 +124,7 @@ git submodule update --init --recursive
 
 </details>
 
-The GUI auto-loads the first `gmconverter.ini` it finds in the current directory.
+The GUI auto-loads the first `gmconverter.ini` it finds in the current directory. Config keys are the common option names plus any [format option](#format-options) key or alias. Case, `-` and `_` are ignored, and keys that match nothing are reported in the console.
 
 <details>
 <summary>Example Config</summary>
@@ -95,6 +139,7 @@ material-dir = E:\Tools\umodel\UmodelExport
 model-path = gmconverter/bactadispenserras.mdl
 axis-mode = auto
 no-materials = false
+physics = true
 physics-mode = bounds
 physics-mass = 100
 ```
@@ -105,18 +150,7 @@ physics-mass = 100
 
 Unreal Engine, Source Engine, Men of War and X-Wing Alliance support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
 
-The CLI adds `--<format>-<option-key>` flags from exporter schemas. Colons in keys become hyphens; the remaining spelling is preserved. Boolean values use explicit `true` or `false`. For example, Source's texture settings are available as:
-
-```powershell
-./GMConverter.CLI --input-format psk --output-format mdl `
-  --input-path "model.psk" --output-path "out/model" `
-  --mdl-material-maxTextureSize 1024 `
-  --mdl-material-deduplicateTextures true
-```
-
-Importer options work the same way with an `import` segment, `--<format>-import-<option-key>`, because a format can have both an importer and an exporter. For example, `--psk-import-animationPath` sets the PSK animation file; `--animation-path` still works as an alias. In the GUI, importer options appear under **Import options** on the Convert page. Config files (`.ini`) accept any importer or exporter option key or alias, such as `animation-path = model.psa`.
-
-The Source flags in the table above (`--model-path`, `--studiomdl-path`, `--no-materials`, `--physics`, and so on) are aliases the Source plugin declares for its `--mdl-` options, so either spelling works. Boolean flags can be given bare (`--physics`) or with `true`/`false`, and a `--no-` alias sets the opposite value. `source` remains an alias for `mdl`; use the `--mdl-` prefix with either format. glTF's binary/text output follows `--output-format`, and other glTF schema options use the `--glb-` prefix for both `glb` and `gltf`.
+Each plugin declares its own options; see [Format Options](#format-options).
 
 ## Format Details
 
@@ -152,7 +186,7 @@ ActorX coordinates use centimeters and are normalized to meters on import, inclu
 
 Use `--material-dir` to resolve UModel-style `.mat` sidecars and texture files. Diffuse, normal, specular, opacity, and emissive references are supported. If a material has no explicit normal map reference, nearby diffuse-name `_normal`, `_norm`, or `_bump` textures are used as normal-map fallbacks.
 
-PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA with `--animation-path` to export animation clips to glTF/GLB or Source `$sequence` SMDs.
+PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA with `--animation-path` (`--psk-import-animationPath`) to export animation clips to glTF/GLB or Source `$sequence` SMDs.
 
 ```powershell
 ./GMConverter.CLI --input-format psk --output-format glb `
@@ -178,7 +212,7 @@ Fortnite installations use a dedicated Unreal profile. When detected, GMConverte
 
 Source MDL files are supported as input and output. MDL read support decompiles reference SMD meshes through MdlCrowbar and currently imports static reference mesh geometry and material references, not full compiled animation data.
 
-MDL write support generates SMD, QC, material files, optional animation SMDs, and compiles the final MDL with `cestudiomdl`. Material builds use `VTFCmd` to write VTF textures. If `--studiomdl-path` or `--vtfcmd-path` is omitted, GMConverter downloads portable defaults into a `tools` folder next to the executable.
+MDL write support generates SMD, QC, material files, optional animation SMDs, and compiles the final MDL with `cestudiomdl`. Material builds use `VTFCmd` to write VTF textures. If `--mdl-studioMdlPath` or `--mdl-vtfCmdPath` (or their `--studiomdl-path` / `--vtfcmd-path` aliases) is omitted, GMConverter downloads portable defaults into a `tools` folder next to the executable.
 
 ```powershell
 ./GMConverter.CLI --input-format opt --output-format mdl `
@@ -246,6 +280,7 @@ Generate a [CoACD](https://colin97.github.io/CoACD/) based collision mesh:
 ./GMConverter.CLI --input-format opt --output-format mdl `
   --input-path "FlightModels\buoyc.opt" `
   --output-path "out\buoyc-source" `
+  --physics `
   --physics-mode coacd `
   --max-convex-pieces 16
 ```

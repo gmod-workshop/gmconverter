@@ -13,7 +13,6 @@ namespace GMConverter.CLI;
 
 internal static class Program
 {
-    private static readonly string[] _builtInInputFormats = ["opt", "mow"];
     private static readonly string[] _builtInOutputFormats = ["info", "obj", "glb", "gltf"];
 
     public static int Main(string[] args)
@@ -54,7 +53,7 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", _builtInInputFormats.Concat(PluginHost.Registry.Importers.Select(importer => importer.InputFormat))) + ".");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", PluginHost.Registry.Importers.Select(importer => importer.InputFormat)) + ".");
         var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", _builtInOutputFormats.Concat(PluginHost.Registry.Exporters.Select(exporter => exporter.OutputFormat))) + ". Source is an alias for mdl.");
         var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
         var outputPathOption = new Option<string>("--output-path")

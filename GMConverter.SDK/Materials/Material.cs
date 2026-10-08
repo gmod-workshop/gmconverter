@@ -18,7 +18,9 @@ public sealed class Material(
     System.Numerics.Vector2? emissiveUvScrollRate = null,
     MaterialBlendMode blendMode = MaterialBlendMode.Unspecified,
     float alphaCutoff = 0.5f,
-    MaterialEmissiveLayer? emissiveLayer = null)
+    MaterialEmissiveLayer? emissiveLayer = null,
+    MaterialUvTransform? uvTransform = null,
+    MaterialLayer? detailLayer = null)
 {
     public string Name { get; } = name;
 
@@ -69,6 +71,13 @@ public sealed class Material(
 
     // Scrolling glow under a fixed mask; EmissiveTexture then holds its unscrolled frame.
     public MaterialEmissiveLayer? EmissiveLayer { get; } = emissiveLayer;
+
+    // Transform of the base layer's coordinates beyond UvScrollRate (static tiling, rotation,
+    // oscillation). Its ScrollRate is zero when the scroll lives in UvScrollRate.
+    public MaterialUvTransform? UvTransform { get; } = uvTransform;
+
+    // Second texture combined with the diffuse before lighting.
+    public MaterialLayer? DetailLayer { get; } = detailLayer;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

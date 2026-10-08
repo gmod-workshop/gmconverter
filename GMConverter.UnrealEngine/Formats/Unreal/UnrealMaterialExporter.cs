@@ -22,6 +22,23 @@ internal static class UnrealMaterialExporter
     internal const string SelfIlluminationColorKey = "SelfIlluminationColor";
     internal const string SelfIlluminationColorOperationKey = "SelfIlluminationColorOperation";
 
+    // Static and animated texture-coordinate transforms beyond a plain scroll (TexScaler,
+    // TexOscillator, TexRotator), as ";"-separated "name=values" segments; the first segment of a
+    // name wins, so the outermost modifier decides. UvTransform follows the diffuse chain and
+    // DetailUvTransform the detail layer (where scrolls also land, as "scroll=u,v"). Segments:
+    // scale=u,v; center=u,v; rotation=degrees; rotationrate=degrees per second; and
+    // u= / v=kind,amplitude,rate,phase with kind pan, stretch or jitter.
+    internal const string UvTransformKey = "UvTransform";
+    internal const string DetailUvTransformKey = "DetailUvTransform";
+
+    // A Combiner that adds or multiplies two textures on the diffuse chain: Detail is the second
+    // texture and DetailBlend how it combines ("Add", "Multiply", "Multiply2X" or "Multiply4X").
+    internal const string DetailBlendKey = "DetailBlend";
+
+    // A FadeColor on the self-illumination chain: SelfIlluminationColor holds Color1 and this key
+    // "R,G,B,period,phase" for Color2 and the timing, in seconds.
+    internal const string SelfIlluminationFadeKey = "SelfIlluminationFade";
+
     // Alternate materials for the same mesh (e.g. a dispenser's On/Warm/Off/Dest states), as a
     // comma-separated list of material names that each have their own sidecar.
     internal const string VariantsKey = "Variants";
@@ -49,6 +66,24 @@ internal static class UnrealMaterialExporter
     // UE2 TexPanner defaults: PanRate 0.1 and a zero PanDirection, which pans along +U.
     private const float _defaultPanRate = 0.1f;
     private const float _rotatorUnitsPerRadian = 32768f / MathF.PI;
+    private const float _rotatorUnitsPerDegree = 65536f / 360f;
+
+    // UE2 TexOscillator defaults and EOscillationType (OT_*) values.
+    private const float _defaultOscillationRate = 1f;
+    private const float _defaultOscillationAmplitude = 0.1f;
+    private const int _oscillationStretch = 1;
+    private const int _oscillationStretchRepeat = 2;
+    private const int _oscillationJitter = 3;
+
+    // UE2 TexRotator.TexRotationType: TR_ConstantlyRotating spins at Rotation per second; fixed
+    // and oscillating rotations are written as their fixed angle.
+    private const int _rotationConstant = 1;
+
+    // Texture size assumed for a TexRotator pivot (given in texels) when the rotated material is
+    // not itself a texture.
+    private const int _defaultTextureSize = 256;
+    private const int _maxChainDepth = 8;
+    private const float _epsilon = 1e-6f;
 
     private static readonly IReadOnlyDictionary<string, string> _shaderChannels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -85,13 +120,16 @@ internal static class UnrealMaterialExporter
         }
 
         // Variants are looked up after every mesh material has its name, so a sibling the mesh
-        // also uses directly stays a plain material instead of becoming a skin of another.
+        // also uses directly stays a plain material instead of becoming a skin of another, and
+        // a sibling the material is built from (e.g. the Combiner inside a FinalBlend) is a
+        // building block rather than an alternative.
         var meshMaterialKeys = materialObjects.OfType<UnrealResolvedObject>().Select(GetObjectKey).ToHashSet();
         for (var i = 0; i < materialCount; i++)
         {
             var textureReferences = new Dictionary<string, string>(materials[i].TextureReferences, StringComparer.OrdinalIgnoreCase);
             List<string> variantNames = [];
-            foreach (var variantObject in FindVariantObjects(materialObjects[i]).Where(variant => !meshMaterialKeys.Contains(GetObjectKey(variant))))
+            foreach (var variantObject in FindVariantObjects(materialObjects[i])
+                .Where(variant => !meshMaterialKeys.Contains(GetObjectKey(variant)) && !materials[i].Uses(variant)))
             {
                 var variant = ResolveMaterial(variantObject, i, outputDirectory, resolver);
                 if (!SharesDiffuse(variant, materials[i]))
@@ -175,12 +213,13 @@ internal static class UnrealMaterialExporter
 
         var materialName = NameHelpers.SanitizeMaterialName(materialObject.ObjectName);
         Dictionary<string, string> textureReferences = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> visitedObjects = [];
         PopulateTextureReferences(
             materialObject,
             outputDirectory,
             resolver,
             textureReferences,
-            []);
+            visitedObjects);
 
         // Alpha-blended and masked materials read coverage from the diffuse alpha; UE2 often
         // leaves the Opacity channel empty and relies on the diffuse texture's own alpha.
@@ -191,7 +230,7 @@ internal static class UnrealMaterialExporter
             textureReferences.TryAdd("Opacity", diffuse);
         }
 
-        return new UnrealExportedMaterial(materialName, textureReferences);
+        return new UnrealExportedMaterial(materialName, textureReferences, visitedObjects);
     }
 
     private static void PopulateTextureReferences(
@@ -286,6 +325,7 @@ internal static class UnrealMaterialExporter
         }
 
         RecordTexturePanner(materialObject, properties, "Diffuse", textureReferences);
+        RecordUvModifier(materialObject, properties, "Diffuse", resolver, textureReferences);
         PopulateTextureReference(
             resolver.Resolve(materialObject.Package, wrappedMaterialReference.Value),
             "Diffuse",
@@ -390,18 +430,40 @@ internal static class UnrealMaterialExporter
             var color = ReadObjectProperties(constant);
             if (texture is not null && color is not null)
             {
-                textureReferences.TryAdd(SelfIlluminationColorKey, FormattableString.Invariant(
-                    $"{color.FirstInteger("Color.R") ?? 0},{color.FirstInteger("Color.G") ?? 0},{color.FirstInteger("Color.B") ?? 0}"));
+                textureReferences.TryAdd(SelfIlluminationColorKey, FormatColor(color, "Color"));
 
-                // UE2 applies Modulate2X/4X to the multiply only.
-                textureReferences.TryAdd(SelfIlluminationColorOperationKey, operation == _combineAdd
-                    ? "Add"
-                    : properties.FirstInteger("Modulate4X") is > 0 ? "Multiply4X"
-                    : properties.FirstInteger("Modulate2X") is > 0 ? "Multiply2X"
-                    : "Multiply");
+                textureReferences.TryAdd(SelfIlluminationColorOperationKey, operation == _combineAdd ? "Add" : MultiplyOperation(properties));
                 PopulateTextureReference(texture, channelName, outputDirectory, resolver, textureReferences, visitedObjects);
                 return;
             }
+        }
+
+        // Two textures added or multiplied on the diffuse: one is the base and the other becomes a
+        // detail layer with its own coordinates; the operand carrying a texture modifier is the
+        // layer. An operand read from another UV channel (a lightmap) can't be layered over UV 0,
+        // so only the other operand is kept.
+        if (operation is _combineAdd or _combineMultiply &&
+            channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase) &&
+            material1 is not null && material2 is not null &&
+            !IsColorSource(material1) && !IsColorSource(material2))
+        {
+            var secondary1 = UsesSecondaryUvChannel(material1, resolver);
+            var secondary2 = UsesSecondaryUvChannel(material2, resolver);
+            if (secondary1 != secondary2)
+            {
+                PopulateTextureReference(secondary1 ? material2 : material1, "Diffuse", outputDirectory, resolver, textureReferences, visitedObjects);
+                return;
+            }
+
+            var (baseOperand, layer) = IsUvModifier(material1) && !IsUvModifier(material2) ? (material2, material1) : (material1, material2);
+            PopulateTextureReference(baseOperand, "Diffuse", outputDirectory, resolver, textureReferences, visitedObjects);
+            PopulateTextureReference(layer, "Detail", outputDirectory, resolver, textureReferences, visitedObjects);
+            if (textureReferences.ContainsKey("Detail"))
+            {
+                textureReferences.TryAdd(DetailBlendKey, operation == _combineAdd ? "Add" : MultiplyOperation(properties));
+            }
+
+            return;
         }
 
         PopulateFirstAvailableReference(
@@ -413,6 +475,54 @@ internal static class UnrealMaterialExporter
             resolver,
             textureReferences,
             visitedObjects);
+    }
+
+    // UE2 applies Modulate2X/4X to the multiply only.
+    private static string MultiplyOperation(UnrealPropertyCollection properties)
+    {
+        return properties.FirstInteger("Modulate4X") is > 0 ? "Multiply4X"
+            : properties.FirstInteger("Modulate2X") is > 0 ? "Multiply2X"
+            : "Multiply";
+    }
+
+    private static bool IsColorSource(UnrealResolvedObject materialObject)
+    {
+        return materialObject.ClassName.Equals("ConstantColor", StringComparison.OrdinalIgnoreCase) ||
+            materialObject.ClassName.Equals("FadeColor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUvModifier(UnrealResolvedObject materialObject)
+    {
+        return materialObject.ClassName is "TexPanner" or "TexPanner2D" or "TexScaler" or "TexOscillator" or "TexOscillatorTriggered" or "TexRotator";
+    }
+
+    // Whether a TexCoordSource down the material's Material chain reads a UV channel other than 0.
+    private static bool UsesSecondaryUvChannel(UnrealResolvedObject materialObject, UnrealPackageResolver resolver)
+    {
+        var current = materialObject;
+        for (var depth = 0; depth < _maxChainDepth && !IsTexture(current); depth++)
+        {
+            var properties = ReadObjectProperties(current);
+            if (properties is null || current.Package is null)
+            {
+                return false;
+            }
+
+            if (current.ClassName.Equals("TexCoordSource", StringComparison.OrdinalIgnoreCase))
+            {
+                return properties.FirstInteger("SourceChannel") is > 0;
+            }
+
+            var wrapped = properties.FirstObjectReference("Material");
+            if (wrapped is null || wrapped.Value == 0)
+            {
+                return false;
+            }
+
+            current = resolver.Resolve(current.Package, wrapped.Value);
+        }
+
+        return false;
     }
 
     private static UnrealResolvedObject? ResolveOperand(
@@ -503,6 +613,21 @@ internal static class UnrealMaterialExporter
             return;
         }
 
+        // A plain or pulsing colour as the glow: the importer uses it in place of a texture.
+        if (channelName.Equals("SelfIllumination", StringComparison.OrdinalIgnoreCase) && IsColorSource(materialObject))
+        {
+            var fade = materialObject.ClassName.Equals("FadeColor", StringComparison.OrdinalIgnoreCase);
+            textureReferences.TryAdd(SelfIlluminationColorKey, FormatColor(properties, fade ? "Color1" : "Color"));
+            textureReferences.TryAdd(SelfIlluminationColorOperationKey, "Replace");
+            if (fade)
+            {
+                textureReferences.TryAdd(SelfIlluminationFadeKey, FormatColor(properties, "Color2") + FormattableString.Invariant(
+                    $",{properties.FirstFloat("FadePeriod") ?? 1f:R},{properties.FirstFloat("FadePhase") ?? 0f:R}"));
+            }
+
+            return;
+        }
+
         var wrappedMaterialReference = properties.FirstObjectReference("Material");
         if (wrappedMaterialReference is not null && wrappedMaterialReference.Value != 0)
         {
@@ -512,6 +637,7 @@ internal static class UnrealMaterialExporter
             }
 
             RecordTexturePanner(materialObject, properties, channelName, textureReferences);
+            RecordUvModifier(materialObject, properties, channelName, resolver, textureReferences);
             PopulateTextureReference(
                 resolver.Resolve(materialObject.Package, wrappedMaterialReference.Value),
                 channelName,
@@ -567,6 +693,10 @@ internal static class UnrealMaterialExporter
         {
             scrollKey = SelfIlluminationUvScrollKey;
         }
+        else if (channelName.Equals("Detail", StringComparison.OrdinalIgnoreCase))
+        {
+            scrollKey = DetailUvTransformKey;
+        }
         else
         {
             return;
@@ -588,12 +718,137 @@ internal static class UnrealMaterialExporter
             v = rate * MathF.Sin(yaw);
         }
 
-        if (MathF.Abs(u) < 1e-6f && MathF.Abs(v) < 1e-6f)
+        if (MathF.Abs(u) < _epsilon && MathF.Abs(v) < _epsilon)
         {
             return;
         }
 
+        if (scrollKey == DetailUvTransformKey)
+        {
+            AppendTransform(textureReferences, scrollKey, FormattableString.Invariant($"scroll={u:R},{v:R}"));
+            return;
+        }
+
         textureReferences.TryAdd(scrollKey, FormattableString.Invariant($"{u:R},{v:R}"));
+    }
+
+    // TexScaler, TexOscillator and TexRotator on the diffuse or detail chain.
+    private static void RecordUvModifier(
+        UnrealResolvedObject materialObject,
+        UnrealPropertyCollection properties,
+        string channelName,
+        UnrealPackageResolver resolver,
+        Dictionary<string, string> textureReferences)
+    {
+        string key;
+        if (channelName.Equals("Diffuse", StringComparison.OrdinalIgnoreCase))
+        {
+            key = UvTransformKey;
+        }
+        else if (channelName.Equals("Detail", StringComparison.OrdinalIgnoreCase))
+        {
+            key = DetailUvTransformKey;
+        }
+        else
+        {
+            return;
+        }
+
+        switch (materialObject.ClassName)
+        {
+            case "TexScaler":
+                var scaleU = properties.FirstFloat("UScale") ?? 1f;
+                var scaleV = properties.FirstFloat("VScale") ?? 1f;
+                if (MathF.Abs(scaleU - 1f) > _epsilon || MathF.Abs(scaleV - 1f) > _epsilon)
+                {
+                    AppendTransform(textureReferences, key, FormattableString.Invariant($"scale={scaleU:R},{scaleV:R}"));
+                }
+
+                break;
+            case "TexOscillator" or "TexOscillatorTriggered":
+                RecordOscillation(properties, "U", key, textureReferences);
+                RecordOscillation(properties, "V", key, textureReferences);
+                break;
+            case "TexRotator":
+                var degrees = (properties.FirstInteger("Rotation.Yaw") ?? 0) / _rotatorUnitsPerDegree;
+                AppendTransform(textureReferences, key, FormattableString.Invariant(
+                    $"{(properties.FirstInteger("TexRotationType") == _rotationConstant ? "rotationrate" : "rotation")}={degrees:R}"));
+
+                // The pivot is given in texels of the rotated texture.
+                var offsetU = properties.FirstFloat("UOffset") ?? 0f;
+                var offsetV = properties.FirstFloat("VOffset") ?? 0f;
+                if (MathF.Abs(offsetU) > _epsilon || MathF.Abs(offsetV) > _epsilon)
+                {
+                    var (width, height) = WrappedTextureSize(materialObject, resolver);
+                    AppendTransform(textureReferences, key, FormattableString.Invariant($"center={offsetU / width:R},{offsetV / height:R}"));
+                }
+
+                break;
+        }
+    }
+
+    // OT_Stretch pivots on the texture centre and OT_StretchRepeat on its origin.
+    private static void RecordOscillation(UnrealPropertyCollection properties, string axis, string key, Dictionary<string, string> textureReferences)
+    {
+        var amplitude = properties.FirstFloat($"{axis}OscillationAmplitude") ?? _defaultOscillationAmplitude;
+        if (MathF.Abs(amplitude) < _epsilon)
+        {
+            return;
+        }
+
+        var type = properties.FirstInteger($"{axis}OscillationType") ?? 0;
+        var kind = type switch
+        {
+            _oscillationStretch or _oscillationStretchRepeat => "stretch",
+            _oscillationJitter => "jitter",
+            _ => "pan"
+        };
+        var rate = properties.FirstFloat($"{axis}OscillationRate") ?? _defaultOscillationRate;
+        var phase = properties.FirstFloat($"{axis}OscillationPhase") ?? 0f;
+        AppendTransform(textureReferences, key, FormattableString.Invariant($"{axis.ToLowerInvariant()}={kind},{amplitude:R},{rate:R},{phase:R}"));
+        if (type == _oscillationStretch)
+        {
+            AppendTransform(textureReferences, key, "center=0.5,0.5");
+        }
+    }
+
+    private static (float Width, float Height) WrappedTextureSize(UnrealResolvedObject materialObject, UnrealPackageResolver resolver)
+    {
+        var current = materialObject;
+        for (var depth = 0; depth < _maxChainDepth && current.Package is not null; depth++)
+        {
+            var properties = ReadObjectProperties(current);
+            if (properties is null)
+            {
+                break;
+            }
+
+            if (IsTexture(current))
+            {
+                return (properties.FirstInteger("USize") ?? _defaultTextureSize, properties.FirstInteger("VSize") ?? _defaultTextureSize);
+            }
+
+            var wrapped = properties.FirstObjectReference("Material");
+            if (wrapped is null || wrapped.Value == 0)
+            {
+                break;
+            }
+
+            current = resolver.Resolve(current.Package, wrapped.Value);
+        }
+
+        return (_defaultTextureSize, _defaultTextureSize);
+    }
+
+    private static void AppendTransform(Dictionary<string, string> textureReferences, string key, string segment)
+    {
+        textureReferences[key] = textureReferences.TryGetValue(key, out var existing) ? $"{existing};{segment}" : segment;
+    }
+
+    private static string FormatColor(UnrealPropertyCollection properties, string name)
+    {
+        return FormattableString.Invariant(
+            $"{properties.FirstInteger($"{name}.R") ?? 0},{properties.FirstInteger($"{name}.G") ?? 0},{properties.FirstInteger($"{name}.B") ?? 0}");
     }
 
     private static UnrealPropertyCollection? ReadObjectProperties(UnrealResolvedObject materialObject)
@@ -662,5 +917,17 @@ internal static class UnrealMaterialExporter
             : $"{materialObject.Package.FilePath}:{materialObject.Export.SerialOffset}:{materialObject.Export.SerialSize}";
     }
 
-    private sealed record UnrealExportedMaterial(string Name, IReadOnlyDictionary<string, string> TextureReferences);
+    // ChainKeys are the object keys visited while resolving the material (GetObjectKey, optionally
+    // suffixed with ":<channel>"): every building block the material is made of.
+    private sealed record UnrealExportedMaterial(
+        string Name,
+        IReadOnlyDictionary<string, string> TextureReferences,
+        IReadOnlySet<string>? ChainKeys = null)
+    {
+        public bool Uses(UnrealResolvedObject materialObject)
+        {
+            var key = GetObjectKey(materialObject);
+            return ChainKeys?.Any(chainKey => chainKey == key || chainKey.StartsWith(key + ":", StringComparison.Ordinal)) == true;
+        }
+    }
 }

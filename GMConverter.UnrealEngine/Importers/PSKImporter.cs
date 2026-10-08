@@ -705,6 +705,7 @@ internal sealed class PSKImporter : IImporter
             Texture? specularTexture;
             Texture? emissiveTexture;
             MaterialEmissiveLayer? emissiveLayer = null;
+            MaterialLayer? detailLayer = null;
             if (usesCueMaterial)
             {
                 var materialContext = CreateMaterialContext(material.Name, meshName);
@@ -724,6 +725,7 @@ internal sealed class PSKImporter : IImporter
                     TryLoadTextureByName(references, ["diff", "albedo", "basecolor", "base color", "color"], hasAlpha: references.ContainsKey("Opacity")) ??
                     TryCreateColorTexture(material.Name, colors);
                 diffuseTexture = TryBlendDiffuseOverlay(diffuseTexture, references);
+                detailLayer = TryLoadDetailLayer(references, sidecarSettings);
                 normalTexture =
                     TryLoadLayerTexture(references, ["Normal", "NormalMap", "Normals"], layerSuffix, hasAlpha: false) ??
                     TryLoadTexture(references, ["Normal", "NormalMap", "Normals"], hasAlpha: false) ??
@@ -791,7 +793,22 @@ internal sealed class PSKImporter : IImporter
                 emissiveUvScrollRate: sidecarSettings.EmissiveUvScrollRate,
                 blendMode: sidecarSettings.BlendMode,
                 alphaCutoff: sidecarSettings.AlphaCutoff,
-                emissiveLayer: emissiveLayer);
+                emissiveLayer: emissiveLayer,
+                uvTransform: sidecarSettings.UvTransform,
+                detailLayer: detailLayer);
+        }
+
+        private MaterialLayer? TryLoadDetailLayer(Dictionary<string, string> references, SidecarMaterialSettings settings)
+        {
+            if (settings.DetailBlend is not { } blend ||
+                !references.TryGetValue("Detail", out var detailReference) ||
+                IsNullReference(detailReference) ||
+                TryLoadTexture(detailReference, hasAlpha: false) is not { } texture)
+            {
+                return null;
+            }
+
+            return new MaterialLayer(texture, blend, settings.DetailUvTransform);
         }
 
         // Alternate materials listed in the material's sidecar (UE2 state variants), resolved the
@@ -981,20 +998,30 @@ internal sealed class PSKImporter : IImporter
         // applied to the mask instead, keeping the masked shapes (and their own scroll) and the
         // overall glow colour. When the colour scrolls under a fixed mask, the product is baked
         // unscrolled and the two are also returned as an emissive layer for exporters that can
-        // animate it. A ConstantColor combined into the colour is applied first.
+        // animate it. A ConstantColor combined into the colour is applied first. A plain or fading
+        // colour in place of the texture ("Replace") is also returned as a layer, so the glow keeps
+        // that colour (and its pulse) instead of the albedo's.
         private (Texture? Emissive, MaterialEmissiveLayer? Layer) TryBakeMaskedSelfIllumination(
             Dictionary<string, string> references,
             SidecarMaterialSettings settings)
         {
-            if (!references.TryGetValue("SelfIllumination", out var colorReference) ||
-                !references.TryGetValue("SelfIlluminationMask", out var maskReference) ||
-                IsNullReference(colorReference) ||
-                IsNullReference(maskReference))
+            var replace = settings.SelfIlluminationColor is { Operation: var operation } &&
+                operation.Equals("Replace", StringComparison.OrdinalIgnoreCase);
+            if (!references.TryGetValue("SelfIlluminationMask", out var maskReference) || IsNullReference(maskReference))
             {
                 return (null, null);
             }
 
-            using var color = TryLoadTexture(colorReference, hasAlpha: false);
+            string? colorReference = null;
+            if (!replace &&
+                (!references.TryGetValue("SelfIllumination", out colorReference) || IsNullReference(colorReference)))
+            {
+                return (null, null);
+            }
+
+            using var color = replace
+                ? SolidTexture($"{maskReference}_color", settings.SelfIlluminationColor!.Color)
+                : TryLoadTexture(colorReference!, hasAlpha: false);
             using var mask = TryLoadTexture(maskReference, hasAlpha: true);
             if (color is null || mask is null)
             {
@@ -1002,7 +1029,7 @@ internal sealed class PSKImporter : IImporter
             }
 
             var colorPixels = color.GetRgbaPixels();
-            if (settings.SelfIlluminationColor is { } constant)
+            if (!replace && settings.SelfIlluminationColor is { } constant)
             {
                 CombinerCompositor.ApplyConstantColor(colorPixels, constant.Color, constant.Operation);
             }
@@ -1031,13 +1058,28 @@ internal sealed class PSKImporter : IImporter
                 }
 
                 var baked = _textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, glow, hasAlpha: false);
-                var layer = settings.SelfIlluminationUvScrollRate is { } scroll && scroll != System.Numerics.Vector2.Zero
-                    ? new MaterialEmissiveLayer(
-                        _textureFactory.FromRgba($"{color.Name}_glow", color.Width, color.Height, colorPixels),
-                        _textureFactory.FromRgba(mask.Name, mask.Width, mask.Height, maskPixels, hasAlpha: true),
-                        scroll)
+                var scroll = settings.SelfIlluminationUvScrollRate ?? System.Numerics.Vector2.Zero;
+                if (scroll == System.Numerics.Vector2.Zero && !replace)
+                {
+                    return (baked, null);
+                }
+
+                // A fade pulses a white layer between its two colours.
+                var pulse = replace && settings.SelfIlluminationFade is { } fade
+                    ? new MaterialColorPulse(
+                        ToColor(settings.SelfIlluminationColor!.Color),
+                        ToColor(fade.Color),
+                        fade.Period,
+                        fade.Phase)
                     : null;
-                return (baked, layer);
+                var layerColor = pulse is null
+                    ? _textureFactory.FromRgba($"{color.Name}_glow", color.Width, color.Height, colorPixels)
+                    : SolidTexture($"{color.Name}_glow", [byte.MaxValue, byte.MaxValue, byte.MaxValue]);
+                return (baked, new MaterialEmissiveLayer(
+                    layerColor,
+                    _textureFactory.FromRgba(mask.Name, mask.Width, mask.Height, maskPixels, hasAlpha: true),
+                    scroll,
+                    pulse));
             }
 
             var texelCount = Math.Max(1, colorPixels.Length / 4);
@@ -1061,6 +1103,23 @@ internal sealed class PSKImporter : IImporter
 
             return (_textureFactory.FromRgba($"{mask.Name}_glow", mask.Width, mask.Height, pixels, hasAlpha: false), null);
         }
+
+        // 4x4 rather than 1x1 so block-compressed VTFs keep a whole block.
+        private Texture SolidTexture(string name, ReadOnlySpan<byte> rgb)
+        {
+            var pixels = new byte[4 * 4 * 4];
+            for (var i = 0; i < pixels.Length; i += 4)
+            {
+                pixels[i] = rgb[0];
+                pixels[i + 1] = rgb[1];
+                pixels[i + 2] = rgb[2];
+                pixels[i + 3] = byte.MaxValue;
+            }
+
+            return _textureFactory.FromRgba(name, 4, 4, pixels);
+        }
+
+        private static System.Numerics.Vector3 ToColor(byte[] rgb) => new(rgb[0] / 255f, rgb[1] / 255f, rgb[2] / 255f);
 
         // A Combiner's masked blend recorded as DiffuseOverlay/DiffuseOverlayMask (e.g. a damage
         // decal over the body texture) is baked into the diffuse.
@@ -1596,6 +1655,10 @@ internal sealed class PSKImporter : IImporter
             UnrealMaterialExporter.SelfIlluminationColorKey,
             UnrealMaterialExporter.SelfIlluminationColorOperationKey,
             UnrealMaterialExporter.VariantsKey,
+            UnrealMaterialExporter.UvTransformKey,
+            UnrealMaterialExporter.DetailUvTransformKey,
+            UnrealMaterialExporter.DetailBlendKey,
+            UnrealMaterialExporter.SelfIlluminationFadeKey,
             UnrealMaterialExporter.BlendKey,
             UnrealMaterialExporter.AlphaRefKey
         };
@@ -1648,6 +1711,18 @@ internal sealed class PSKImporter : IImporter
             var variants = values.GetValueOrDefault(UnrealMaterialExporter.VariantsKey)?
                 .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
 
+            // "R,G,B,period,phase"; UE2's FadePeriod is the time from one colour to the other, so a
+            // full cycle takes twice as long.
+            var fadeParts = values.GetValueOrDefault(UnrealMaterialExporter.SelfIlluminationFadeKey)?.Split(',', StringSplitOptions.TrimEntries);
+            var fadeColor = new byte[3];
+            SidecarFade? fade = fadeParts is { Length: 5 } &&
+                fadeParts[..3].Select((part, index) => byte.TryParse(part, System.Globalization.NumberStyles.Integer, inv, out fadeColor[index])).All(parsed => parsed) &&
+                float.TryParse(fadeParts[3], System.Globalization.NumberStyles.Float, inv, out var fadePeriod) &&
+                float.TryParse(fadeParts[4], System.Globalization.NumberStyles.Float, inv, out var fadePhase) &&
+                fadePeriod > 0f
+                ? new SidecarFade(fadeColor, fadePeriod * 2f, fadePhase)
+                : null;
+
             return new SidecarMaterialSettings(
                 ParseScroll(UnrealMaterialExporter.UvScrollKey),
                 ParseScroll(UnrealMaterialExporter.EmissiveUvScrollKey),
@@ -1655,7 +1730,11 @@ internal sealed class PSKImporter : IImporter
                 alphaCutoff,
                 ParseScroll(UnrealMaterialExporter.SelfIlluminationUvScrollKey),
                 selfIlluminationColor,
-                variants);
+                variants,
+                PSKUvTransformParser.Parse(values.GetValueOrDefault(UnrealMaterialExporter.UvTransformKey)),
+                PSKUvTransformParser.Parse(values.GetValueOrDefault(UnrealMaterialExporter.DetailUvTransformKey)),
+                PSKUvTransformParser.ParseBlend(values.GetValueOrDefault(UnrealMaterialExporter.DetailBlendKey)),
+                fade);
         }
 
         private sealed record SidecarMaterialSettings(
@@ -1665,12 +1744,19 @@ internal sealed class PSKImporter : IImporter
             float AlphaCutoff,
             System.Numerics.Vector2? SelfIlluminationUvScrollRate,
             SidecarConstantColor? SelfIlluminationColor,
-            IReadOnlyList<string> Variants)
+            IReadOnlyList<string> Variants,
+            MaterialUvTransform? UvTransform,
+            MaterialUvTransform? DetailUvTransform,
+            MaterialLayerBlend? DetailBlend,
+            SidecarFade? SelfIlluminationFade)
         {
-            public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f, null, null, []);
+            public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f, null, null, [], null, null, null, null);
         }
 
         private sealed record SidecarConstantColor(byte[] Color, string Operation);
+
+        // Period is a full cycle, in seconds.
+        private sealed record SidecarFade(byte[] Color, float Period, float Phase);
 
         private static CueMaterial ReadCueMaterial(string materialPath)
         {

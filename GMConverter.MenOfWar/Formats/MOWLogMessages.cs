@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace GMConverter.Formats.MOW;
+namespace GMConverter.MenOfWar.Formats;
 
 internal static partial class MOWLogMessages
 {

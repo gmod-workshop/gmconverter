@@ -14,14 +14,10 @@ internal sealed class ExplorerService
 
     public ExplorerService()
     {
-        // Built-in explorers come first so they win Auto-profile resolution for known target
-        // shapes; plugin-contributed explorers are inserted after them and matched when no
-        // built-in supports the target. The GenericExplorer fallback stays at the very end so
-        // plugins still have a chance to handle a target before it falls into the generic
-        // catch-all. UE4 and UE2 explorers are no longer built-in — they are contributed by
-        // the GMConverter.UnrealEngine plugin and come through PluginHost.Registry.Explorers.
-        List<IExplorer> explorers = [new MOWExplorer()];
-        explorers.AddRange(PluginHost.Registry.Explorers);
+        // Every engine-specific explorer is contributed by a plugin through
+        // PluginHost.Registry.Explorers. The GenericExplorer fallback stays at the very end so
+        // plugins get a chance to handle a target before it falls into the generic catch-all.
+        List<IExplorer> explorers = [.. PluginHost.Registry.Explorers];
         explorers.Add(new GenericExplorer());
         _explorers = explorers;
 

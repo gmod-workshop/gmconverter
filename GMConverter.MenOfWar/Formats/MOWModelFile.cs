@@ -1,4 +1,4 @@
-namespace GMConverter.Formats.MOW;
+namespace GMConverter.MenOfWar.Formats;
 
 internal sealed record MOWModelFile(string Path, MOWNode Root)
 {

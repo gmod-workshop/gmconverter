@@ -1,13 +1,11 @@
 using System.Numerics;
 using GMConverter.Exporters;
-using GMConverter.Importers;
 using GMConverter.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
-using Microsoft.Extensions.Logging;
 
 namespace GMConverter.UI.Services;
 
@@ -32,8 +30,7 @@ internal sealed class ConversionService(UiLogSink logSink)
         AnnouncePerfLog();
 
         var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
-        using var loggerFactory = CreateLoggerFactory();
-        var importer = CreateImporter(settings.InputFormat, loggerFactory);
+        var importer = CreateImporter(settings.InputFormat);
 
         if (settings.OutputFormat is "info")
         {
@@ -89,8 +86,7 @@ internal sealed class ConversionService(UiLogSink logSink)
         AnnouncePerfLog();
 
         var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
-        using var loggerFactory = CreateLoggerFactory();
-        var importer = CreateImporter(settings.InputFormat, loggerFactory);
+        var importer = CreateImporter(settings.InputFormat);
         Model model;
         using (PerfTimer.Measure("convert.preview", $"{settings.InputFormat}.Parse", inputPath))
         {
@@ -146,24 +142,10 @@ internal sealed class ConversionService(UiLogSink logSink)
         };
     }
 
-    private ILoggerFactory CreateLoggerFactory()
+    private static IImporter CreateImporter(string inputFormat)
     {
-        return LoggerFactory.Create(builder =>
-        {
-            builder.SetMinimumLevel(LogLevel.Warning);
-            builder.AddProvider(new UiLoggerProvider(logSink));
-        });
-    }
-
-    private static IImporter CreateImporter(string inputFormat, ILoggerFactory? loggerFactory = null)
-    {
-        return inputFormat switch
-        {
-            "opt" => new OPTImporter(),
-            "mow" => new MOWImporter(loggerFactory),
-            _ => PluginHost.Registry.GetImporter(inputFormat)
-                ?? throw new GMConverterException($"Unsupported input format: {inputFormat}")
-        };
+        return PluginHost.Registry.GetImporter(inputFormat)
+            ?? throw new GMConverterException($"Unsupported input format: {inputFormat}");
     }
 
     private static string RequireInputFile(string path, string inputFormat)

@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Explorer;
+using GMConverter.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.UI.Services;
 
@@ -78,6 +79,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         _suppressSettingsSave = true;
         _conversionService = new ConversionService(_logSink);
+        // Plugin importers log through the factory they received at startup; route their
+        // warnings (missing textures, unreadable files) into the in-app console.
+        PluginHost.AddLoggerProvider(new UiLoggerProvider(_logSink));
         Preview = new PreviewViewModel(_logSink);
         Console = new ConsoleViewModel(_logSink);
         Convert = new ConvertViewModel(

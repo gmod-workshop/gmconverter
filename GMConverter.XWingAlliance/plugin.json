@@ -1,0 +1,10 @@
+{
+  "id": "gmconverter.xwingalliance",
+  "version": "0.1.0",
+  "displayName": "X-Wing Alliance",
+  "entry": "GMConverter.XWingAlliance.dll",
+  "sdkVersion": "1.0",
+  "capabilities": [
+    "importer:opt"
+  ]
+}

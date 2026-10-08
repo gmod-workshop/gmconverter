@@ -1,0 +1,11 @@
+{
+  "id": "gmconverter.menofwar",
+  "version": "0.1.0",
+  "displayName": "Men of War",
+  "entry": "GMConverter.MenOfWar.dll",
+  "sdkVersion": "1.0",
+  "capabilities": [
+    "importer:mow",
+    "explorer:mow"
+  ]
+}

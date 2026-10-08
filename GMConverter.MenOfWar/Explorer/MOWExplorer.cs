@@ -1,9 +1,9 @@
 using System.IO.Compression;
-using GMConverter.Formats.MOW;
+using GMConverter.MenOfWar.Formats;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 
-namespace GMConverter.Explorer;
+namespace GMConverter.MenOfWar.Explorer;
 
 internal sealed class MOWExplorer : IExplorer
 {

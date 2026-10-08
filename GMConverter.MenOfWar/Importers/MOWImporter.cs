@@ -1,27 +1,29 @@
 using System.Globalization;
 using System.Numerics;
-using GMConverter.Formats.MOW;
-using GMConverter.Geometry;
+using GMConverter.MenOfWar.Formats;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Textures;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace GMConverter.Importers;
+namespace GMConverter.MenOfWar.Importers;
 
 internal sealed class MOWImporter : IImporter
 {
     private const float _animationFrameRate = 30.0f;
+    private readonly ITextureFactory _textureFactory;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<MOWImporter> _logger;
 
-    public MOWImporter(ILoggerFactory? loggerFactory = null)
+    public MOWImporter(ITextureFactory textureFactory, ILoggerFactory? loggerFactory = null)
     {
+        _textureFactory = textureFactory;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<MOWImporter>();
     }
@@ -47,7 +49,7 @@ internal sealed class MOWImporter : IImporter
         List<Bone> bones = [];
         Dictionary<string, List<int>> boneIndicesByMOWName = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> usedBoneNames = new(StringComparer.OrdinalIgnoreCase);
-        var textureResolver = MOWTextureResolver.Create(modelDirectory, options.Materials, _loggerFactory);
+        var textureResolver = MOWTextureResolver.Create(modelDirectory, options.Materials, _textureFactory, _loggerFactory);
 
         var skeleton = modelFile.Root.FirstChild("Skeleton")
             ?? throw new GMConverterException($"Men of War MDL does not contain a Skeleton node: {modelPath}");
@@ -575,11 +577,17 @@ internal sealed class MOWImporter : IImporter
         private static readonly string[] _imageExtensions = [".dds", ".png", ".tga", ".bmp", ".jpg", ".jpeg"];
         private readonly string _modelDirectory;
         private readonly Dictionary<string, string> _searchIndex;
+        private readonly ITextureFactory _textureFactory;
 
-        private MOWTextureResolver(string modelDirectory, Dictionary<string, string> searchIndex, ILogger logger)
+        private MOWTextureResolver(
+            string modelDirectory,
+            Dictionary<string, string> searchIndex,
+            ITextureFactory textureFactory,
+            ILogger logger)
         {
             _modelDirectory = modelDirectory;
             _searchIndex = searchIndex;
+            _textureFactory = textureFactory;
             Logger = logger;
         }
 
@@ -588,6 +596,7 @@ internal sealed class MOWImporter : IImporter
         public static MOWTextureResolver Create(
             string modelDirectory,
             MaterialResolveOptions? options,
+            ITextureFactory textureFactory,
             ILoggerFactory loggerFactory)
         {
             var searchIndex = options is null ||
@@ -599,10 +608,11 @@ internal sealed class MOWImporter : IImporter
             return new MOWTextureResolver(
                 modelDirectory,
                 searchIndex,
+                textureFactory,
                 loggerFactory.CreateLogger<MOWTextureResolver>());
         }
 
-        public ImageSharpTexture? LoadTexture(string? textureName, bool hasAlpha)
+        public Texture? LoadTexture(string? textureName, bool hasAlpha)
         {
             if (string.IsNullOrWhiteSpace(textureName))
             {
@@ -641,7 +651,17 @@ internal sealed class MOWImporter : IImporter
                     });
                 }
 
-                return new ImageSharpTexture(NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)), image, hasAlpha);
+                using (image)
+                {
+                    var pixels = new byte[image.Width * image.Height * 4];
+                    image.CopyPixelDataTo(pixels);
+                    return _textureFactory.FromRgba(
+                        NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(texturePath)),
+                        image.Width,
+                        image.Height,
+                        pixels,
+                        hasAlpha);
+                }
             }
 
             if (!foundCandidate)

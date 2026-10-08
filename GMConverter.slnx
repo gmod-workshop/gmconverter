@@ -3,7 +3,9 @@
   <Project Path="GMConverter.UI.Tests/GMConverter.UI.Tests.csproj" />
   <Project Path="GMConverter/GMConverter.csproj" />
   <Project Path="GMConverter.CLI/GMConverter.CLI.csproj" />
+  <Project Path="GMConverter.MenOfWar/GMConverter.MenOfWar.csproj" />
   <Project Path="GMConverter.SDK/GMConverter.SDK.csproj" />
   <Project Path="GMConverter.SourceEngine/GMConverter.SourceEngine.csproj" />
   <Project Path="GMConverter.UnrealEngine/GMConverter.UnrealEngine.csproj" />
+  <Project Path="GMConverter.XWingAlliance/GMConverter.XWingAlliance.csproj" />
 </Solution>

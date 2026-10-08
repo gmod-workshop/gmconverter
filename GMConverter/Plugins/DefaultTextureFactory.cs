@@ -8,9 +8,10 @@ namespace GMConverter.Plugins;
 /// <summary>
 /// Default <see cref="ITextureFactory"/> implementation. Produces <see cref="ImageSharpTexture"/>
 /// instances backed by SixLabors.ImageSharp. The host injects this into <see cref="DefaultPluginContext"/>
-/// so plugin code can construct textures without a direct ImageSharp reference.
+/// so plugin code can construct textures without a direct ImageSharp reference. Public so plugin
+/// test projects can build textures the same way the host does.
 /// </summary>
-internal sealed class DefaultTextureFactory : ITextureFactory
+public sealed class DefaultTextureFactory : ITextureFactory
 {
     public Texture FromFile(string path, bool hasAlpha = false, string? name = null)
     {

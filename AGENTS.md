@@ -28,7 +28,7 @@ Run these before handing work back:
 ```powershell
 dotnet format GMConverter.slnx --verify-no-changes --severity warn --no-restore
 dotnet build GMConverter.slnx --configuration Release --no-restore
-dotnet test GMConverter.UI.Tests/GMConverter.UI.Tests.csproj --configuration Release --no-build
+dotnet test GMConverter.slnx --configuration Release --no-build
 ```
 
 If any command fails, fix the reported issue or clearly report the remaining blocker.

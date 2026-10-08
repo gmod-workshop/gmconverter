@@ -21,6 +21,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="GMConverter.XWingAlliance.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 

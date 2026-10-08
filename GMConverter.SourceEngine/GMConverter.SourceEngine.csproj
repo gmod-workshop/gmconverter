@@ -57,6 +57,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="GMConverter.SourceEngine.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 

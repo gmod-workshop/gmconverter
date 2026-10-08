@@ -54,7 +54,7 @@ internal static class CombinerCompositor
             {
                 pixels[i + c] = (byte)Math.Min(255, add
                     ? pixels[i + c] + color[c]
-                    : (int)Math.Round(pixels[i + c] * color[c] * factor!.Value / 255.0));
+                    : (int)Math.Round(pixels[i + c] * (color[c] / 255.0) * factor!.Value));
             }
         }
 

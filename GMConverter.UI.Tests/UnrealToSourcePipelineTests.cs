@@ -1,8 +1,8 @@
 using System.Numerics;
 using GMConverter.Plugins;
-using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
+using GMConverter.SDK.Options;
 using GMConverter.UnrealEngine.Tests;
 
 namespace GMConverter.UI.Tests;
@@ -33,7 +33,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
@@ -70,7 +70,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
@@ -107,7 +107,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
@@ -145,7 +145,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
@@ -190,7 +190,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
@@ -238,7 +238,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
@@ -343,7 +343,7 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,

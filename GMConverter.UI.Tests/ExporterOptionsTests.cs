@@ -82,9 +82,9 @@ public sealed class ExporterOptionsTests
     public void SourceAliasesShareStateAndLegacyEditsReachInactiveExporter()
     {
         var vm = CreateViewModel();
-        Assert.Equal("mdl", vm.CurrentExporterOptions.ExporterFormat);
-        Assert.Equal("1024", vm.CurrentExporterOptions.BuildExportOptions().GetString("material:maxTextureSize"));
-        Assert.True(vm.CurrentExporterOptions.BuildExportOptions().GetBool("material:deduplicateTextures"));
+        Assert.Equal("mdl", vm.CurrentExporterOptions.Format);
+        Assert.Equal("1024", vm.CurrentExporterOptions.BuildOptionValues().GetString("material:maxTextureSize"));
+        Assert.True(vm.CurrentExporterOptions.BuildOptionValues().GetBool("material:deduplicateTextures"));
         FindOption(vm, "physics:enabled").TryLoad(true);
         FindOption(vm, "physics:mode").TryLoad("coacd");
         FindOption(vm, "physics:mass").TryLoad(250f);
@@ -147,7 +147,7 @@ public sealed class ExporterOptionsTests
     {
         var vm = CreateViewModel();
         SelectFormat(vm, "sample");
-        var panel = new ExporterOptionsPanel { DataContext = vm.CurrentExporterOptions };
+        var panel = new OptionsPanel { DataContext = vm.CurrentExporterOptions };
         var window = new Window { Content = panel, Width = 600, Height = 800 };
         window.Show();
         try
@@ -185,7 +185,7 @@ public sealed class ExporterOptionsTests
     [Fact]
     public void InvalidPersistedValuesKeepDefaults()
     {
-        var vm = new ExporterOptionsViewModel("sample", new SchemaTestExporter().OptionSchema);
+        var vm = new OptionSetViewModel("sample", new SchemaTestExporter().OptionSchema);
         vm.LoadFrom(new Dictionary<string, object?>
         {
             ["enabled"] = "invalid",
@@ -194,7 +194,7 @@ public sealed class ExporterOptionsTests
             ["mode"] = "unknown",
             ["name"] = 12
         });
-        var options = vm.BuildExportOptions();
+        var options = vm.BuildOptionValues();
         Assert.True(options.GetBool("enabled"));
         Assert.Equal(3, options.GetInt("count"));
         Assert.Equal(2.5f, options.GetFloat("physics:mass"));
@@ -224,6 +224,64 @@ public sealed class ExporterOptionsTests
         Assert.Equal(17.5, result.RootElement.GetProperty("physics:mass").GetDouble());
         Assert.Equal("default", result.RootElement.GetProperty("name").GetString());
         Assert.Equal(2, CLI.Program.Main([.. arguments.Select(value => value == "9" ? "invalid" : value)]));
+    }
+
+    [AvaloniaFact]
+    public void CliImporterArgumentsAndAliasesReachImporter()
+    {
+        _ = CreateViewModel();
+        var output = Path.Join(Path.GetTempPath(), "GMConverter.SchemaTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        var input = Path.Join(output, "input.sample");
+        File.WriteAllText(input, "test");
+        string[] common = ["--input-format", "sample", "--output-format", "sample", "--input-path", input, "--output-path", output];
+
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "flag", "--sample-import-modelName", "from-flag"]));
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "alias", "--sample-model-name", "from-alias"]));
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "default"]));
+
+        string ModelName(string name) => JsonDocument.Parse(File.ReadAllText(Path.Join(output, name + ".json"))).RootElement.GetProperty("model").GetString()!;
+        Assert.Equal("from-flag", ModelName("flag"));
+        Assert.Equal("from-alias", ModelName("alias"));
+        Assert.Equal("triangle", ModelName("default"));
+
+        // Input files are checked against the importer's declared extensions.
+        var wrongExtension = Path.ChangeExtension(input, ".txt");
+        File.WriteAllText(wrongExtension, "test");
+        Assert.Equal(1, CLI.Program.Main([.. common[..4], wrongExtension, .. common[6..]]));
+    }
+
+    [AvaloniaFact]
+    public void ImporterOptionsFollowInputFormatPersistAndAcceptExplorerAndConfigValues()
+    {
+        var vm = CreateViewModel();
+        vm.SelectedInputFormat = vm.InputFormats.Single(option => option.Value == "sample");
+        Assert.Equal("sample", vm.CurrentImporterOptions.Format);
+        vm.CurrentImporterOptions.Groups.SelectMany(group => group.Options).Single().TryLoad("edited");
+        Assert.Equal("edited", vm.CaptureSettings().ImporterOptions.GetString("modelName"));
+
+        var persisted = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, object?>>>(JsonSerializer.Serialize(vm.SnapshotImporterOptions()));
+        var restored = CreateViewModel();
+        var settings = JsonSerializer.Deserialize<UiSettings>("{\"ScaleFactor\":1,\"PhysicsMass\":100,\"CoacdThreshold\":0.05,\"MaxConvexPieces\":16,\"MaxHullVertices\":16}")!;
+        restored.ApplySettings(settings with { ImporterOptions = persisted });
+        restored.SelectedInputFormat = restored.InputFormats.Single(option => option.Value == "sample");
+        Assert.Equal("edited", restored.CaptureSettings().ImporterOptions.GetString("modelName"));
+
+        // An explorer selection starts from defaults plus the values the explorer resolved.
+        restored.ApplyExplorerSelection(
+            new SDK.Explorer.ExplorerFileEntry("entry", "entry.sample", "sample", "", ""),
+            new SDK.Explorer.ExplorerResolvedEntry("entry.sample", "", ImporterOptions: new Dictionary<string, object?> { ["modelName"] = "explored" }));
+        Assert.Equal("explored", restored.CaptureSettings().ImporterOptions.GetString("modelName"));
+        restored.ApplyExplorerSelection(new SDK.Explorer.ExplorerFileEntry("other", "other.sample", "sample", "", ""));
+        Assert.Equal("triangle", restored.CaptureSettings().ImporterOptions.GetString("modelName"));
+
+        // Config files reach importer options by key or alias, case- and separator-insensitively.
+        var config = Path.Join(Path.GetTempPath(), "GMConverter.SchemaTests", Guid.NewGuid().ToString("N"), "test.ini");
+        Directory.CreateDirectory(Path.GetDirectoryName(config)!);
+        File.WriteAllText(config, "Sample_Model_Name = from-config" + Environment.NewLine);
+        restored.ConfigPath = config;
+        restored.LoadConfigCommand.Execute(null);
+        Assert.Equal("from-config", restored.CaptureSettings().ImporterOptions.GetString("modelName"));
     }
 
     [AvaloniaTheory]

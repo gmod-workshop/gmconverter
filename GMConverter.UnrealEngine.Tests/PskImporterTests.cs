@@ -2,8 +2,10 @@ using System.Numerics;
 using System.Text.Json;
 using GMConverter.Plugins;
 using GMConverter.SDK.Animation;
+using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
+using GMConverter.SDK.Options;
 using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Tests;
@@ -19,7 +21,7 @@ public sealed class PskImporterTests
     public void StandaloneMeshSkeletonAndAnimationUseMeters(float userScale)
     {
         var (psk, psa) = PskFixtures.WriteFixture();
-        var model = _importer.Parse(psk, new ModelParseOptions(userScale, AnimationPath: psa));
+        var model = _importer.Parse(psk, new ModelParseOptions(userScale) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) });
         var bounds = model.Bounds();
         Assert.Equal(userScale, bounds.Max.X - bounds.Min.X, 5);
         Assert.Equal(0.1f * userScale, bounds.Min.X, 5);
@@ -27,6 +29,23 @@ public sealed class PskImporterTests
         var track = Assert.IsType<BoneTransformTrack>(Assert.Single(Assert.Single(model.Animations!).Tracks));
         Assert.Equal(0.5f * userScale, Assert.Single(track.Keyframes).Transform.Translation.X, 5);
         Assert.Equal(new Vector3(2, 3, 4), track.Keyframes[0].Transform.Scale);
+    }
+
+    [Fact]
+    public void AnimationOptionMustNameAnExistingPsaFile()
+    {
+        var (psk, psa) = PskFixtures.WriteFixture();
+        var notPsa = Path.ChangeExtension(psa, ".txt");
+        File.Copy(psa, notPsa);
+
+        ModelParseOptions WithAnimation(string path) => new(1f)
+        {
+            Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = path }),
+        };
+
+        Assert.Contains(".psa", Assert.Throws<GMConverterException>(() => _importer.Parse(psk, WithAnimation(notPsa))).Message);
+        Assert.Throws<GMConverterException>(() => _importer.Parse(psk, WithAnimation(psa + ".missing")));
+        Assert.Contains("animation-path", Assert.Single(_importer.OptionSchema.AllOptions).Aliases);
     }
 
     [Theory]

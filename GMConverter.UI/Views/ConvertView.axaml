@@ -107,29 +107,18 @@
                                 <shad:CardDescription>Options provided by the selected exporter.</shad:CardDescription>
                             </StackPanel>
                         </shad:Card.Header>
-                        <settings:ExporterOptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
+                        <settings:OptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
                     </shad:Card>
 
-                    <shad:Card HasShadow="True">
+                    <shad:Card HasShadow="True" IsEnabled="{Binding IsIdle}">
                         <shad:Card.Header>
                             <StackPanel Spacing="4">
-                                <shad:CardTitle>Supporting Files</shad:CardTitle>
-                                <shad:CardDescription>Optional animation and material lookup paths.</shad:CardDescription>
+                                <shad:CardTitle>Import options</shad:CardTitle>
+                                <shad:CardDescription>Options provided by the selected importer, and where to look for materials.</shad:CardDescription>
                             </StackPanel>
                         </shad:Card.Header>
                         <StackPanel Spacing="16">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <TextBox x:Name="AnimationPathBox"
-                                         Text="{Binding AnimationPath}"
-                                         IsEnabled="{Binding CanBrowseAnimation}"
-                                         shad:ControlAssist.Label="Animation path"/>
-                                <Button Grid.Column="1"
-                                        Classes="Outline"
-                                        Content="Browse"
-                                        Click="BrowseAnimationPath_Click"
-                                        IsEnabled="{Binding CanBrowseAnimation}"
-                                        VerticalAlignment="Bottom"/>
-                            </Grid>
+                            <settings:OptionsPanel DataContext="{Binding CurrentImporterOptions}"/>
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                 <TextBox x:Name="MaterialDirectoryBox"
                                          Text="{Binding MaterialDirectory}"

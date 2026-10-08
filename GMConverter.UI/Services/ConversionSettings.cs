@@ -1,5 +1,5 @@
-using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Importers;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.UI.Services;
 
@@ -13,7 +13,6 @@ internal sealed record ConversionSettings(
     string? StudioMdlPath,
     string? VtfCmdPath,
     string? MaterialDirectory,
-    string? AnimationPath,
     float ScaleFactor,
     ModelAxisMode AxisMode,
     bool BuildMaterials,
@@ -25,4 +24,5 @@ internal sealed record ConversionSettings(
     int MaxHullVertices,
     int MaxTextureSize,
     bool DeduplicateTextures,
-    ExportOptions ExporterOptions);
+    OptionValues ImporterOptions,
+    OptionValues ExporterOptions);

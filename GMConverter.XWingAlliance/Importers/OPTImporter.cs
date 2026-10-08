@@ -3,6 +3,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
 using JeremyAnsel.Xwa.Opt;
 using Mesh = GMConverter.SDK.Geometry.Mesh;
@@ -25,6 +26,10 @@ internal sealed class OPTImporter : IImporter
     public string InputFormat => "opt";
 
     public string InputName => "X-Wing Alliance";
+
+    public IReadOnlyList<string> FileExtensions { get; } = [".opt"];
+
+    public OptionSchema OptionSchema => OptionSchema.Empty;
 
     public object Summarize(string inputPath)
     {

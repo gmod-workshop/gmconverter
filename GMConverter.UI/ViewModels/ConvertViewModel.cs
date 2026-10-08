@@ -48,9 +48,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
     private string _inputPath = string.Empty;
 
     [ObservableProperty]
-    private string _animationPath = string.Empty;
-
-    [ObservableProperty]
     private string _outputPath = string.Empty;
 
     [ObservableProperty]
@@ -115,6 +112,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _selectedPhysicsMode = PhysicsModes[0];
         _selectedMaxTextureSize = MaxTextureSizes.First(option => option.Value == "1024");
         RefreshCurrentExporterOptions();
+        RefreshCurrentImporterOptions();
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
@@ -161,15 +159,11 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
     public bool IsSourceOutput => SelectedOutputFormat.Value is "source" or "mdl";
 
-    public bool IsPskInput => SelectedInputFormat.Value is "psk";
-
     public bool IsPhysicsEnabled => IsSourceOutput && GeneratePhysics;
 
     public bool IsCoacdEnabled => IsSourceOutput && GeneratePhysics && SelectedPhysicsMode.Value is "coacd";
 
     public bool IsIdle => !_getIsBusy();
-
-    public bool CanBrowseAnimation => IsIdle && IsPskInput;
 
     partial void OnSelectedOutputFormatChanged(DisplayOption value)
     {
@@ -181,8 +175,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
     partial void OnSelectedInputFormatChanged(DisplayOption value)
     {
-        OnPropertyChanged(nameof(IsPskInput));
-        OnPropertyChanged(nameof(CanBrowseAnimation));
+        RefreshCurrentImporterOptions();
     }
 
     partial void OnGeneratePhysicsChanged(bool value)
@@ -202,7 +195,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
     internal void NotifyBusyChanged()
     {
         OnPropertyChanged(nameof(IsIdle));
-        OnPropertyChanged(nameof(CanBrowseAnimation));
         RunConversionCommand.NotifyCanExecuteChanged();
         LoadPreviewCommand.NotifyCanExecuteChanged();
         LoadConfigCommand.NotifyCanExecuteChanged();
@@ -291,7 +283,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
             IsSourceOutput && !string.IsNullOrWhiteSpace(StudioMdlPath) ? StudioMdlPath : null,
             IsSourceOutput && !string.IsNullOrWhiteSpace(VtfCmdPath) ? VtfCmdPath : null,
             string.IsNullOrWhiteSpace(MaterialDirectory) ? null : MaterialDirectory,
-            IsPskInput && !string.IsNullOrWhiteSpace(AnimationPath) ? AnimationPath : null,
             (float)ScaleFactor,
             ConversionService.NormalizeAxisMode(SelectedAxisMode.Value),
             BuildMaterials,
@@ -303,7 +294,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
             MaxHullVertices,
             ParseMaxTextureSize(SelectedMaxTextureSize.Value),
             DeduplicateTextures,
-            CurrentExporterOptions.BuildExportOptions());
+            CurrentImporterOptions.BuildOptionValues(),
+            CurrentExporterOptions.BuildOptionValues());
     }
 
     private static int ParseMaxTextureSize(string value)
@@ -387,7 +379,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
         ConfigPath = settings.ConfigPath ?? ConfigPath;
         InputPath = settings.InputPath ?? InputPath;
-        AnimationPath = settings.AnimationPath ?? AnimationPath;
         OutputPath = settings.OutputPath ?? OutputPath;
         BaseName = settings.BaseName ?? BaseName;
         ModelPath = settings.ModelPath ?? ModelPath;
@@ -420,6 +411,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
             MaxHullVertices = settings.MaxHullVertices;
         }
         LoadExporterOptions(settings.ExporterOptions);
+        LoadImporterOptions(settings.ImporterOptions);
     }
 
     internal void ApplyExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)
@@ -430,7 +422,10 @@ public sealed partial class ConvertViewModel : ViewModelBase
         SelectedInputFormat = InputFormats.First(format => format.Value == fileEntry.InputFormat);
         InputPath = inputPath;
         MaterialDirectory = materialDirectory;
-        AnimationPath = resolvedEntry?.AnimationPath ?? string.Empty;
+        // Importer options describe the previous selection (e.g. its animation); start this one
+        // from defaults plus whatever the explorer resolved alongside it.
+        ResetCurrentImporterOptions();
+        ApplyImporterOptions(resolvedEntry?.ImporterOptions);
         BaseName = Path.GetFileNameWithoutExtension(inputPath);
         ModelPath = $"gmconverter/{SanitizePathToken(BaseName)}.mdl";
     }
@@ -480,7 +475,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
         SetText(config.StudioMdlPath, value => StudioMdlPath = value);
         SetText(config.VtfCmdPath, value => VtfCmdPath = value);
         SetText(config.MaterialDirectory, value => MaterialDirectory = value);
-        SetText(config.AnimationPath, value => AnimationPath = value);
 
         if (config.Scale.HasValue)
         {
@@ -536,6 +530,11 @@ public sealed partial class ConvertViewModel : ViewModelBase
         if (config.DeduplicateTextures.HasValue)
         {
             DeduplicateTextures = config.DeduplicateTextures.Value;
+        }
+
+        foreach (var key in ApplyConfigOptionValues(config.OptionValues))
+        {
+            _logSink.Append($"Ignored config key '{key}': no setting or option for the selected formats uses it.");
         }
     }
 

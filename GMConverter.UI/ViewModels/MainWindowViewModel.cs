@@ -20,7 +20,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.SelectedPhysicsMode),
         nameof(ConvertViewModel.ConfigPath),
         nameof(ConvertViewModel.InputPath),
-        nameof(ConvertViewModel.AnimationPath),
         nameof(ConvertViewModel.OutputPath),
         nameof(ConvertViewModel.BaseName),
         nameof(ConvertViewModel.ModelPath),
@@ -36,7 +35,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.MaxHullVertices),
         nameof(ConvertViewModel.SelectedMaxTextureSize),
         nameof(ConvertViewModel.DeduplicateTextures),
-        nameof(ConvertViewModel.CurrentExporterOptions)
+        nameof(ConvertViewModel.CurrentExporterOptions),
+        nameof(ConvertViewModel.CurrentImporterOptions)
     };
 
     private static readonly HashSet<string> _explorerSettingsProperties = new(StringComparer.Ordinal)
@@ -263,7 +263,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.SelectedPhysicsMode.Value,
             EmptyToNull(Convert.ConfigPath),
             EmptyToNull(Convert.InputPath),
-            EmptyToNull(Convert.AnimationPath),
             EmptyToNull(Convert.OutputPath),
             EmptyToNull(Convert.BaseName),
             EmptyToNull(Convert.ModelPath),
@@ -284,7 +283,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.MaxHullVertices,
             ParseMaxTextureSize(Convert.SelectedMaxTextureSize.Value),
             Convert.DeduplicateTextures,
-            Convert.SnapshotExporterOptions());
+            Convert.SnapshotExporterOptions(),
+            Convert.SnapshotImporterOptions());
     }
 
     private static int ParseMaxTextureSize(string value)

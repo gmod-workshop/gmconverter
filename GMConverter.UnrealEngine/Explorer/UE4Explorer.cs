@@ -32,6 +32,7 @@ using GMConverter.SDK.Explorer;
 using GMConverter.UnrealEngine.Common;
 using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Formats.Unreal;
+using GMConverter.UnrealEngine.Importers;
 using NewtonsoftJson = Newtonsoft.Json;
 
 namespace GMConverter.UnrealEngine.Explorer;
@@ -312,7 +313,7 @@ public sealed class UE4Explorer : IExplorer
 
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
             "Export a matching SkeletalMesh separately and use Set Animation to pair them.";
-        return new ExplorerResolvedEntry(psaPath, exportRoot, AnimationPath: psaPath, Details: details);
+        return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
     }
 
     private static ExplorerResolvedEntry ExportResolvedScene(

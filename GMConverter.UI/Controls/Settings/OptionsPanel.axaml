@@ -7,8 +7,8 @@
              mc:Ignorable="d"
              d:DesignWidth="600"
              x:Name="Self"
-             x:Class="GMConverter.UI.Controls.Settings.ExporterOptionsPanel"
-             x:DataType="vm:ExporterOptionsViewModel">
+             x:Class="GMConverter.UI.Controls.Settings.OptionsPanel"
+             x:DataType="vm:OptionSetViewModel">
   <UserControl.DataTemplates>
     <!-- Per-OptionViewModel DataTemplates. Avalonia's implicit DataTemplate matching picks the
          right one at render time based on the runtime type of each item in the ItemsControl. -->

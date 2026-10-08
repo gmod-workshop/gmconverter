@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.UI.ViewModels.Options;
 

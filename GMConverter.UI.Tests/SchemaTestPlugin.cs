@@ -4,6 +4,7 @@ using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SDK.Plugins;
 
 [assembly: Plugin(typeof(GMConverter.UI.Tests.SchemaTestPlugin))]
@@ -30,9 +31,19 @@ public sealed class SchemaTestImporter : IImporter
 {
     public string InputFormat => "sample";
     public string InputName => "Test model";
+    public IReadOnlyList<string> FileExtensions { get; } = [".sample"];
+    public OptionSchema OptionSchema { get; } = new([
+        new OptionGroup("naming", "Naming", [
+            new OptionDescriptor("modelName", OptionType.String, "Model name")
+            {
+                DefaultValue = "triangle",
+                Aliases = ["sample-model-name"],
+            }
+        ])
+    ]);
     public object Summarize(string inputPath) => "Test model";
 
-    public Model Parse(string inputPath, ModelParseOptions options) => new("triangle",
+    public Model Parse(string inputPath, ModelParseOptions options) => new(options.Options.GetString("modelName") ?? "triangle",
     [
         new Mesh([
             new Vertex(Vector3.Zero, Vector3.UnitZ, Vector2.Zero),
@@ -46,7 +57,7 @@ public sealed class SchemaTestExporter : IExporter
 {
     public string OutputFormat => "sample";
     public string OutputName => "Test export";
-    public ExporterOptionSchema OptionSchema { get; } = new([
+    public OptionSchema OptionSchema { get; } = new([
         new OptionGroup("custom", "Custom", [
             new OptionDescriptor("name", OptionType.String, "Name") { DefaultValue = "default" },
             new OptionDescriptor("path", OptionType.Path, "Path"),
@@ -57,9 +68,10 @@ public sealed class SchemaTestExporter : IExporter
         ])
     ]);
 
-    public void Export(Model model, string outputDirectory, string baseName, ExportOptions options)
+    public void Export(Model model, string outputDirectory, string baseName, OptionValues options)
     {
+        // The model name echoes the importer's "modelName" option, so tests can see both sides.
         File.WriteAllText(Path.Join(outputDirectory, baseName + ".json"),
-            JsonSerializer.Serialize(options.AsDictionary()));
+            JsonSerializer.Serialize(new Dictionary<string, object?>(options.AsDictionary()) { ["model"] = model.Name }));
     }
 }

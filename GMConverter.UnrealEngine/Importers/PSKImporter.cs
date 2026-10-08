@@ -5,6 +5,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
 using GMConverter.UnrealEngine.Common;
 using GMConverter.UnrealEngine.Formats.PSA;
@@ -26,6 +27,20 @@ internal sealed class PSKImporter : IImporter
     public string InputFormat => "psk";
 
     public string InputName => "Unreal Engine";
+
+    public IReadOnlyList<string> FileExtensions { get; } = [".psk", ".pskx", ".ue4scene"];
+
+    public OptionSchema OptionSchema { get; } = new(
+    [
+        new OptionGroup("animation", "Animation",
+        [
+            new OptionDescriptor(PSKImporterOptions.AnimationPath, OptionType.Path, "Animation path")
+            {
+                Description = "Optional PSA animation file to import alongside the mesh.",
+                Aliases = ["animation-path"],
+            },
+        ]),
+    ]);
 
     public object Summarize(string inputPath)
     {
@@ -372,15 +387,21 @@ internal sealed class PSKImporter : IImporter
 
     private static List<AnimationClip>? BuildAnimations(Skeleton? skeleton, ModelParseOptions options)
     {
-        if (skeleton is null || string.IsNullOrWhiteSpace(options.AnimationPath))
+        var animationOption = options.Options.GetString(PSKImporterOptions.AnimationPath);
+        if (skeleton is null || string.IsNullOrWhiteSpace(animationOption))
         {
             return null;
         }
 
-        var animationPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(options.AnimationPath));
+        var animationPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(animationOption));
         if (!File.Exists(animationPath))
         {
             throw new GMConverterException($"Animation file not found: {animationPath}");
+        }
+
+        if (!string.Equals(Path.GetExtension(animationPath), ".psa", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new GMConverterException($"Expected a .psa animation file: {animationPath}");
         }
 
         var psa = PSAFile.Read(animationPath);
@@ -782,7 +803,7 @@ internal sealed class PSKImporter : IImporter
                 normalTexture: normalTexture,
                 emissiveTexture: emissiveTexture,
                 specularTexturePacking: usesCueMaterial
-                    ? MaterialSpecularTexturePacking.UnrealSpecularMasks
+                    ? MaterialSpecularTexturePacking.SpecularMetallicRoughness
                     : MaterialSpecularTexturePacking.Standard,
                 normalTextureConvention: usesCueMaterial
                     ? MaterialNormalTextureConvention.DirectX

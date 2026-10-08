@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Numerics;
 using GMConverter.Plugins;
-using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SourceEngine.Exporters;
 
 namespace GMConverter.SourceEngine.Tests;
@@ -65,7 +65,7 @@ public sealed class MdlExporterTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => new MDLExporter(new DefaultTextureFactory()).Export(model, output, model.Name, new ExportOptions(
+        _ = Record.Exception(() => new MDLExporter(new DefaultTextureFactory()).Export(model, output, model.Name, new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,

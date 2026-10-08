@@ -5,6 +5,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Common;
 using GMConverter.SourceEngine.Geometry;
@@ -38,7 +39,7 @@ internal sealed class MDLExporter : IExporter
 
     // Full schema declaration — three groups (Tools, Materials, Physics). The host's generic
     // options panel renders these directly; CLI registers a --mdl-<key> argument per descriptor.
-    public ExporterOptionSchema OptionSchema { get; } = new(
+    public OptionSchema OptionSchema { get; } = new(
     [
         new OptionGroup("tools", "Tools",
         [
@@ -121,7 +122,7 @@ internal sealed class MDLExporter : IExporter
         Model model,
         string outputDirectory,
         string baseName,
-        ExportOptions exportOptions)
+        OptionValues exportOptions)
     {
         var options = BuildOptions(baseName, exportOptions);
         var sourceTools = SourceToolPaths.Resolve(options.StudioMdlPath, options.VtfCmdPath, options.BuildMaterials);
@@ -169,7 +170,7 @@ internal sealed class MDLExporter : IExporter
 
     // Binds the host's option bag into the strongly-typed MDLExportOptions the rest of this
     // file already knows how to work with. Keeps the option-bag boundary tight to this method.
-    private static MDLExportOptions BuildOptions(string baseName, ExportOptions o)
+    private static MDLExportOptions BuildOptions(string baseName, OptionValues o)
     {
         var modelPath = o.GetString("modelPath");
         if (string.IsNullOrWhiteSpace(modelPath))
@@ -905,7 +906,7 @@ internal sealed class MDLExporter : IExporter
 
     private Texture? GetSourcePhongExponent(Material material)
     {
-        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness
             ? material.SpecularTexture?.ToSourcePhongExponent(_textureFactory)
             : material.SpecularTexture;
     }

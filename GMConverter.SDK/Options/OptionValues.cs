@@ -1,22 +1,22 @@
 using System.Globalization;
 
-namespace GMConverter.SDK.Exporters;
+namespace GMConverter.SDK.Options;
 
 /// <summary>
-/// Opaque-but-typed-accessor bag of option values handed to an exporter at invocation time.
-/// The host builds it from UI / CLI inputs (parsed values keyed by <see cref="OptionDescriptor.Key"/>);
-/// the exporter reads what it needs via the typed Get helpers and constructs its own internal
-/// strongly-typed options record from the result. This keeps the SDK contract opaque while
+/// Opaque-but-typed-accessor bag of option values handed to an importer or exporter at invocation
+/// time. The host builds it from UI / CLI inputs (parsed values keyed by
+/// <see cref="OptionDescriptor.Key"/>); the plugin reads what it needs via the typed Get helpers
+/// and constructs its own internal strongly-typed options record from the result. This keeps the SDK contract opaque while
 /// letting plugin code stay type-safe internally.
 /// </summary>
-public sealed class ExportOptions
+public sealed class OptionValues
 {
     /// <summary>An empty bag — no keys present. Useful for default invocations.</summary>
-    public static ExportOptions Empty { get; } = new(new Dictionary<string, object?>());
+    public static OptionValues Empty { get; } = new(new Dictionary<string, object?>());
 
     private readonly IReadOnlyDictionary<string, object?> _values;
 
-    public ExportOptions(IReadOnlyDictionary<string, object?> values)
+    public OptionValues(IReadOnlyDictionary<string, object?> values)
     {
         ArgumentNullException.ThrowIfNull(values);
         _values = values;

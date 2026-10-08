@@ -13,7 +13,6 @@ internal sealed record UiConfig(
     string? StudioMdlPath,
     string? VtfCmdPath,
     string? MaterialDirectory,
-    string? AnimationPath,
     float? Scale,
     bool? NoScale,
     string? AxisMode,
@@ -25,7 +24,8 @@ internal sealed record UiConfig(
     int? MaxConvexPieces,
     int? MaxHullVertices,
     int? MaxTextureSize,
-    bool? DeduplicateTextures)
+    bool? DeduplicateTextures,
+    IReadOnlyDictionary<string, string> OptionValues)
 {
     public const string DefaultFileName = "gmconverter.ini";
 
@@ -84,7 +84,11 @@ internal sealed record UiConfig(
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private static string NormalizeKey(string key)
+    /// <summary>
+    /// Folds a config key or option name to lowercase with separators removed, so
+    /// <c>animation-path</c>, <c>Animation_Path</c> and <c>animationPath</c> all match.
+    /// </summary>
+    internal static string NormalizeKey(string key)
     {
         return string.Concat(key.Trim().Where(c => c is not '-' and not '_' and not '.' && !char.IsWhiteSpace(c)))
             .ToLowerInvariant();
@@ -143,7 +147,6 @@ internal sealed record UiConfig(
         public string? StudioMdlPath { get; private set; }
         public string? VtfCmdPath { get; private set; }
         public string? MaterialDirectory { get; private set; }
-        public string? AnimationPath { get; private set; }
         public float? Scale { get; private set; }
         public bool? NoScale { get; private set; }
         public string? AxisMode { get; private set; }
@@ -156,6 +159,7 @@ internal sealed record UiConfig(
         public int? MaxHullVertices { get; private set; }
         public int? MaxTextureSize { get; private set; }
         public bool? DeduplicateTextures { get; private set; }
+        public Dictionary<string, string> OptionValues { get; } = new(StringComparer.Ordinal);
 
         public void Set(string path, int lineNumber, string key, string value)
         {
@@ -197,10 +201,6 @@ internal sealed record UiConfig(
                 case "materialdirectory":
                     MaterialDirectory = EmptyToNull(value);
                     break;
-                case "animationpath":
-                case "animationfile":
-                    AnimationPath = EmptyToNull(value);
-                    break;
                 case "scale":
                     Scale = ParseFloat(path, lineNumber, key, value);
                     break;
@@ -239,7 +239,10 @@ internal sealed record UiConfig(
                     DeduplicateTextures = ParseBool(path, lineNumber, key, value);
                     break;
                 default:
-                    throw new GMConverterException($"Unknown config key in {path} line {lineNumber}: {key}");
+                    // Not a host setting: keep it for the selected importer or exporter, which
+                    // match it against their option keys and aliases.
+                    OptionValues[key] = value;
+                    break;
             }
         }
 
@@ -255,7 +258,6 @@ internal sealed record UiConfig(
                 StudioMdlPath,
                 VtfCmdPath,
                 MaterialDirectory,
-                AnimationPath,
                 Scale,
                 NoScale,
                 AxisMode,
@@ -267,7 +269,8 @@ internal sealed record UiConfig(
                 MaxConvexPieces,
                 MaxHullVertices,
                 MaxTextureSize,
-                DeduplicateTextures);
+                DeduplicateTextures,
+                OptionValues);
         }
 
         private static string? EmptyToNull(string value)

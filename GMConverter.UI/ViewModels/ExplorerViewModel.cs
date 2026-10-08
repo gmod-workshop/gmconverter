@@ -265,8 +265,8 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             _logSink.Append("Exporting animation...");
 
             var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
-            var animPath = resolvedEntry.AnimationPath ?? resolvedEntry.InputPath;
-            _convert.AnimationPath = animPath;
+            _convert.ApplyImporterOptions(resolvedEntry.ImporterOptions);
+            var animPath = resolvedEntry.InputPath;
 
             if (!string.IsNullOrWhiteSpace(resolvedEntry.Details))
             {
@@ -425,14 +425,14 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             _logSink.Append(resolvedEntry.Details);
         }
 
-        if (!string.IsNullOrWhiteSpace(resolvedEntry.AnimationPath))
+        if (resolvedEntry.ImporterOptions is { Count: > 0 } importerOptions)
         {
-            _logSink.Append($"Resolved animation sidecar: {resolvedEntry.AnimationPath}");
+            _logSink.Append($"Resolved importer options: {string.Join(", ", importerOptions.Select(pair => $"{pair.Key}={pair.Value}"))}");
         }
 
-        ExplorerStatus = string.IsNullOrWhiteSpace(resolvedEntry.AnimationPath)
-            ? $"Prepared {entry.DisplayPath}."
-            : $"Prepared {entry.DisplayPath} with animation.";
+        ExplorerStatus = resolvedEntry.ImporterOptions is { Count: > 0 }
+            ? $"Prepared {entry.DisplayPath} with importer options."
+            : $"Prepared {entry.DisplayPath}.";
     }
 
     private void PopulateExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)

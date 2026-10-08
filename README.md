@@ -50,7 +50,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `--studiomdl-path <path>` | Optional `cestudiomdl.exe` override. | `--studiomdl-path "E:\Tools\cestudiomdl.exe"` | Auto-downloaded to `tools` |
 | `--vtfcmd-path <path>` | Optional `VTFCmd.exe` override. | `--vtfcmd-path "E:\Tools\VTFCmd.exe"` | Auto-downloaded to `tools` when materials are built |
 | `--material-dir <path>` | Recursive search directory for sidecar materials and textures. | `--material-dir "E:\Tools\umodel\UmodelExport"` | None |
-| `--animation-path <path.psa>` | PSA animation file to import alongside PSK/PSKX. | `--animation-path "MeshAnimation\model.psa"` | None |
+| `--animation-path <path.psa>` | PSA animation file to import alongside PSK/PSKX. Alias for `--psk-import-animationPath`. | `--animation-path "MeshAnimation\model.psa"` | None |
 | `--scale <factor>` | Scale exported geometry. | `--scale 0.5` | `1` |
 | `--no-scale` | Compatibility alias for scale `1`. | `--no-scale` | Off |
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
@@ -103,7 +103,7 @@ physics-mass = 100
 
 ## Plugins
 
-Unreal and Source Engine support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
+Unreal Engine, Source Engine, Men of War and X-Wing Alliance support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
 
 The CLI adds `--<format>-<option-key>` flags from exporter schemas. Colons in keys become hyphens; the remaining spelling is preserved. Boolean values use explicit `true` or `false`. For example, Source's texture settings are available as:
 
@@ -113,6 +113,8 @@ The CLI adds `--<format>-<option-key>` flags from exporter schemas. Colons in ke
   --mdl-material-maxTextureSize 1024 `
   --mdl-material-deduplicateTextures true
 ```
+
+Importer options work the same way with an `import` segment, `--<format>-import-<option-key>`, because a format can have both an importer and an exporter. For example, `--psk-import-animationPath` sets the PSK animation file; `--animation-path` still works as an alias. In the GUI, importer options appear under **Import options** on the Convert page. Config files (`.ini`) accept any importer or exporter option key or alias, such as `animation-path = model.psa`.
 
 Schema flags override corresponding legacy flags when both are supplied. `source` remains an alias for `mdl`; use the `--mdl-` prefix with either format. glTF's binary/text output follows `--output-format`, and other glTF schema options use the `--glb-` prefix for both `glb` and `gltf`.
 

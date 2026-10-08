@@ -1,11 +1,12 @@
-namespace GMConverter.SDK.Exporters;
+namespace GMConverter.SDK.Options;
 
 /// <summary>
-/// Describes a single configurable option an exporter accepts. The host uses this to render UI
-/// controls, register CLI arguments, persist values, and validate before invoking Export.
+/// Describes a single configurable option an importer or exporter accepts. The host uses this to
+/// render UI controls, register CLI arguments, persist values, and validate before invoking the
+/// plugin.
 /// </summary>
 /// <param name="Key">
-/// Stable identifier used to look the value up in <see cref="ExportOptions"/>. Convention is to
+/// Stable identifier used to look the value up in <see cref="OptionValues"/>. Convention is to
 /// prefix related options with a group-like tag (e.g. <c>"physics:mode"</c>) when the option
 /// logically belongs to a sub-feature, but the schema's <see cref="OptionGroup"/> structure is
 /// the source of truth for UI grouping.
@@ -45,6 +46,13 @@ public sealed record OptionDescriptor(string Key, OptionType Type, string Label)
 
     /// <summary>Optional step size for numeric controls.</summary>
     public decimal? Increment { get; init; }
+
+    /// <summary>
+    /// Alternative names the host also accepts for this option, written as CLI flags without the
+    /// leading dashes (e.g. <c>animation-path</c>). Lets a plugin keep an established flag or
+    /// config key working when the option's own key or namespacing changes.
+    /// </summary>
+    public IReadOnlyList<string> Aliases { get; init; } = [];
 
     /// <summary>
     /// Resolves the effective default value at the time of the call. Calls

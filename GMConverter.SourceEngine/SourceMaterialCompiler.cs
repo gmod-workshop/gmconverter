@@ -233,7 +233,7 @@ internal sealed class SourceMaterialCompiler
 
     private Texture? GetSourcePhongExponent(Material material)
     {
-        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+        return material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness
             ? material.SpecularTexture?.ToSourcePhongExponent(_textureFactory)
             : material.SpecularTexture;
     }

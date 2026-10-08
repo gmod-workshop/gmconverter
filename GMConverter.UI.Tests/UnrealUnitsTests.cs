@@ -459,6 +459,107 @@ public sealed class UnrealUnitsTests
         Assert.Single(Directory.GetFiles(output, "test_dest.vmt", SearchOption.AllDirectories));
     }
 
+    [Fact]
+    public void SidecarUvTransformBecomesSourceTextureTransformProxies()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"),
+            "Diffuse=panel\nUvScroll=0,0.2\nUvTransform=u=stretch,0.1,0.2,0;center=0.5,0.5;v=jitter,1,80,0;u=pan,9,9,9\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 255);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var transform = Assert.Single(model.Materials).UvTransform!;
+        Assert.Equal(new Vector2(0.5f, 0.5f), transform.Center);
+        Assert.Equal(new GMConverter.SDK.Materials.MaterialOscillation(GMConverter.SDK.Materials.MaterialOscillationKind.Stretch, 0.1f, 0.2f, 0f), transform.U);
+        Assert.Equal(GMConverter.SDK.Materials.MaterialOscillationKind.Jitter, transform.V!.Kind);
+
+        var vmt = ExportVmt(model, directory, "test.vmt");
+        Assert.DoesNotContain("\"TextureScroll\"", vmt);
+        Assert.Contains("\"$gmc_base_center\" \"[0.5 0.5]\"", vmt);
+        // Stretch along U (period 1 / 0.2 s), the V scroll wrapped to [0, 1] plus jitter noise.
+        Assert.Contains("\"sinemin\" \"0.9\"", vmt);
+        Assert.Contains("\"sineperiod\" \"5\"", vmt);
+        Assert.Contains("\"resultVar\" \"$gmc_base_scale[0]\"", vmt);
+        Assert.Contains("\"WrapMinMax\"", vmt);
+        Assert.Contains("\"UniformNoise\"", vmt);
+        Assert.Contains("\"resultVar\" \"$gmc_base_translate[1]\"", vmt);
+        Assert.Contains("\"resultVar\" \"$basetexturetransform\"", vmt);
+    }
+
+    [Fact]
+    public void SidecarDetailLayerBecomesSourceDetailTexture()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"),
+            "Diffuse=lightmap\nDetail=burlap\nDetailBlend=Multiply\nDetailUvTransform=scale=0.25,0.25\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "lightmap.tga"), alpha: 255);
+        WriteUnlabeledAlphaTga(Path.Join(directory, "burlap.tga"), alpha: 255, blue: 200, green: 100, red: 50);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var layer = Assert.Single(model.Materials).DetailLayer!;
+        Assert.Equal(GMConverter.SDK.Materials.MaterialLayerBlend.Multiply, layer.Blend);
+        Assert.Equal(new Vector2(0.25f, 0.25f), layer.UvTransform!.Scale);
+
+        var vmt = ExportVmt(model, directory, "test.vmt");
+        Assert.Contains("\"$detail\" \"gmconverter/test_detail\"", vmt);
+        Assert.Contains("\"$detailblendmode\" \"0\"", vmt);
+        Assert.Contains("\"$detailtexturetransform\" \"center 0 0 scale 0.25 0.25 rotate 0 translate 0 0\"", vmt);
+        Assert.DoesNotContain("Proxies", vmt);
+
+        // Source's mod2x doubles the product, so a plain multiply layer is written at half brightness.
+        using var detailPng = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(
+            Directory.GetFiles(Path.Join(directory, "mdl"), "test_detail.png", SearchOption.AllDirectories).Single());
+        Assert.Equal((25, 50, 100), (detailPng[0, 0].R, detailPng[0, 0].G, detailPng[0, 0].B));
+    }
+
+    [Fact]
+    public void FadingSelfIlluminationColourPulsesSourceEmissiveTint()
+    {
+        _ = ExporterOptionsTests.CreateViewModel();
+        var (psk, _) = WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(Path.Join(directory, "test.mat"),
+            "Diffuse=panel\nSelfIlluminationMask=panel\nSelfIlluminationColor=255,0,0\n" +
+            "SelfIlluminationColorOperation=Replace\nSelfIlluminationFade=0,255,0,0.5,0.25\n");
+        WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
+
+        var model = PluginHost.Registry.GetImporter("psk")!
+            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var material = Assert.Single(model.Materials);
+
+        // A FadePeriod of 0.5 s is one way, so a full red -> green -> red cycle takes 1 s. The
+        // static fallback is the first colour (red) x mask alpha 51/255.
+        var pulse = material.EmissiveLayer!.Pulse!;
+        Assert.Equal((new Vector3(1, 0, 0), new Vector3(0, 1, 0), 1f, 0.25f), (pulse.From, pulse.To, pulse.Period, pulse.Phase));
+        Assert.Equal([51, 0, 0, 255], material.EmissiveTexture!.GetRgbaPixels()[..4]);
+
+        var vmt = ExportVmt(model, directory, "test.vmt");
+        Assert.Contains("\"$emissiveblendenabled\" \"1\"", vmt);
+        Assert.Contains("\"resultVar\" \"$emissiveblendtint[0]\"", vmt);
+        Assert.Contains("\"resultVar\" \"$emissiveblendtint[1]\"", vmt);
+        Assert.Contains("\"sineperiod\" \"1\"", vmt);
+    }
+
+    private static string ExportVmt(Model model, string directory, string vmtName)
+    {
+        var output = Path.Join(directory, "mdl");
+        var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
+        File.WriteAllText(stubStudioMdl, string.Empty);
+        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
+        return File.ReadAllText(Directory.GetFiles(output, vmtName, SearchOption.AllDirectories).Single());
+    }
+
     // Four closed tetrahedra 100 cm apart; all but `invertedShell` use the winding the bacta
     // dispenser's correct parts use (negative signed volume in raw ActorX space).
     private static void WriteTetrahedraFixture(string path, int invertedShell)

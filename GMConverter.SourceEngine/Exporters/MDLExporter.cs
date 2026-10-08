@@ -849,10 +849,12 @@ internal sealed class MDLExporter : IExporter
                     normalMapAlphaMask: material.NormalTexture is not null);
             }
 
-            var extraTextures = SourceMaterialEmission.ExtraTextures(material, _textureFactory);
+            IReadOnlyList<SourceMaterialEmission.ExtraTexture> extraTextures =
+                [.. SourceMaterialEmission.ExtraTextures(material, _textureFactory), .. SourceMaterialDetail.ExtraTextures(material, _textureFactory)];
+            SourceMaterialDetail.Write(writer, material, suffix => ExtraTexturePath(materialRelativeDirectory, material, extraTextures, suffix));
             SourceMaterialEmission.Write(writer, material, suffix => ExtraTexturePath(materialRelativeDirectory, material, extraTextures, suffix));
 
-            SourceMaterialProxies.WriteUvScroll(writer, material);
+            SourceMaterialProxies.Write(writer, material);
             writer.WriteLine("}");
 
             foreach (var extra in extraTextures)

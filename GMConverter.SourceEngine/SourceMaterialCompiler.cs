@@ -91,7 +91,7 @@ internal sealed class SourceMaterialCompiler
                 }
 
                 Dictionary<string, string> extraTexturePaths = [];
-                foreach (var extra in SourceMaterialEmission.ExtraTextures(material, _textureFactory))
+                foreach (var extra in SourceMaterialEmission.ExtraTextures(material, _textureFactory).Concat(SourceMaterialDetail.ExtraTextures(material, _textureFactory)))
                 {
                     var basename = WriteOrReuse(
                         extra.Texture,
@@ -210,9 +210,10 @@ internal sealed class SourceMaterialCompiler
                 normalMapAlphaMask: normalTexturePath is not null);
         }
 
+        SourceMaterialDetail.Write(writer, material, suffix => extraTexturePaths[suffix]);
         SourceMaterialEmission.Write(writer, material, suffix => extraTexturePaths[suffix]);
 
-        SourceMaterialProxies.WriteUvScroll(writer, material);
+        SourceMaterialProxies.Write(writer, material);
         writer.WriteLine("}");
     }
 

@@ -12,13 +12,6 @@ namespace GMConverter.UI.ViewModels;
 
 public sealed partial class ConvertViewModel : ViewModelBase
 {
-    private const double _defaultCoacdThreshold = 0.05;
-    private const int _defaultMaxConvexPieces = 16;
-    private const int _defaultMaxHullVertices = 16;
-    private const double _legacyDefaultCoacdThreshold = 0.01;
-    private const int _legacyDefaultMaxConvexPieces = 32;
-    private const int _legacyDefaultMaxHullVertices = 32;
-
     private readonly UiLogSink _logSink;
     private readonly ConversionService _conversionService;
     private readonly Func<bool> _getIsBusy;
@@ -36,12 +29,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
     private DisplayOption _selectedAxisMode;
 
     [ObservableProperty]
-    private DisplayOption _selectedPhysicsMode;
-
-    [ObservableProperty]
-    private DisplayOption _selectedMaxTextureSize;
-
-    [ObservableProperty]
     private string _configPath = string.Empty;
 
     [ObservableProperty]
@@ -54,40 +41,10 @@ public sealed partial class ConvertViewModel : ViewModelBase
     private string _baseName = string.Empty;
 
     [ObservableProperty]
-    private string _modelPath = "gmconverter/model.mdl";
-
-    [ObservableProperty]
-    private string _studioMdlPath = string.Empty;
-
-    [ObservableProperty]
-    private string _vtfCmdPath = string.Empty;
-
-    [ObservableProperty]
     private string _materialDirectory = string.Empty;
 
     [ObservableProperty]
     private double _scaleFactor = 1.0;
-
-    [ObservableProperty]
-    private bool _buildMaterials = true;
-
-    [ObservableProperty]
-    private bool _deduplicateTextures = true;
-
-    [ObservableProperty]
-    private bool _generatePhysics;
-
-    [ObservableProperty]
-    private double _physicsMass = 100.0;
-
-    [ObservableProperty]
-    private double _coacdThreshold = _defaultCoacdThreshold;
-
-    [ObservableProperty]
-    private int _maxConvexPieces = _defaultMaxConvexPieces;
-
-    [ObservableProperty]
-    private int _maxHullVertices = _defaultMaxHullVertices;
 
     internal ConvertViewModel(
         UiLogSink logSink,
@@ -109,8 +66,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _selectedOutputFormat = OutputFormats.FirstOrDefault(format => format.Value == "mdl")
             ?? OutputFormats.First(format => format.Value == "glb");
         _selectedAxisMode = AxisModes[0];
-        _selectedPhysicsMode = PhysicsModes[0];
-        _selectedMaxTextureSize = MaxTextureSizes.First(option => option.Value == "1024");
         RefreshCurrentExporterOptions();
         RefreshCurrentImporterOptions();
     }
@@ -142,54 +97,16 @@ public sealed partial class ConvertViewModel : ViewModelBase
         new("y-up", "Y Up", string.Empty)
     ];
 
-    public ObservableCollection<DisplayOption> PhysicsModes { get; } =
-    [
-        new("bounds", "Bounds", string.Empty),
-        new("coacd", "CoACD", string.Empty)
-    ];
-
-    public ObservableCollection<DisplayOption> MaxTextureSizes { get; } =
-    [
-        new("0", "Original", "no resize"),
-        new("512", "512", string.Empty),
-        new("1024", "1024", string.Empty),
-        new("2048", "2048", string.Empty),
-        new("4096", "4096", string.Empty)
-    ];
-
-    public bool IsSourceOutput => SelectedOutputFormat.Value is "source" or "mdl";
-
-    public bool IsPhysicsEnabled => IsSourceOutput && GeneratePhysics;
-
-    public bool IsCoacdEnabled => IsSourceOutput && GeneratePhysics && SelectedPhysicsMode.Value is "coacd";
-
     public bool IsIdle => !_getIsBusy();
 
     partial void OnSelectedOutputFormatChanged(DisplayOption value)
     {
         RefreshCurrentExporterOptions();
-        OnPropertyChanged(nameof(IsSourceOutput));
-        OnPropertyChanged(nameof(IsPhysicsEnabled));
-        OnPropertyChanged(nameof(IsCoacdEnabled));
     }
 
     partial void OnSelectedInputFormatChanged(DisplayOption value)
     {
         RefreshCurrentImporterOptions();
-    }
-
-    partial void OnGeneratePhysicsChanged(bool value)
-    {
-        PushTypedPropertyToBag("physics:enabled", value);
-        OnPropertyChanged(nameof(IsPhysicsEnabled));
-        OnPropertyChanged(nameof(IsCoacdEnabled));
-    }
-
-    partial void OnSelectedPhysicsModeChanged(DisplayOption value)
-    {
-        PushTypedPropertyToBag("physics:mode", value?.Value);
-        OnPropertyChanged(nameof(IsPhysicsEnabled));
-        OnPropertyChanged(nameof(IsCoacdEnabled));
     }
 
     internal void NotifyBusyChanged()
@@ -279,83 +196,11 @@ public sealed partial class ConvertViewModel : ViewModelBase
             InputPath,
             string.IsNullOrWhiteSpace(OutputPath) ? null : OutputPath,
             string.IsNullOrWhiteSpace(BaseName) ? null : BaseName,
-            IsSourceOutput && !string.IsNullOrWhiteSpace(ModelPath) ? ModelPath : null,
-            IsSourceOutput && !string.IsNullOrWhiteSpace(StudioMdlPath) ? StudioMdlPath : null,
-            IsSourceOutput && !string.IsNullOrWhiteSpace(VtfCmdPath) ? VtfCmdPath : null,
             string.IsNullOrWhiteSpace(MaterialDirectory) ? null : MaterialDirectory,
             (float)ScaleFactor,
             ConversionService.NormalizeAxisMode(SelectedAxisMode.Value),
-            BuildMaterials,
-            GeneratePhysics,
-            GeneratePhysics ? SelectedPhysicsMode.Value : null,
-            (float)PhysicsMass,
-            (float)CoacdThreshold,
-            MaxConvexPieces,
-            MaxHullVertices,
-            ParseMaxTextureSize(SelectedMaxTextureSize.Value),
-            DeduplicateTextures,
             CurrentImporterOptions.BuildOptionValues(),
             CurrentExporterOptions.BuildOptionValues());
-    }
-
-    private static int ParseMaxTextureSize(string value)
-    {
-        return int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var result)
-            ? Math.Max(0, result)
-            : 0;
-    }
-
-    // Fill empty StudioMDL / VTFCmd path fields from whatever's already extracted under tools/.
-    // Called at startup while settings-save suppression is on, so these auto-discovered paths
-    // never get persisted — if the user moves the app, the next launch re-resolves against the
-    // new tools/ location instead of carrying a stale absolute path forward.
-    internal void ApplyLocalToolDefaults()
-    {
-        var (studioMdl, vtfCmd) = TryFindLocalToolDefaults();
-        if (string.IsNullOrWhiteSpace(StudioMdlPath) && studioMdl is not null)
-        {
-            StudioMdlPath = studioMdl;
-        }
-        if (string.IsNullOrWhiteSpace(VtfCmdPath) && vtfCmd is not null)
-        {
-            VtfCmdPath = vtfCmd;
-        }
-    }
-
-    // Local copy of the path-discovery logic that used to live in GMConverter.Source.SourceToolPaths.
-    // After Source extraction to a plugin the UI can't reference that type directly, and the UI's
-    // auto-fill behavior shouldn't depend on the plugin being loaded — these directories follow a
-    // convention (./tools/<tool>/...) that's stable across plugin presence. The plugin keeps its
-    // own copy for the resolve path used at export time.
-    private static (string? StudioMdl, string? VtfCmd) TryFindLocalToolDefaults()
-    {
-        return (
-            FindExecutable(GetToolDirectory("studiomdl-ce"), "studiomdl.exe"),
-            FindExecutable(GetToolDirectory("vtfedit-reloaded"), "VTFCmd.exe"));
-    }
-
-    private static string GetToolDirectory(string toolName)
-    {
-        return Path.Combine(AppContext.BaseDirectory, "tools", toolName);
-    }
-
-    private static string? FindExecutable(string root, string executableName)
-    {
-        if (!Directory.Exists(root))
-        {
-            return null;
-        }
-        try
-        {
-            return Directory
-                .EnumerateFiles(root, executableName, SearchOption.AllDirectories)
-                .FirstOrDefault();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _ = ex;
-            return null;
-        }
     }
 
     internal void TryLoadDefaultConfig()
@@ -375,41 +220,14 @@ public sealed partial class ConvertViewModel : ViewModelBase
         SetSelected(InputFormats, settings.InputFormat, value => SelectedInputFormat = value);
         SetSelected(OutputFormats, settings.OutputFormat, value => SelectedOutputFormat = value);
         SetSelected(AxisModes, settings.AxisMode, value => SelectedAxisMode = value);
-        SetSelected(PhysicsModes, settings.PhysicsMode, value => SelectedPhysicsMode = value);
 
         ConfigPath = settings.ConfigPath ?? ConfigPath;
         InputPath = settings.InputPath ?? InputPath;
         OutputPath = settings.OutputPath ?? OutputPath;
         BaseName = settings.BaseName ?? BaseName;
-        ModelPath = settings.ModelPath ?? ModelPath;
-        StudioMdlPath = settings.StudioMdlPath ?? StudioMdlPath;
-        VtfCmdPath = settings.VtfCmdPath ?? VtfCmdPath;
         MaterialDirectory = settings.MaterialDirectory ?? MaterialDirectory;
         ScaleFactor = settings.ScaleFactor;
-        BuildMaterials = settings.BuildMaterials;
-        DeduplicateTextures = settings.DeduplicateTextures;
-        GeneratePhysics = settings.GeneratePhysics;
-        PhysicsMass = settings.PhysicsMass;
 
-        var sizeValue = settings.MaxTextureSize.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var sizeOption = MaxTextureSizes.FirstOrDefault(option => option.Value == sizeValue);
-        if (sizeOption is not null)
-        {
-            SelectedMaxTextureSize = sizeOption;
-        }
-
-        if (HasLegacyCoacdDefaults(settings))
-        {
-            CoacdThreshold = _defaultCoacdThreshold;
-            MaxConvexPieces = _defaultMaxConvexPieces;
-            MaxHullVertices = _defaultMaxHullVertices;
-        }
-        else
-        {
-            CoacdThreshold = settings.CoacdThreshold;
-            MaxConvexPieces = settings.MaxConvexPieces;
-            MaxHullVertices = settings.MaxHullVertices;
-        }
         LoadExporterOptions(settings.ExporterOptions);
         LoadImporterOptions(settings.ImporterOptions);
     }
@@ -427,7 +245,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
         ResetCurrentImporterOptions();
         ApplyImporterOptions(resolvedEntry?.ImporterOptions);
         BaseName = Path.GetFileNameWithoutExtension(inputPath);
-        ModelPath = $"gmconverter/{SanitizePathToken(BaseName)}.mdl";
     }
 
     private bool CanRunCommand()
@@ -466,14 +283,10 @@ public sealed partial class ConvertViewModel : ViewModelBase
         SetSelected(InputFormats, config.InputFormat, value => SelectedInputFormat = value);
         SetSelected(OutputFormats, config.OutputFormat, value => SelectedOutputFormat = value);
         SetSelected(AxisModes, config.AxisMode, value => SelectedAxisMode = value);
-        SetSelected(PhysicsModes, config.PhysicsMode, value => SelectedPhysicsMode = value);
 
         SetText(config.InputPath, value => InputPath = value);
         SetText(config.OutputPath, value => OutputPath = value);
         SetText(config.BaseName, value => BaseName = value);
-        SetText(config.ModelPath, value => ModelPath = value);
-        SetText(config.StudioMdlPath, value => StudioMdlPath = value);
-        SetText(config.VtfCmdPath, value => VtfCmdPath = value);
         SetText(config.MaterialDirectory, value => MaterialDirectory = value);
 
         if (config.Scale.HasValue)
@@ -484,52 +297,6 @@ public sealed partial class ConvertViewModel : ViewModelBase
         if (config.NoScale is true)
         {
             ScaleFactor = 1.0;
-        }
-
-        if (config.NoMaterials.HasValue)
-        {
-            BuildMaterials = !config.NoMaterials.Value;
-        }
-
-        if (config.Physics.HasValue)
-        {
-            GeneratePhysics = config.Physics.Value;
-        }
-
-        if (config.PhysicsMass.HasValue)
-        {
-            PhysicsMass = config.PhysicsMass.Value;
-        }
-
-        if (config.CoacdThreshold.HasValue)
-        {
-            CoacdThreshold = config.CoacdThreshold.Value;
-        }
-
-        if (config.MaxConvexPieces.HasValue)
-        {
-            MaxConvexPieces = config.MaxConvexPieces.Value;
-        }
-
-        if (config.MaxHullVertices.HasValue)
-        {
-            MaxHullVertices = config.MaxHullVertices.Value;
-        }
-
-        if (config.MaxTextureSize.HasValue)
-        {
-            var sizeValue = Math.Max(0, config.MaxTextureSize.Value)
-                .ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var sizeOption = MaxTextureSizes.FirstOrDefault(option => option.Value == sizeValue);
-            if (sizeOption is not null)
-            {
-                SelectedMaxTextureSize = sizeOption;
-            }
-        }
-
-        if (config.DeduplicateTextures.HasValue)
-        {
-            DeduplicateTextures = config.DeduplicateTextures.Value;
         }
 
         foreach (var key in ApplyConfigOptionValues(config.OptionValues))
@@ -565,15 +332,4 @@ public sealed partial class ConvertViewModel : ViewModelBase
         }
     }
 
-    private static bool HasLegacyCoacdDefaults(UiSettings settings)
-    {
-        return Math.Abs(settings.CoacdThreshold - _legacyDefaultCoacdThreshold) < 0.000001 &&
-            settings.MaxConvexPieces == _legacyDefaultMaxConvexPieces &&
-            settings.MaxHullVertices == _legacyDefaultMaxHullVertices;
-    }
-
-    internal static string SanitizePathToken(string value)
-    {
-        return string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? char.ToLowerInvariant(c) : '_')).Trim('_');
-    }
 }

@@ -56,7 +56,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
 | `--no-materials` | Skip VTF/VMT compilation. | `--no-materials` | Off |
 | `--physics` | Generate bounds collision for Source output. | `--physics` | Off |
-| `--physics-mode <mode>` | Collision generation mode: `bounds` or `coacd`. | `--physics-mode coacd` | `bounds` |
+| `--physics-mode <mode>` | Collision generation mode: `bounds` or `coacd`. Takes effect with `--physics`. | `--physics --physics-mode coacd` | `bounds` |
 | `--physics-mass <value>` | Physics mass for Source collision. | `--physics-mass 250` | `100` |
 | `--coacd-threshold <value>` | CoACD termination threshold. | `--coacd-threshold 0.05` | `0.05` |
 | `--max-convex-pieces <count>` | Maximum CoACD convex hull count. Use `-1` for no limit. | `--max-convex-pieces 16` | `16` |
@@ -116,7 +116,7 @@ The CLI adds `--<format>-<option-key>` flags from exporter schemas. Colons in ke
 
 Importer options work the same way with an `import` segment, `--<format>-import-<option-key>`, because a format can have both an importer and an exporter. For example, `--psk-import-animationPath` sets the PSK animation file; `--animation-path` still works as an alias. In the GUI, importer options appear under **Import options** on the Convert page. Config files (`.ini`) accept any importer or exporter option key or alias, such as `animation-path = model.psa`.
 
-Schema flags override corresponding legacy flags when both are supplied. `source` remains an alias for `mdl`; use the `--mdl-` prefix with either format. glTF's binary/text output follows `--output-format`, and other glTF schema options use the `--glb-` prefix for both `glb` and `gltf`.
+The Source flags in the table above (`--model-path`, `--studiomdl-path`, `--no-materials`, `--physics`, and so on) are aliases the Source plugin declares for its `--mdl-` options, so either spelling works. Boolean flags can be given bare (`--physics`) or with `true`/`false`, and a `--no-` alias sets the opposite value. `source` remains an alias for `mdl`; use the `--mdl-` prefix with either format. glTF's binary/text output follows `--output-format`, and other glTF schema options use the `--glb-` prefix for both `glb` and `gltf`.
 
 ## Format Details
 

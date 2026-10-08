@@ -8,29 +8,17 @@ internal sealed record UiSettings(
     string? OutputFormat,
     string? AxisMode,
     string? ExplorerProfile,
-    string? PhysicsMode,
     string? ConfigPath,
     string? InputPath,
     string? OutputPath,
     string? BaseName,
-    string? ModelPath,
-    string? StudioMdlPath,
-    string? VtfCmdPath,
     string? MaterialDirectory,
     string? ExplorerRootDirectory,
     string? ExplorerFilter,
     double ScaleFactor,
-    bool BuildMaterials,
-    bool GeneratePhysics,
     bool PreviewOrthographic,
     bool PreviewWireframe,
     bool PreviewPhysicsOverlay,
-    double PhysicsMass,
-    double CoacdThreshold,
-    int MaxConvexPieces,
-    int MaxHullVertices,
-    int MaxTextureSize = 1024,
-    bool DeduplicateTextures = true,
     Dictionary<string, Dictionary<string, object?>>? ExporterOptions = null,
     Dictionary<string, Dictionary<string, object?>>? ImporterOptions = null)
 {
@@ -55,24 +43,29 @@ internal sealed record UiSettings(
 
         try
         {
-            var json = File.ReadAllText(path);
-            var settings = JsonSerializer.Deserialize<UiSettings>(json, _jsonOptions);
-            if (settings is null)
-            {
-                return null;
-            }
-
-            using var document = JsonDocument.Parse(json);
-            return settings with
-            {
-                ExplorerProfile = settings.ExplorerProfile ?? ReadLegacyString(document.RootElement, "GameProfile"),
-                ExplorerRootDirectory = settings.ExplorerRootDirectory ?? ReadLegacyString(document.RootElement, "ExplorerGameDirectory")
-            };
+            return Parse(File.ReadAllText(path));
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
             throw new GMConverterException($"Failed to load UI settings from {path}: {ex.Message}");
         }
+    }
+
+    /// <summary>Reads settings JSON, including fields older versions wrote under other names.</summary>
+    internal static UiSettings? Parse(string json)
+    {
+        var settings = JsonSerializer.Deserialize<UiSettings>(json, _jsonOptions);
+        if (settings is null)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        return LegacySourceSettings.Migrate(settings with
+        {
+            ExplorerProfile = settings.ExplorerProfile ?? ReadLegacyString(document.RootElement, "GameProfile"),
+            ExplorerRootDirectory = settings.ExplorerRootDirectory ?? ReadLegacyString(document.RootElement, "ExplorerGameDirectory")
+        }, document.RootElement);
     }
 
     private static string? ReadLegacyString(JsonElement root, string propertyName)

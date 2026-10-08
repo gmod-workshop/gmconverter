@@ -26,6 +26,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- The GUI and CLI no longer have Source-specific code; every Source option comes from the Source plugin.
+  - The legacy CLI flags (`--model-path`, `--studiomdl-path`, `--vtfcmd-path`, `--no-materials`, `--physics`, `--physics-mode`, `--physics-mass`, `--coacd-threshold`, `--max-convex-pieces`, `--coacd-max-hull-vertices`) still work, as aliases of the matching `--mdl-` options. Any boolean option flag can now be given bare, and enum values are matched case-insensitively.
+  - `--physics-mode` no longer turns physics on by itself; add `--physics`.
+  - The collision overlay in the GUI preview now comes from the exporter, so it shows the real CoACD hulls again instead of only the bounding box.
+  - Saved GUI settings keep only options you changed. Settings from older versions, including StudioMDL/VTFCmd paths and physics and texture options, are carried over once. The saved model path is not: it was tied to the last model, and a blank model path now becomes `gmconverter/<name>.mdl` at export.
+  - On a fresh install the GUI starts from the Source plugin's defaults: no texture resize and no texture deduplication, the same as the CLI. It previously defaulted to a 1024 resize with deduplication.
+  - Config files no longer have their own Source keys; keys such as `studiomdl`, `physics` and `nomaterials` match the plugin's option aliases instead.
+- Plugin SDK: added `ICollisionPreview`, which an exporter implements to supply the collision meshes hosts draw in the preview. A Bool option alias starting with `no-` sets the opposite value.
 - Importers now declare their own options and file extensions, like exporters already did.
   - The PSK animation file is a PSK importer option. The CLI flag is `--psk-import-animationPath`, and `--animation-path` keeps working as an alias. In the GUI it moved into a new **Import options** panel on the Convert page, which shows whatever options the selected importer declares.
   - Input file checks and the GUI file picker use each importer's declared extensions instead of a built-in list.

@@ -41,6 +41,34 @@ public sealed class MdlExporterTests
         Assert.Equal(1f, MathF.Abs(Quaternion.Dot(Quaternion.Normalize(rotation), actual)), 4);
     }
 
+    [Fact]
+    public void CollisionPreviewFollowsThePhysicsOptions()
+    {
+        var exporter = new MDLExporter(new DefaultTextureFactory());
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+
+        Assert.Empty(exporter.CreateCollisionPreview(model, OptionValues.Empty));
+
+        var bounds = Assert.Single(exporter.CreateCollisionPreview(model, new OptionValues(
+            new Dictionary<string, object?> { ["physics:enabled"] = true })));
+        Assert.Equal(12, bounds.Triangles.Count());
+        // The flat triangle is padded to Source's one-inch minimum collision thickness.
+        var zs = bounds.Vertices.Select(vertex => vertex.Position.Z).ToArray();
+        Assert.Equal(0.0254f, zs.Max() - zs.Min(), 4);
+    }
+
+    [Fact]
+    public void LegacyCliFlagsAndDefaultsAreDeclaredOnTheSchema()
+    {
+        var schema = new MDLExporter(new DefaultTextureFactory()).OptionSchema;
+
+        Assert.Contains("no-materials", schema.Find("buildMaterials")!.Aliases);
+        Assert.Contains("physics", schema.Find("physics:enabled")!.Aliases);
+        Assert.Contains("coacd-max-hull-vertices", schema.Find("physics:maxHullVertices")!.Aliases);
+        Assert.Equal(16, schema.Find("physics:maxConvexPieces")!.DefaultValue);
+        Assert.Equal(-1m, schema.Find("physics:maxConvexPieces")!.Minimum);
+    }
+
     // One triangle 1 m across, fully weighted to a single root bone with the given rotation.
     private static Model CreateSkinnedTriangle(Quaternion rootRotation)
     {

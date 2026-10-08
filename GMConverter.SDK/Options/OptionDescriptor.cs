@@ -50,7 +50,9 @@ public sealed record OptionDescriptor(string Key, OptionType Type, string Label)
     /// <summary>
     /// Alternative names the host also accepts for this option, written as CLI flags without the
     /// leading dashes (e.g. <c>animation-path</c>). Lets a plugin keep an established flag or
-    /// config key working when the option's own key or namespacing changes.
+    /// config key working when the option's own key or namespacing changes. For
+    /// <see cref="OptionType.Bool"/> options, an alias that starts with <c>no-</c> sets the
+    /// opposite value (e.g. <c>no-materials</c> turns <c>buildMaterials</c> off).
     /// </summary>
     public IReadOnlyList<string> Aliases { get; init; } = [];
 

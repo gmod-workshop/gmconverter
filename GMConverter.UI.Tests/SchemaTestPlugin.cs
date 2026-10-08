@@ -61,7 +61,7 @@ public sealed class SchemaTestExporter : IExporter
         new OptionGroup("custom", "Custom", [
             new OptionDescriptor("name", OptionType.String, "Name") { DefaultValue = "default" },
             new OptionDescriptor("path", OptionType.Path, "Path"),
-            new OptionDescriptor("enabled", OptionType.Bool, "Enabled") { DefaultValue = true },
+            new OptionDescriptor("enabled", OptionType.Bool, "Enabled") { DefaultValue = true, Aliases = ["no-sample-enabled"] },
             new OptionDescriptor("count", OptionType.Int, "Count") { DefaultValue = 3 },
             new OptionDescriptor("physics:mass", OptionType.Float, "Amount") { DefaultValue = 2.5f },
             new OptionDescriptor("mode", OptionType.Enum, "Mode") { Choices = ["a", "b"], DefaultValue = "a" }

@@ -9,22 +9,10 @@ internal sealed record UiConfig(
     string? InputPath,
     string? OutputPath,
     string? BaseName,
-    string? ModelPath,
-    string? StudioMdlPath,
-    string? VtfCmdPath,
     string? MaterialDirectory,
     float? Scale,
     bool? NoScale,
     string? AxisMode,
-    bool? NoMaterials,
-    bool? Physics,
-    string? PhysicsMode,
-    float? PhysicsMass,
-    float? CoacdThreshold,
-    int? MaxConvexPieces,
-    int? MaxHullVertices,
-    int? MaxTextureSize,
-    bool? DeduplicateTextures,
     IReadOnlyDictionary<string, string> OptionValues)
 {
     public const string DefaultFileName = "gmconverter.ini";
@@ -143,22 +131,10 @@ internal sealed record UiConfig(
         public string? InputPath { get; private set; }
         public string? OutputPath { get; private set; }
         public string? BaseName { get; private set; }
-        public string? ModelPath { get; private set; }
-        public string? StudioMdlPath { get; private set; }
-        public string? VtfCmdPath { get; private set; }
         public string? MaterialDirectory { get; private set; }
         public float? Scale { get; private set; }
         public bool? NoScale { get; private set; }
         public string? AxisMode { get; private set; }
-        public bool? NoMaterials { get; private set; }
-        public bool? Physics { get; private set; }
-        public string? PhysicsMode { get; private set; }
-        public float? PhysicsMass { get; private set; }
-        public float? CoacdThreshold { get; private set; }
-        public int? MaxConvexPieces { get; private set; }
-        public int? MaxHullVertices { get; private set; }
-        public int? MaxTextureSize { get; private set; }
-        public bool? DeduplicateTextures { get; private set; }
         public Dictionary<string, string> OptionValues { get; } = new(StringComparer.Ordinal);
 
         public void Set(string path, int lineNumber, string key, string value)
@@ -181,17 +157,6 @@ internal sealed record UiConfig(
                 case "basename":
                     BaseName = EmptyToNull(value);
                     break;
-                case "modelpath":
-                    ModelPath = EmptyToNull(value);
-                    break;
-                case "studiomdl":
-                case "studiomdlpath":
-                    StudioMdlPath = EmptyToNull(value);
-                    break;
-                case "vtfcmd":
-                case "vtfcmdpath":
-                    VtfCmdPath = EmptyToNull(value);
-                    break;
                 case "gamedir":
                 case "gamedirectory":
                 case "enginedir":
@@ -210,34 +175,6 @@ internal sealed record UiConfig(
                 case "axismode":
                     AxisMode = EmptyToNull(value);
                     break;
-                case "nomaterials":
-                    NoMaterials = ParseBool(path, lineNumber, key, value);
-                    break;
-                case "physics":
-                    Physics = ParseBool(path, lineNumber, key, value);
-                    break;
-                case "physicsmode":
-                    PhysicsMode = EmptyToNull(value);
-                    break;
-                case "physicsmass":
-                    PhysicsMass = ParseFloat(path, lineNumber, key, value);
-                    break;
-                case "coacdthreshold":
-                    CoacdThreshold = ParseFloat(path, lineNumber, key, value);
-                    break;
-                case "maxconvexpieces":
-                    MaxConvexPieces = ParseInt(path, lineNumber, key, value);
-                    break;
-                case "coacdmaxhullvertices":
-                case "maxhullvertices":
-                    MaxHullVertices = ParseInt(path, lineNumber, key, value);
-                    break;
-                case "maxtexturesize":
-                    MaxTextureSize = ParseInt(path, lineNumber, key, value);
-                    break;
-                case "deduplicatetextures":
-                    DeduplicateTextures = ParseBool(path, lineNumber, key, value);
-                    break;
                 default:
                     // Not a host setting: keep it for the selected importer or exporter, which
                     // match it against their option keys and aliases.
@@ -254,22 +191,10 @@ internal sealed record UiConfig(
                 InputPath,
                 OutputPath,
                 BaseName,
-                ModelPath,
-                StudioMdlPath,
-                VtfCmdPath,
                 MaterialDirectory,
                 Scale,
                 NoScale,
                 AxisMode,
-                NoMaterials,
-                Physics,
-                PhysicsMode,
-                PhysicsMass,
-                CoacdThreshold,
-                MaxConvexPieces,
-                MaxHullVertices,
-                MaxTextureSize,
-                DeduplicateTextures,
                 OptionValues);
         }
 

@@ -15,8 +15,8 @@ internal sealed record SourceToolPaths(
     public bool CanCompileMaterials => !string.IsNullOrWhiteSpace(VtfCmdPath);
 
     // Cheap on-disk lookup for the portable tools we already auto-download next to the app. Used
-    // by the UI to pre-fill the StudioMDL / VTFCmd path fields on startup without triggering the
-    // download path in EnsureStudioMdlAsync / EnsureVtfCmdAsync. Returns null for any tool whose
+    // as the default for the StudioMDL / VTFCmd options without triggering the download path in
+    // EnsureStudioMdlAsync / EnsureVtfCmdAsync. Returns null for any tool whose
     // executable isn't already extracted under the tools/ directory.
     public static (string? StudioMdl, string? VtfCmd) TryFindLocalDefaults()
     {

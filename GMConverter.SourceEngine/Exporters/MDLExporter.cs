@@ -411,7 +411,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
     private static void WriteBoundsPhysicsSmd(Model model, string physicsSmdPath)
     {
         var bounds = GetPhysicsBounds(model);
-        using var writer = CreatePhysicsSmdWriter(physicsSmdPath);
+        using var writer = CreatePhysicsSmdWriter(physicsSmdPath, model.Skeleton);
 
         Vector3[] vertices =
         [
@@ -444,12 +444,12 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             throw new GMConverterException("CoACD did not produce any convex parts.");
         }
 
-        WritePhysicsPartsSmd(physicsSmdPath, parts);
+        WritePhysicsPartsSmd(physicsSmdPath, parts, model.Skeleton);
     }
 
-    private static void WritePhysicsPartsSmd(string physicsSmdPath, IReadOnlyList<Mesh> parts)
+    private static void WritePhysicsPartsSmd(string physicsSmdPath, IReadOnlyList<Mesh> parts, Skeleton? skeleton)
     {
-        using var writer = CreatePhysicsSmdWriter(physicsSmdPath);
+        using var writer = CreatePhysicsSmdWriter(physicsSmdPath, skeleton);
         var triangleCount = 0;
 
         for (var partIndex = 0; partIndex < parts.Count; partIndex++)
@@ -479,12 +479,16 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         writer.WriteLine("end");
     }
 
-    private static StreamWriter CreatePhysicsSmdWriter(string physicsSmdPath)
+    // The collision SMD must declare the same skeleton and bind pose as the reference mesh.
+    // studiomdl attaches collision to the model's root bone and reads the vertices relative to
+    // that bone's pose in this file, so a lone identity "root" node would leave the hulls offset
+    // by whatever rotation the real root bone has (e.g. a 180-degree yaw on Men of War models).
+    private static StreamWriter CreatePhysicsSmdWriter(string physicsSmdPath, Skeleton? skeleton)
     {
         var writer = new StreamWriter(physicsSmdPath, false, _utf8NoBom);
         writer.WriteLine("version 1");
-        WriteSmdNodes(writer, null);
-        WriteReferenceSkeleton(writer, null);
+        WriteSmdNodes(writer, skeleton);
+        WriteReferenceSkeleton(writer, skeleton);
         writer.WriteLine("triangles");
         return writer;
     }

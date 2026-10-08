@@ -42,6 +42,22 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void CollisionSmdSharesTheReferenceSkeleton()
+    {
+        // A root bone turned 180 degrees, like Men of War's "basis" bone.
+        var model = CreateSkinnedTriangle(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI));
+
+        var output = ExportWithStubCompiler(model, new Dictionary<string, object?> { ["physics:enabled"] = true });
+
+        string[] Header(string name)
+        {
+            var lines = File.ReadAllLines(Directory.GetFiles(output, name, SearchOption.AllDirectories).Single());
+            return lines[..Array.IndexOf(lines, "triangles")];
+        }
+        Assert.Equal(Header("triangle.smd"), Header("triangle_phys.smd"));
+    }
+
+    [Fact]
     public void CollisionPreviewFollowsThePhysicsOptions()
     {
         var exporter = new MDLExporter(new DefaultTextureFactory());
@@ -86,7 +102,7 @@ public sealed class MdlExporterTests
 
     // buildMaterials=false makes the exporter write the SMD/QC workspace itself before studiomdl
     // runs; the empty stub compiler then fails, which is irrelevant to the files under test.
-    private static string ExportWithStubCompiler(Model model)
+    private static string ExportWithStubCompiler(Model model, IReadOnlyDictionary<string, object?>? extraOptions = null)
     {
         var directory = Path.Join(Path.GetTempPath(), "GMConverter.SourceEngine.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -94,7 +110,7 @@ public sealed class MdlExporterTests
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
         _ = Record.Exception(() => new MDLExporter(new DefaultTextureFactory()).Export(model, output, model.Name, new OptionValues(
-            new Dictionary<string, object?>
+            new Dictionary<string, object?>(extraOptions ?? new Dictionary<string, object?>())
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false,

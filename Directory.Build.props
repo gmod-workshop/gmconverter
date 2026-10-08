@@ -9,6 +9,22 @@
     <NoWarn>$(NoWarn);1591</NoWarn>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <!--
+    SixLabors.ImageSharp 3.1.12 advisories. The only patched release (4.1.2) will not compile
+    without a Six Labors license key, so we stay on 3.x and accept these specific issues:
+    - GHSA-j3p4-wp97-rph4, GHSA-j9gm-c75j-xc9q, GHSA-jjfr-hcj7-qf5w: histogram equalization and the
+      TIFF CCITT T4/T6 encoders, none of which GMConverter calls.
+    - GHSA-gwg2-r3hj-4w44, GHSA-wmxv-xphr-5c9g: ICC CLUT and BigTIFF decoding, where a malicious image
+      can exhaust memory or hang a local conversion. Inputs are files the user chose to convert.
+    Remove these once ImageSharp is upgraded or replaced.
+  -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-gwg2-r3hj-4w44" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-j3p4-wp97-rph4" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-j9gm-c75j-xc9q" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-jjfr-hcj7-qf5w" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-wmxv-xphr-5c9g" />
+  </ItemGroup>
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\Dependencies\'))">
     <EnableNETAnalyzers>false</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>

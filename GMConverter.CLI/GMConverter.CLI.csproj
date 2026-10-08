@@ -29,6 +29,12 @@
       <BundledPlugin Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
         <PluginId>unrealengine</PluginId>
       </BundledPlugin>
+      <BundledPlugin Include="..\GMConverter.MenOfWar\GMConverter.MenOfWar.csproj">
+        <PluginId>menofwar</PluginId>
+      </BundledPlugin>
+      <BundledPlugin Include="..\GMConverter.XWingAlliance\GMConverter.XWingAlliance.csproj">
+        <PluginId>xwingalliance</PluginId>
+      </BundledPlugin>
     </ItemGroup>
 
     <ItemGroup>

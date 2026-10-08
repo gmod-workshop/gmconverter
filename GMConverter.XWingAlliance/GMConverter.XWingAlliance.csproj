@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>GMConverter.XWingAlliance</AssemblyName>
+        <PackageId>GMConverter.XWingAlliance</PackageId>
+        <RootNamespace>GMConverter.XWingAlliance</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Ships as a self-contained plugin: the host copies bin/ verbatim into plugins/<id>/,
+             so NuGet dependencies (JeremyAnsel.Xwa.Opt) must be copied next to the plugin assembly. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="JeremyAnsel.Xwa.Opt" Version="3.0.54" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\GMConverter.SDK\GMConverter.SDK.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+</Project>

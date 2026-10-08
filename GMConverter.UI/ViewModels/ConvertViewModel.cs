@@ -2,11 +2,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Exporters;
-using GMConverter.Importers;
 using GMConverter.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
-using GMConverter.SDK.Importers;
 using GMConverter.UI.Models;
 using GMConverter.UI.Services;
 
@@ -109,7 +107,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _setStatusMessage = setStatusMessage;
         _onPreviewLoaded = onPreviewLoaded;
 
-        _selectedInputFormat = InputFormats[0];
+        // Every importer comes from a plugin, so the list is empty when no plugins loaded.
+        _selectedInputFormat = InputFormats.FirstOrDefault() ?? new DisplayOption("", "None", "No importer plugins loaded");
         _selectedOutputFormat = OutputFormats.FirstOrDefault(format => format.Value == "mdl")
             ?? OutputFormats.First(format => format.Value == "glb");
         _selectedAxisMode = AxisModes[0];
@@ -119,9 +118,9 @@ public sealed partial class ConvertViewModel : ViewModelBase
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
-        [.. new IImporter[] { new OPTImporter(), new MOWImporter() }
-            .Concat(PluginHost.Registry.Importers)
+        [.. PluginHost.Registry.Importers
             .DistinctBy(importer => importer.InputFormat, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(importer => importer.InputFormat, StringComparer.OrdinalIgnoreCase)
             .Select(importer => new DisplayOption(importer.InputFormat, importer.InputFormat.ToUpperInvariant(), importer.InputName))];
 
     public ObservableCollection<DisplayOption> OutputFormats { get; } =

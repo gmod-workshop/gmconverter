@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace GMConverter.Formats.MOW;
+namespace GMConverter.MenOfWar.Formats;
 
 internal sealed record MOWSummary(
     string FilePath,

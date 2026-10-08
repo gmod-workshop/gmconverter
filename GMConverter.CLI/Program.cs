@@ -2,7 +2,6 @@ using System.CommandLine;
 using System.Globalization;
 using System.Text;
 using GMConverter.Exporters;
-using GMConverter.Importers;
 using GMConverter.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
@@ -271,8 +270,7 @@ internal static class Program
 
         var fullInputPath = RequireInputFile(inputPath, inputFormat);
         baseName ??= Path.GetFileNameWithoutExtension(fullInputPath);
-        using var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
-        var importer = GetImporter(inputFormat, loggerFactory);
+        var importer = GetImporter(inputFormat);
         var parseOptions = new ModelParseOptions(
             GetScaleFactor(scaleFactor, noScale),
             NormalizeAxisMode(axisModeText),
@@ -403,15 +401,10 @@ internal static class Program
         exporter.Export(model, outputDirectory, baseName, new ExportOptions(bag));
     }
 
-    private static IImporter GetImporter(string inputFormat, ILoggerFactory? loggerFactory = null)
+    private static IImporter GetImporter(string inputFormat)
     {
-        return inputFormat switch
-        {
-            "opt" => new OPTImporter(),
-            "mow" => new MOWImporter(loggerFactory),
-            _ => PluginHost.Registry.GetImporter(inputFormat)
-                ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Built-ins: opt, mow. Plugins (GMConverter.UnrealEngine for psk; GMConverter.SourceEngine for mdl) may contribute additional formats.")
-        };
+        return PluginHost.Registry.GetImporter(inputFormat)
+            ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Formats are contributed by plugins: {string.Join(", ", PluginHost.Registry.Importers.Select(importer => importer.InputFormat))}.");
     }
 
     private static Option<T> RequiredOption<T>(string name, string description)

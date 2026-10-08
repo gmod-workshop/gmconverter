@@ -2,7 +2,7 @@ using System.Numerics;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 
-namespace GMConverter.Formats.MOW;
+namespace GMConverter.MenOfWar.Formats;
 
 internal sealed record MOWPlySubmesh(string MaterialFile, IReadOnlyList<Triangle> Triangles);
 

@@ -2,7 +2,7 @@ using System.Numerics;
 using System.Text;
 using GMConverter.SDK.Common;
 
-namespace GMConverter.Formats.MOW;
+namespace GMConverter.MenOfWar.Formats;
 
 [Flags]
 internal enum MOWAnimationChunkType : ushort

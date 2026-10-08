@@ -1,6 +1,6 @@
 using GMConverter.SDK.Common;
 
-namespace GMConverter.Formats.MOW;
+namespace GMConverter.MenOfWar.Formats;
 
 internal sealed record MOWDefinitionFile(string Path, MOWNode Root)
 {

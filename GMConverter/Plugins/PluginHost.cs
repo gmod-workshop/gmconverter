@@ -13,6 +13,7 @@ public static class PluginHost
 {
     private static readonly Lock _lock = new();
     private static PluginRegistry? _registry;
+    private static ILoggerFactory? _loggerFactory;
 
     public static PluginRegistry Registry => _registry ?? PluginRegistry.Empty;
 
@@ -37,9 +38,24 @@ public static class PluginHost
                 return _registry;
             }
 
+            _loggerFactory = loggerFactory;
             var loader = new PluginLoader(loggerFactory);
             _registry = loader.LoadAll(pluginsDirectory);
             return _registry;
+        }
+    }
+
+    /// <summary>
+    /// Adds a log destination to the logger factory plugins received at load time. Hosts call
+    /// this once their own logging surface exists (e.g. the UI console after Avalonia starts),
+    /// so plugin warnings reach the same place as the host's. No-op before
+    /// <see cref="Initialize"/> or when it was called without a logger factory.
+    /// </summary>
+    public static void AddLoggerProvider(ILoggerProvider provider)
+    {
+        lock (_lock)
+        {
+            _loggerFactory?.AddProvider(provider);
         }
     }
 }

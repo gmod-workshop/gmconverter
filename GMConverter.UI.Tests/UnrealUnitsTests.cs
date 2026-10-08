@@ -339,7 +339,11 @@ public sealed class UnrealUnitsTests
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
         _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new ExportOptions(
-            new Dictionary<string, object?> { ["studioMdlPath"] = stubStudioMdl })));
+            new Dictionary<string, object?>
+            {
+                ["studioMdlPath"] = stubStudioMdl,
+                ["buildMaterials"] = false
+            })));
 
         var smd = File.ReadAllLines(Directory.GetFiles(output, "triangle.smd", SearchOption.AllDirectories).Single());
         var bone = smd[Array.IndexOf(smd, "time 0") + 1].Split(' ').Select(value => float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();

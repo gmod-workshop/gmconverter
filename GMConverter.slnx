@@ -1,15 +1,19 @@
 <Solution>
-  <Project Path="GMConverter.UI/GMConverter.UI.csproj" />
-  <Project Path="GMConverter.UI.Tests/GMConverter.UI.Tests.csproj" />
-  <Project Path="GMConverter/GMConverter.csproj" />
-  <Project Path="GMConverter.CLI/GMConverter.CLI.csproj" />
-  <Project Path="GMConverter.MenOfWar/GMConverter.MenOfWar.csproj" />
-  <Project Path="GMConverter.MenOfWar.Tests/GMConverter.MenOfWar.Tests.csproj" />
-  <Project Path="GMConverter.SDK/GMConverter.SDK.csproj" />
-  <Project Path="GMConverter.SourceEngine/GMConverter.SourceEngine.csproj" />
-  <Project Path="GMConverter.SourceEngine.Tests/GMConverter.SourceEngine.Tests.csproj" />
-  <Project Path="GMConverter.UnrealEngine/GMConverter.UnrealEngine.csproj" />
-  <Project Path="GMConverter.UnrealEngine.Tests/GMConverter.UnrealEngine.Tests.csproj" />
-  <Project Path="GMConverter.XWingAlliance/GMConverter.XWingAlliance.csproj" />
-  <Project Path="GMConverter.XWingAlliance.Tests/GMConverter.XWingAlliance.Tests.csproj" />
+  <Folder Name="/GMConverter/">
+    <Project Path="GMConverter/GMConverter.Core/GMConverter.Core.csproj" />
+    <Project Path="GMConverter/GMConverter.CLI/GMConverter.CLI.csproj" />
+    <Project Path="GMConverter/GMConverter.UI/GMConverter.UI.csproj" />
+    <Project Path="GMConverter/GMConverter.UI.Tests/GMConverter.UI.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Plugins/">
+    <Project Path="Plugins/GMConverter.SDK/GMConverter.SDK.csproj" />
+    <Project Path="Plugins/GMConverter.MenOfWar/GMConverter.MenOfWar.csproj" />
+    <Project Path="Plugins/GMConverter.MenOfWar.Tests/GMConverter.MenOfWar.Tests.csproj" />
+    <Project Path="Plugins/GMConverter.SourceEngine/GMConverter.SourceEngine.csproj" />
+    <Project Path="Plugins/GMConverter.SourceEngine.Tests/GMConverter.SourceEngine.Tests.csproj" />
+    <Project Path="Plugins/GMConverter.UnrealEngine/GMConverter.UnrealEngine.csproj" />
+    <Project Path="Plugins/GMConverter.UnrealEngine.Tests/GMConverter.UnrealEngine.Tests.csproj" />
+    <Project Path="Plugins/GMConverter.XWingAlliance/GMConverter.XWingAlliance.csproj" />
+    <Project Path="Plugins/GMConverter.XWingAlliance.Tests/GMConverter.XWingAlliance.Tests.csproj" />
+  </Folder>
 </Solution>

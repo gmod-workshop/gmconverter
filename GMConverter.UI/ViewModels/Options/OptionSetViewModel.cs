@@ -56,12 +56,9 @@ public sealed class OptionSetViewModel
     /// </summary>
     public void LoadFrom(IReadOnlyDictionary<string, object?> persisted)
     {
-        foreach (var option in Groups.SelectMany(g => g.Options))
+        foreach (var option in Groups.SelectMany(g => g.Options).Where(option => persisted.ContainsKey(option.Key)))
         {
-            if (persisted.TryGetValue(option.Key, out var value))
-            {
-                option.TryLoad(value);
-            }
+            option.TryLoad(persisted[option.Key]);
         }
     }
 

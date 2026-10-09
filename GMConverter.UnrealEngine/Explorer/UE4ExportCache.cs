@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
+using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Explorer;
 
@@ -101,8 +102,8 @@ internal static class UE4ExportCache
         }
 
         // AnimationRelativePath gets the same rooted-and-escape validation as the manifest path.
-        // A failed resolution (rooted, traversal-attempt, or just absent) becomes a null
-        // AnimationPath on the resolved entry, which the downstream pipeline already handles.
+        // A failed resolution (rooted, traversal-attempt, or just absent) leaves the resolved entry
+        // without an animation option, which the downstream pipeline already handles.
         string? animationPath = null;
         if (!string.IsNullOrEmpty(sentinel.AnimationRelativePath) &&
             PathHelpers.TryResolveUnderRoot(exportRoot, sentinel.AnimationRelativePath, out var resolvedAnimationPath))
@@ -113,8 +114,8 @@ internal static class UE4ExportCache
         resolved = new ExplorerResolvedEntry(
             manifestPath,
             exportRoot,
-            AnimationPath: animationPath,
-            Details: sentinel.Details);
+            Details: sentinel.Details,
+            ImporterOptions: PSKImporterOptions.WithAnimation(animationPath));
 
         PerfTimer.Log("ue4.export-cache", $"cache HIT manifest={manifestPath}");
         return true;
@@ -162,9 +163,10 @@ internal static class UE4ExportCache
 
         var now = DateTimeOffset.UtcNow;
         var manifestRelative = Path.GetRelativePath(exportRoot, resolved.InputPath);
-        var animationRelative = string.IsNullOrEmpty(resolved.AnimationPath)
+        var animationPath = PSKImporterOptions.GetAnimationPath(resolved);
+        var animationRelative = string.IsNullOrEmpty(animationPath)
             ? null
-            : Path.GetRelativePath(exportRoot, resolved.AnimationPath);
+            : Path.GetRelativePath(exportRoot, animationPath);
         var sentinel = new ExportSentinel(
             _toolVersion,
             archiveFingerprint,

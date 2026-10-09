@@ -11,7 +11,6 @@ internal sealed record UiSettings(
     string? PhysicsMode,
     string? ConfigPath,
     string? InputPath,
-    string? AnimationPath,
     string? OutputPath,
     string? BaseName,
     string? ModelPath,
@@ -32,7 +31,8 @@ internal sealed record UiSettings(
     int MaxHullVertices,
     int MaxTextureSize = 1024,
     bool DeduplicateTextures = true,
-    Dictionary<string, Dictionary<string, object?>>? ExporterOptions = null)
+    Dictionary<string, Dictionary<string, object?>>? ExporterOptions = null,
+    Dictionary<string, Dictionary<string, object?>>? ImporterOptions = null)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

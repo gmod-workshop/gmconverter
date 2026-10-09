@@ -6,6 +6,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,6 +32,10 @@ internal sealed class MOWImporter : IImporter
     public string InputFormat => "mow";
 
     public string InputName => "Men of War";
+
+    public IReadOnlyList<string> FileExtensions { get; } = [".def", ".mdl"];
+
+    public OptionSchema OptionSchema => OptionSchema.Empty;
 
     public object Summarize(string inputPath)
     {

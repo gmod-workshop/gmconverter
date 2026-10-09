@@ -1,6 +1,7 @@
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UnrealEngine.Formats.Unreal;
+using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Explorer;
 
@@ -91,7 +92,7 @@ public sealed class UE2Explorer : IExplorer
             ?? throw new GMConverterException($"UE2 export not found: {fileEntry.ArchiveEntryPath}");
         var result = UnrealActorXExporter.ExportMesh(package, export, extractionRoot, fileEntry.SearchRoot);
 
-        return new ExplorerResolvedEntry(result.MeshPath, extractionRoot, result.AnimationPath);
+        return new ExplorerResolvedEntry(result.MeshPath, extractionRoot, ImporterOptions: PSKImporterOptions.WithAnimation(result.AnimationPath));
     }
 
     public void ClearCaches()

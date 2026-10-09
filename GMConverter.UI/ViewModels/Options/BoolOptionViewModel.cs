@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.UI.ViewModels.Options;
 

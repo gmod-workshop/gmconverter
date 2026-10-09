@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using GMConverter.UI.Services;
 using GMConverter.UI.ViewModels;
 
 namespace GMConverter.UI.Views;
@@ -20,14 +21,6 @@ public partial class ConvertView : UserControl
             if (DataContext is ConvertViewModel viewModel)
             {
                 ApplyInputPath(viewModel, path);
-            }
-        });
-
-        ConfigurePathDrop(AnimationPathBox, DropPathKind.File, path =>
-        {
-            if (DataContext is ConvertViewModel viewModel)
-            {
-                viewModel.AnimationPath = path;
             }
         });
 
@@ -118,15 +111,6 @@ public partial class ConvertView : UserControl
         }
     }
 
-    private async void BrowseAnimationPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        if (DataContext is ConvertViewModel viewModel &&
-            await BrowseFileAsync("Select animation file", [new FilePickerFileType("PSA animation") { Patterns = ["*.psa"] }]) is { } path)
-        {
-            viewModel.AnimationPath = path;
-        }
-    }
-
     private async void BrowseOutputPath_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (DataContext is ConvertViewModel viewModel &&
@@ -182,14 +166,9 @@ public partial class ConvertView : UserControl
 
     private static IReadOnlyList<FilePickerFileType> GetInputFileTypes(string inputFormat)
     {
-        return inputFormat switch
-        {
-            "opt" => [new FilePickerFileType("X-Wing Alliance OPT") { Patterns = ["*.opt"] }],
-            "mdl" => [new FilePickerFileType("Source MDL") { Patterns = ["*.mdl"] }],
-            "psk" => [new FilePickerFileType("Unreal PSK") { Patterns = ["*.psk", "*.pskx"] }],
-            "mow" => [new FilePickerFileType("Men of War model") { Patterns = ["*.def", "*.mdl"] }],
-            _ => [new FilePickerFileType(inputFormat.ToUpperInvariant()) { Patterns = [$"*.{inputFormat}"] }]
-        };
+        return ConversionService.FindImporter(inputFormat) is { FileExtensions.Count: > 0 } importer
+            ? [new FilePickerFileType(importer.InputName) { Patterns = [.. importer.FileExtensions.Select(extension => $"*{extension}")] }]
+            : [new FilePickerFileType(inputFormat.ToUpperInvariant()) { Patterns = [$"*.{inputFormat}"] }];
     }
 
     private enum DropPathKind

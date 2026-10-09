@@ -1,10 +1,10 @@
 using System.Text.Json;
-using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.UI.ViewModels.Options;
 
 /// <summary>
-/// Base class for a single configurable option in an exporter's schema. The Avalonia
+/// Base class for a single configurable option in an importer or exporter schema. The Avalonia
 /// <c>DataTemplate</c> matching system picks a per-type DataTemplate (TextBox for
 /// <see cref="StringOptionViewModel"/>, CheckBox for <see cref="BoolOptionViewModel"/>, etc.)
 /// based on the concrete subclass at render time, so a single ItemsControl bound to a
@@ -17,6 +17,9 @@ public abstract class OptionViewModel : ViewModelBase
     public string Label { get; }
 
     public string? Description { get; }
+
+    /// <summary>Alternative names accepted for this option in config files.</summary>
+    public IReadOnlyList<string> Aliases { get; }
 
     public decimal Minimum { get; }
 
@@ -43,6 +46,7 @@ public abstract class OptionViewModel : ViewModelBase
         Key = descriptor.Key;
         Label = descriptor.Label;
         Description = descriptor.Description;
+        Aliases = descriptor.Aliases;
         Minimum = descriptor.Minimum ?? (descriptor.Type == OptionType.Int ? int.MinValue : decimal.MinValue);
         Maximum = descriptor.Maximum ?? (descriptor.Type == OptionType.Int ? int.MaxValue : decimal.MaxValue);
         Increment = descriptor.Increment ?? (descriptor.Type == OptionType.Float ? 0.01m : 1m);
@@ -50,8 +54,8 @@ public abstract class OptionViewModel : ViewModelBase
 
     /// <summary>
     /// Snapshot of the current value, boxed to object. The host builds an
-    /// <see cref="ExportOptions"/> bag by collecting <see cref="GetCurrentValue"/> across all
-    /// options just before invoking the exporter.
+    /// <see cref="OptionValues"/> bag by collecting <see cref="GetCurrentValue"/> across all
+    /// options just before invoking the plugin.
     /// </summary>
     public abstract object? GetCurrentValue();
 

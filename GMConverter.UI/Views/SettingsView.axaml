@@ -56,7 +56,7 @@
                 <shad:CardDescription>Options for the output format selected in Convert.</shad:CardDescription>
               </StackPanel>
             </shad:Card.Header>
-            <settings:ExporterOptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
+            <settings:OptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
           </shad:Card>
         </StackPanel>
       </controls:ScrollProgress.ScrollContent>

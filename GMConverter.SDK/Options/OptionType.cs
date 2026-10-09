@@ -1,9 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace GMConverter.SDK.Exporters;
+namespace GMConverter.SDK.Options;
 
 /// <summary>
-/// Logical type of an exporter option, used by the host to render an appropriate control in the
+/// Logical type of an importer or exporter option, used by the host to render an appropriate control in the
 /// UI and bind an appropriate CLI argument shape. Plugin authors typically discover these via
 /// IntelliSense, so the names are chosen for instinctive matching against CLR primitive type
 /// names (the same convention <see cref="TypeCode"/> uses) — CA1720 is suppressed for this reason.

@@ -5,6 +5,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using MdlCrowbar;
 using static MdlCrowbar.Enums;
 using Mesh = GMConverter.SDK.Geometry.Mesh;
@@ -16,6 +17,10 @@ internal sealed class MDLImporter : IImporter
     public string InputFormat => "mdl";
 
     public string InputName => "Source Engine";
+
+    public IReadOnlyList<string> FileExtensions { get; } = [".mdl"];
+
+    public OptionSchema OptionSchema => OptionSchema.Empty;
 
     public object Summarize(string inputPath)
     {

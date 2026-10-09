@@ -1,8 +1,8 @@
-namespace GMConverter.SDK.Exporters;
+namespace GMConverter.SDK.Options;
 
 /// <summary>
 /// A logical grouping of related options — rendered as a tab, expander, or labelled section
-/// depending on host. Keys must be unique within an exporter's schema.
+/// depending on host. Keys must be unique within a schema.
 /// </summary>
 /// <param name="Key">Stable group identifier (e.g. <c>"tools"</c>, <c>"physics"</c>).</param>
 /// <param name="Label">Human-readable header shown in the UI.</param>

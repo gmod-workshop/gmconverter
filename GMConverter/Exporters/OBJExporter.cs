@@ -4,6 +4,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.Exporters;
 
@@ -17,9 +18,9 @@ internal sealed class OBJExporter : IExporter
 
     // OBJ has no user-configurable options today — the exporter writes a .obj + .mtl + texture
     // PNGs from the Model with no knobs. Empty schema is the right shape.
-    public ExporterOptionSchema OptionSchema => ExporterOptionSchema.Empty;
+    public OptionSchema OptionSchema => OptionSchema.Empty;
 
-    public void Export(Model model, string outputDirectory, string baseName, ExportOptions options)
+    public void Export(Model model, string outputDirectory, string baseName, OptionValues options)
     {
         _ = options;
         var safeBaseName = NameHelpers.SanitizeFileName(baseName);
@@ -52,7 +53,7 @@ internal sealed class OBJExporter : IExporter
             }
 
             if (material.SpecularTexture is not null &&
-                material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+                material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness)
             {
                 var specularFactorTexture = material.SpecularTexture.ToSpecularFactorMask();
                 specularFactorTexture.WritePng(Path.Combine(outputDirectory, $"{specularFactorTexture.Name}.png"));
@@ -82,7 +83,7 @@ internal sealed class OBJExporter : IExporter
 
             if (material.SpecularTexture is not null)
             {
-                var specularTextureName = material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks
+                var specularTextureName = material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness
                     ? material.SpecularTexture.ToSpecularFactorMask().Name
                     : material.SpecularTexture.Name;
                 writer.WriteLine(FormattableString.Invariant($"map_Ks {specularTextureName}.png"));

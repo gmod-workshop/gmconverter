@@ -6,6 +6,7 @@ using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.UI.Services;
 
@@ -47,8 +48,10 @@ internal sealed class ConversionService(UiLogSink logSink)
             model = importer.Parse(inputPath, new ModelParseOptions(
                 settings.ScaleFactor,
                 settings.AxisMode,
-                CreateMaterialResolveOptions(settings.MaterialDirectory),
-                CreateAnimationPath(settings.AnimationPath)));
+                CreateMaterialResolveOptions(settings.MaterialDirectory))
+            {
+                Options = settings.ImporterOptions,
+            });
         }
 
         var exporter = GetExporter(settings.OutputFormat);
@@ -59,7 +62,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             {
                 ["binary"] = settings.OutputFormat == "glb"
             };
-            options = new ExportOptions(values);
+            options = new OptionValues(values);
         }
         Directory.CreateDirectory(outputPath);
         using (PerfTimer.Measure("convert.run", "Exporter.Export", settings.OutputFormat))
@@ -93,8 +96,10 @@ internal sealed class ConversionService(UiLogSink logSink)
             model = importer.Parse(inputPath, new ModelParseOptions(
                 settings.ScaleFactor,
                 settings.AxisMode,
-                CreateMaterialResolveOptions(settings.MaterialDirectory),
-                CreateAnimationPath(settings.AnimationPath)));
+                CreateMaterialResolveOptions(settings.MaterialDirectory))
+            {
+                Options = settings.ImporterOptions,
+            });
         }
 
         var previewDirectory = Path.Combine(Path.GetTempPath(), "GMConverter.UI", "Preview", Guid.NewGuid().ToString("N"));
@@ -111,7 +116,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             // KHR_texture_transform; the SharpEngine glTF importer used by the in-app preview does
             // not honor that extension, so without inline baking multi-layer Fortnite materials
             // sample the wrong tile of their bake and render as garbled textures.
-            var previewOptions = new ExportOptions(new Dictionary<string, object?>
+            var previewOptions = new OptionValues(new Dictionary<string, object?>
             {
                 ["binary"] = true,
                 ["bakeUvTransforms"] = true,
@@ -144,8 +149,13 @@ internal sealed class ConversionService(UiLogSink logSink)
 
     private static IImporter CreateImporter(string inputFormat)
     {
-        return PluginHost.Registry.GetImporter(inputFormat)
+        return FindImporter(inputFormat)
             ?? throw new GMConverterException($"Unsupported input format: {inputFormat}");
+    }
+
+    internal static IImporter? FindImporter(string inputFormat)
+    {
+        return PluginHost.Registry.GetImporter(inputFormat);
     }
 
     private static string RequireInputFile(string path, string inputFormat)
@@ -216,7 +226,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             model.Name + " Physics",
             physicsMeshes,
             [new Material("physics")]);
-        var physicsGltfOptions = new ExportOptions(new Dictionary<string, object?>
+        var physicsGltfOptions = new OptionValues(new Dictionary<string, object?>
         {
             ["binary"] = true,
         });
@@ -270,27 +280,6 @@ internal sealed class ConversionService(UiLogSink logSink)
         ];
 
         return new Mesh(vertices, [new Submesh("physics", triangles)]);
-    }
-
-    private static string? CreateAnimationPath(string? animationPath)
-    {
-        if (string.IsNullOrWhiteSpace(animationPath))
-        {
-            return null;
-        }
-
-        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(animationPath));
-        if (!File.Exists(fullPath))
-        {
-            throw new GMConverterException($"Animation file not found: {fullPath}");
-        }
-
-        if (!string.Equals(Path.GetExtension(fullPath), ".psa", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new GMConverterException($"Expected a .psa animation file: {fullPath}");
-        }
-
-        return fullPath;
     }
 
     private static string SanitizePathToken(string value)

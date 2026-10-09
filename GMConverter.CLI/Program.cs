@@ -7,6 +7,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
+using GMConverter.SDK.Options;
 using Microsoft.Extensions.Logging;
 
 namespace GMConverter.CLI;
@@ -80,10 +81,6 @@ internal static class Program
         {
             Description = "Optional directory to search recursively for sidecar materials and textures."
         };
-        var animationPathOption = new Option<string>("--animation-path")
-        {
-            Description = "Optional PSA animation file to import alongside a PSK/PSKX mesh."
-        };
         var scaleOption = new Option<float>("--scale")
         {
             Description = "Scale exported geometry.",
@@ -142,7 +139,6 @@ internal static class Program
             studioMdlPathOption,
             vtfCmdPathOption,
             materialDirectoryOption,
-            animationPathOption,
             scaleOption,
             noScaleOption,
             axisModeOption,
@@ -155,18 +151,18 @@ internal static class Program
             physicsMassOption
         };
 
-        var schemaArguments = new List<(string Format, OptionDescriptor Descriptor, Option<string> Argument)>();
+        // Importer flags carry an extra "import" segment because a format can have both an importer
+        // and an exporter (mdl does), and their option keys must not collide.
+        var usedNames = rootCommand.Options.SelectMany(option => option.Aliases.Prepend(option.Name)).ToHashSet(StringComparer.Ordinal);
+        var importerArguments = new List<SchemaArgument>();
+        foreach (var importer in PluginHost.Registry.Importers)
+        {
+            AddSchemaArguments(rootCommand, $"{importer.InputFormat}-import", importer.InputFormat, importer.OptionSchema, usedNames, importerArguments);
+        }
+        var exporterArguments = new List<SchemaArgument>();
         foreach (var exporter in new IExporter[] { new GLTFExporter() }.Concat(PluginHost.Registry.Exporters))
         {
-            foreach (var descriptor in exporter.OptionSchema.AllOptions)
-            {
-                var argument = new Option<string>($"--{exporter.OutputFormat}-{descriptor.Key.Replace(':', '-')}")
-                {
-                    Description = descriptor.Description ?? descriptor.Label
-                };
-                rootCommand.Options.Add(argument);
-                schemaArguments.Add((exporter.OutputFormat, descriptor, argument));
-            }
+            AddSchemaArguments(rootCommand, exporter.OutputFormat, exporter.OutputFormat, exporter.OptionSchema, usedNames, exporterArguments);
         }
 
         rootCommand.SetAction(parseResult => Run(
@@ -179,7 +175,6 @@ internal static class Program
             studioMdlPath: parseResult.GetValue(studioMdlPathOption),
             vtfCmdPath: parseResult.GetValue(vtfCmdPathOption),
             materialDirectory: parseResult.GetValue(materialDirectoryOption),
-            animationPath: parseResult.GetValue(animationPathOption),
             scaleFactor: parseResult.GetValue(scaleOption),
             noScale: parseResult.GetValue(noScaleOption),
             axisModeText: parseResult.GetValue(axisModeOption),
@@ -190,22 +185,58 @@ internal static class Program
             maxConvexPieces: parseResult.GetValue(maxConvexPiecesOption),
             maxHullVertices: parseResult.GetValue(maxHullVerticesOption),
             physicsMass: parseResult.GetValue(physicsMassOption),
-            exporterOptions: ReadExporterOptions(parseResult.GetRequiredValue(outputFormatOption), schemaArguments, parseResult)));
+            importerOptions: ReadSchemaOptions(NormalizeInputFormat(parseResult.GetRequiredValue(inputFormatOption)), "input", importerArguments, parseResult),
+            exporterOptions: ReadSchemaOptions(NormalizeOutputFormat(parseResult.GetRequiredValue(outputFormatOption)), "output", exporterArguments, parseResult)));
 
         return rootCommand;
     }
 
-    private static ExportOptions ReadExporterOptions(
-        string outputFormat,
-        IEnumerable<(string Format, OptionDescriptor Descriptor, Option<string> Argument)> arguments,
-        ParseResult parseResult)
+    private static void AddSchemaArguments(
+        RootCommand rootCommand,
+        string prefix,
+        string format,
+        OptionSchema schema,
+        HashSet<string> usedNames,
+        List<SchemaArgument> arguments)
     {
-        var format = outputFormat.Trim().ToLowerInvariant() switch
+        foreach (var descriptor in schema.AllOptions)
+        {
+            var argument = new Option<string>($"--{prefix}-{descriptor.Key.Replace(':', '-')}")
+            {
+                Description = descriptor.Description ?? descriptor.Label
+            };
+            usedNames.Add(argument.Name);
+            // An alias another option already claimed stays with its first owner.
+            foreach (var alias in descriptor.Aliases.Select(alias => $"--{alias}").Where(usedNames.Add))
+            {
+                argument.Aliases.Add(alias);
+            }
+            rootCommand.Options.Add(argument);
+            arguments.Add(new SchemaArgument(format, descriptor, argument));
+        }
+    }
+
+    private static string NormalizeInputFormat(string inputFormat)
+    {
+        return inputFormat.Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeOutputFormat(string outputFormat)
+    {
+        return outputFormat.Trim().ToLowerInvariant() switch
         {
             "source" => "mdl",
             "gltf" => "glb",
             var value => value
         };
+    }
+
+    private static OptionValues ReadSchemaOptions(
+        string format,
+        string direction,
+        IEnumerable<SchemaArgument> arguments,
+        ParseResult parseResult)
+    {
         var values = new Dictionary<string, object?>();
         foreach (var (argumentFormat, descriptor, argument) in arguments)
         {
@@ -216,7 +247,7 @@ internal static class Program
             }
             if (!string.Equals(argumentFormat, format, StringComparison.OrdinalIgnoreCase))
             {
-                throw new GMConverterException($"Option {argument.Name} does not apply to {outputFormat} output.");
+                throw new GMConverterException($"Option {argument.Name} does not apply to {format} {direction}.");
             }
             object value = descriptor.Type switch
             {
@@ -238,7 +269,18 @@ internal static class Program
             }
             values[descriptor.Key] = value;
         }
-        return new ExportOptions(values);
+        return new OptionValues(values);
+    }
+
+    // Schema defaults first, then whatever the command line set explicitly.
+    private static OptionValues WithDefaults(OptionSchema schema, OptionValues overrides)
+    {
+        var values = schema.AllOptions.ToDictionary(option => option.Key, option => option.ResolveDefault());
+        foreach (var (key, value) in overrides.AsDictionary())
+        {
+            values[key] = value;
+        }
+        return new OptionValues(values);
     }
 
     private static int Run(
@@ -251,7 +293,6 @@ internal static class Program
         string? studioMdlPath,
         string? vtfCmdPath,
         string? materialDirectory,
-        string? animationPath,
         float scaleFactor,
         bool noScale,
         string? axisModeText,
@@ -262,19 +303,22 @@ internal static class Program
         int maxConvexPieces,
         int maxHullVertices,
         float physicsMass,
-        ExportOptions exporterOptions)
+        OptionValues importerOptions,
+        OptionValues exporterOptions)
     {
         inputFormat = NormalizeFormat(inputFormat, "input-format");
         outputFormat = NormalizeFormat(outputFormat, "output-format");
 
-        var fullInputPath = RequireInputFile(inputPath, inputFormat);
-        baseName ??= Path.GetFileNameWithoutExtension(fullInputPath);
         var importer = GetImporter(inputFormat);
+        var fullInputPath = RequireInputFile(inputPath, importer);
+        baseName ??= Path.GetFileNameWithoutExtension(fullInputPath);
         var parseOptions = new ModelParseOptions(
             GetScaleFactor(scaleFactor, noScale),
             NormalizeAxisMode(axisModeText),
-            CreateMaterialResolveOptions(materialDirectory),
-            CreateAnimationPath(animationPath));
+            CreateMaterialResolveOptions(materialDirectory))
+        {
+            Options = WithDefaults(importer.OptionSchema, importerOptions),
+        };
 
         switch (outputFormat)
         {
@@ -320,12 +364,7 @@ internal static class Program
                     ?? throw new GMConverterException($"Unsupported output format or plugin not loaded: {outputFormat}");
                 var directory = RequireOutputPath(outputPath, outputFormat);
                 Directory.CreateDirectory(directory);
-                var values = exporter.OptionSchema.AllOptions.ToDictionary(option => option.Key, option => option.ResolveDefault());
-                foreach (var (key, value) in exporterOptions.AsDictionary())
-                {
-                    values[key] = value;
-                }
-                exporter.Export(importer.Parse(fullInputPath, parseOptions), directory, baseName, new ExportOptions(values));
+                exporter.Export(importer.Parse(fullInputPath, parseOptions), directory, baseName, WithDefaults(exporter.OptionSchema, exporterOptions));
                 Console.WriteLine($"Wrote {outputFormat} output to {directory}");
                 return 0;
         }
@@ -336,15 +375,15 @@ internal static class Program
         Directory.CreateDirectory(outputDirectory);
 
         Console.WriteLine($"Writing OBJ output to {outputDirectory}");
-        new OBJExporter().Export(model, outputDirectory, baseName, ExportOptions.Empty);
+        new OBJExporter().Export(model, outputDirectory, baseName, OptionValues.Empty);
     }
 
-    private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary, ExportOptions overrides)
+    private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary, OptionValues overrides)
     {
         Directory.CreateDirectory(outputDirectory);
 
         Console.WriteLine($"Writing {(binary ? "GLB" : "glTF")} output to {outputDirectory}");
-        var options = new ExportOptions(new Dictionary<string, object?>(overrides.AsDictionary())
+        var options = new OptionValues(new Dictionary<string, object?>(overrides.AsDictionary())
         {
             ["binary"] = binary,
         });
@@ -365,7 +404,7 @@ internal static class Program
         float coacdThreshold,
         int maxConvexPieces,
         int maxHullVertices,
-        ExportOptions overrides)
+        OptionValues overrides)
     {
         Directory.CreateDirectory(outputDirectory);
 
@@ -397,7 +436,7 @@ internal static class Program
         {
             bag[key] = value;
         }
-        exporter.Export(model, outputDirectory, baseName, new ExportOptions(bag));
+        exporter.Export(model, outputDirectory, baseName, new OptionValues(bag));
     }
 
     private static IImporter GetImporter(string inputFormat)
@@ -425,7 +464,7 @@ internal static class Program
         return value.Trim().ToLowerInvariant();
     }
 
-    private static string RequireInputFile(string path, string inputFormat)
+    private static string RequireInputFile(string path, IImporter importer)
     {
         var fullPath = FullPath(path);
 
@@ -434,17 +473,9 @@ internal static class Program
             throw new ArgumentException($"File not found: {fullPath}");
         }
 
-        var extension = Path.GetExtension(fullPath);
-        var allowedExtensions = inputFormat switch
+        if (!importer.FileExtensions.Contains(Path.GetExtension(fullPath), StringComparer.OrdinalIgnoreCase))
         {
-            "psk" => [".psk", ".pskx", ".ue4scene"],
-            "mow" => [".def", ".mdl"],
-            _ => new[] { $".{inputFormat}" }
-        };
-
-        if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException($"Expected a {string.Join(" or ", allowedExtensions)} file: {fullPath}");
+            throw new ArgumentException($"Expected a {string.Join(" or ", importer.FileExtensions)} file: {fullPath}");
         }
 
         return fullPath;
@@ -484,27 +515,6 @@ internal static class Program
         }
 
         return new MaterialResolveOptions(fullPath);
-    }
-
-    private static string? CreateAnimationPath(string? animationPath)
-    {
-        if (string.IsNullOrWhiteSpace(animationPath))
-        {
-            return null;
-        }
-
-        var fullPath = FullPath(animationPath);
-        if (!File.Exists(fullPath))
-        {
-            throw new ArgumentException($"Animation file not found: {fullPath}");
-        }
-
-        if (!string.Equals(Path.GetExtension(fullPath), ".psa", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException($"Expected a .psa animation file: {fullPath}");
-        }
-
-        return fullPath;
     }
 
     private static string NormalizePhysicsMode(string? physicsModeText)

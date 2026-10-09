@@ -7,6 +7,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
 using SharpGLTF.Geometry.VertexTypes;
 using SharpGLTF.Materials;
@@ -35,7 +36,7 @@ internal sealed class GLTFExporter : IExporter
 
     public string OutputName => "glTF";
 
-    public ExporterOptionSchema OptionSchema { get; } = new(
+    public OptionSchema OptionSchema { get; } = new(
     [
         new OptionGroup("output", "Output",
         [
@@ -53,7 +54,7 @@ internal sealed class GLTFExporter : IExporter
         ]),
     ]);
 
-    public void Export(Model model, string outputDirectory, string baseName, ExportOptions options)
+    public void Export(Model model, string outputDirectory, string baseName, OptionValues options)
     {
         using var exportScope = PerfTimer.Measure(
             "gltf.export",
@@ -498,7 +499,7 @@ internal sealed class GLTFExporter : IExporter
         }
 
         if (material.SpecularTexture is not null &&
-            material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+            material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness)
         {
             var metallicRoughnessTexture = metallicRoughnessCache.GetValue(
                 material.SpecularTexture,
@@ -608,7 +609,7 @@ internal sealed class GLTFExporter : IExporter
                 var bytes = material.SpecularTexture.ToPngBytes();
                 sb.Append("bytes.specularRaw.len=").Append(bytes.Length.ToString(inv))
                     .Append(" sha=").AppendLine(Sha(bytes));
-                if (material.SpecularTexturePacking == MaterialSpecularTexturePacking.UnrealSpecularMasks)
+                if (material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness)
                 {
                     var mr = material.SpecularTexture.ToGltfMetallicRoughness().ToPngBytes();
                     sb.Append("bytes.metallicRoughness.len=").Append(mr.Length.ToString(inv))

@@ -62,8 +62,7 @@ public sealed partial class ConvertViewModel
     /// <summary>Resets the active importer's options to their schema defaults.</summary>
     private void ResetCurrentImporterOptions()
     {
-        CurrentImporterOptions.LoadFrom(CurrentImporterOptions.Schema.AllOptions
-            .ToDictionary(option => option.Key, option => option.ResolveDefault()));
+        CurrentImporterOptions.ResetToDefaults();
     }
 
     internal Dictionary<string, Dictionary<string, object?>> SnapshotImporterOptions()
@@ -72,7 +71,7 @@ public sealed partial class ConvertViewModel
             pair => new Dictionary<string, object?>(pair.Value), StringComparer.OrdinalIgnoreCase);
         foreach (var (format, vm) in _importerOptionsByFormat)
         {
-            snapshot[format] = vm.Snapshot();
+            snapshot[format] = vm.SnapshotChanged();
         }
         return snapshot;
     }

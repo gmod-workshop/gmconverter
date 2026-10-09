@@ -1,4 +1,3 @@
-using System.Numerics;
 using GMConverter.Exporters;
 using GMConverter.Plugins;
 using GMConverter.SDK.Common;
@@ -208,14 +207,16 @@ internal sealed class ConversionService(UiLogSink logSink)
         return new MaterialResolveOptions(fullPath);
     }
 
+    // Collision comes from the selected exporter, so the overlay shows exactly what that export
+    // would generate (including CoACD hulls) without the host knowing the exporter's options.
     private static PhysicsPreviewExport ExportPhysicsPreview(ConversionSettings settings, Model model, string previewDirectory, string baseName)
     {
-        if (!settings.GeneratePhysics)
+        if (settings.OutputFormat is "info" || GetExporter(settings.OutputFormat) is not ICollisionPreview collision)
         {
             return new PhysicsPreviewExport(null, 0);
         }
 
-        var physicsMeshes = BuildPhysicsPreviewMeshes(model, settings);
+        var physicsMeshes = collision.CreateCollisionPreview(model, settings.ExporterOptions);
         if (physicsMeshes.Count == 0)
         {
             return new PhysicsPreviewExport(null, 0);
@@ -232,54 +233,6 @@ internal sealed class ConversionService(UiLogSink logSink)
         });
         new GLTFExporter().Export(physicsModel, previewDirectory, physicsBaseName, physicsGltfOptions);
         return new PhysicsPreviewExport(Path.Combine(previewDirectory, physicsBaseName + ".glb"), physicsMeshes.Count);
-    }
-
-    private static IReadOnlyList<Mesh> BuildPhysicsPreviewMeshes(Model model, ConversionSettings settings)
-    {
-        // CoACD-based physics preview moved to the Source plugin (which owns CoacdNative). The
-        // UI's preview path now shows bounds for both modes; the actual export still uses CoACD
-        // when the user selects "coacd" mode. A follow-up could surface a plugin-contributed
-        // "preview physics" hook so the UI can render the real shape pre-export, but it's not
-        // currently in scope. The Mode string is still read so persistence/round-tripping works.
-        _ = settings.PhysicsMode;
-        return [CreateBoundsMesh(model.Bounds().WithMinimumThickness(0.0254f))];
-    }
-
-    private static Mesh CreateBoundsMesh(Bounds bounds)
-    {
-        Vector3[] positions =
-        [
-            new(bounds.Min.X, bounds.Min.Y, bounds.Min.Z),
-            new(bounds.Max.X, bounds.Min.Y, bounds.Min.Z),
-            new(bounds.Max.X, bounds.Max.Y, bounds.Min.Z),
-            new(bounds.Min.X, bounds.Max.Y, bounds.Min.Z),
-            new(bounds.Min.X, bounds.Min.Y, bounds.Max.Z),
-            new(bounds.Max.X, bounds.Min.Y, bounds.Max.Z),
-            new(bounds.Max.X, bounds.Max.Y, bounds.Max.Z),
-            new(bounds.Min.X, bounds.Max.Y, bounds.Max.Z)
-        ];
-
-        var vertices = positions
-            .Select(position => new Vertex(position, Vector3.UnitZ, Vector2.Zero))
-            .ToArray();
-
-        Triangle[] triangles =
-        [
-            new(0, 3, 2),
-            new(0, 2, 1),
-            new(4, 5, 6),
-            new(4, 6, 7),
-            new(0, 1, 5),
-            new(0, 5, 4),
-            new(3, 7, 6),
-            new(3, 6, 2),
-            new(0, 4, 7),
-            new(0, 7, 3),
-            new(1, 2, 6),
-            new(1, 6, 5)
-        ];
-
-        return new Mesh(vertices, [new Submesh("physics", triangles)]);
     }
 
     private static string SanitizePathToken(string value)

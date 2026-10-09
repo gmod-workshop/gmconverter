@@ -78,27 +78,82 @@ public sealed class ExporterOptionsTests
     private static OptionViewModel FindOption(ConvertViewModel vm, string key) =>
         vm.CurrentExporterOptions.Groups.SelectMany(group => group.Options).Single(option => option.Key == key);
 
+    private const string _minimalSettingsJson = "{\"ScaleFactor\":1}";
+
     [AvaloniaFact]
-    public void SourceAliasesShareStateAndLegacyEditsReachInactiveExporter()
+    public void SourceAliasSharesMdlOptionsAndOnlyChangedValuesPersist()
     {
         var vm = CreateViewModel();
         Assert.Equal("mdl", vm.CurrentExporterOptions.Format);
-        Assert.Equal("1024", vm.CurrentExporterOptions.BuildOptionValues().GetString("material:maxTextureSize"));
-        Assert.True(vm.CurrentExporterOptions.BuildOptionValues().GetBool("material:deduplicateTextures"));
-        FindOption(vm, "physics:enabled").TryLoad(true);
-        FindOption(vm, "physics:mode").TryLoad("coacd");
-        FindOption(vm, "physics:mass").TryLoad(250f);
-        Assert.True(vm.GeneratePhysics);
-        Assert.Equal("coacd", vm.SelectedPhysicsMode.Value);
-        Assert.Equal(250, vm.PhysicsMass);
         var sourceOptions = vm.CurrentExporterOptions;
+        FindOption(vm, "physics:mass").TryLoad(75f);
         SelectFormat(vm, "glb");
-        vm.PhysicsMass = 75;
         SelectFormat(vm, "source");
         Assert.Same(sourceOptions, vm.CurrentExporterOptions);
         Assert.Equal(75f, vm.CaptureSettings().ExporterOptions.GetFloat("physics:mass"));
-        vm.GeneratePhysics = false;
-        Assert.False(vm.CaptureSettings().ExporterOptions.GetBool("physics:enabled"));
+
+        // Only the edited value is saved; discovered tool paths and other defaults are not.
+        Assert.Equal(["physics:mass"], vm.SnapshotExporterOptions()["mdl"].Keys);
+        FindOption(vm, "physics:mass").TryLoad(100f);
+        Assert.Empty(vm.SnapshotExporterOptions()["mdl"]);
+    }
+
+    [AvaloniaFact]
+    public void LegacySourceSettingsMigrateIntoMdlExporterOptions()
+    {
+        var settings = UiSettings.Parse("""
+            {
+              "ScaleFactor": 1,
+              "ModelPath": "gmconverter/old.mdl",
+              "StudioMdlPath": "C:/tools/studiomdl.exe",
+              "BuildMaterials": false,
+              "GeneratePhysics": true,
+              "PhysicsMode": "coacd",
+              "PhysicsMass": 250,
+              "CoacdThreshold": 0.01,
+              "MaxConvexPieces": 32,
+              "MaxHullVertices": 32,
+              "MaxTextureSize": 1024,
+              "DeduplicateTextures": true,
+              "ExporterOptions": { "mdl": { "physics:mass": 300 } }
+            }
+            """)!;
+        var vm = CreateViewModel();
+        vm.ApplySettings(settings);
+        SelectFormat(vm, "mdl");
+        var options = vm.CaptureSettings().ExporterOptions;
+        Assert.Equal("C:/tools/studiomdl.exe", options.GetString("studioMdlPath"));
+        Assert.False(options.GetBool("buildMaterials", defaultValue: true));
+        Assert.True(options.GetBool("physics:enabled"));
+        Assert.Equal("coacd", options.GetString("physics:mode"));
+        Assert.Equal("1024", options.GetString("material:maxTextureSize"));
+        Assert.True(options.GetBool("material:deduplicateTextures"));
+        // Values already saved the new way win, and untouched old CoACD defaults are replaced.
+        Assert.Equal(300f, options.GetFloat("physics:mass"));
+        Assert.Equal(16, options.GetInt("physics:maxConvexPieces"));
+        Assert.Equal(0.05f, options.GetFloat("physics:coacdThreshold"));
+        // The model path was per model; the exporter derives it again when it is blank.
+        Assert.True(string.IsNullOrEmpty(options.GetString("modelPath")));
+    }
+
+    [AvaloniaFact]
+    public void PreviewDrawsCollisionOnlyWhenTheExporterWouldGenerateIt()
+    {
+        var vm = CreateViewModel();
+        var directory = Path.Join(Path.GetTempPath(), "GMConverter.SchemaTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        vm.InputPath = Path.Join(directory, "input.sample");
+        File.WriteAllText(vm.InputPath, "test");
+        vm.SelectedInputFormat = vm.InputFormats.Single(option => option.Value == "sample");
+        SelectFormat(vm, "mdl");
+        var service = new ConversionService(new UiLogSink());
+
+        Assert.Null(service.LoadPreview(vm.CaptureSettings()).PhysicsModelPath);
+        FindOption(vm, "physics:enabled").TryLoad(true);
+        var preview = service.LoadPreview(vm.CaptureSettings());
+        Assert.True(File.Exists(preview.PhysicsModelPath));
+        SelectFormat(vm, "glb");
+        Assert.Null(service.LoadPreview(vm.CaptureSettings()).PhysicsModelPath);
     }
 
     [AvaloniaFact]
@@ -113,13 +168,12 @@ public sealed class ExporterOptionsTests
         FindOption(vm, "count").TryLoad(42);
         FindOption(vm, "physics:mass").TryLoad(12.5f);
         FindOption(vm, "mode").TryLoad("b");
-        Assert.Equal(100, vm.PhysicsMass);
         var snapshot = vm.SnapshotExporterOptions();
         snapshot["unavailable-plugin"] = new() { ["preserved"] = "value" };
         var persisted = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, object?>>>(JsonSerializer.Serialize(snapshot));
         var restored = CreateViewModel();
         // Exercise the same settings-loading path used on application startup.
-        var settings = JsonSerializer.Deserialize<UiSettings>("{\"ScaleFactor\":1,\"PhysicsMass\":100,\"CoacdThreshold\":0.05,\"MaxConvexPieces\":16,\"MaxHullVertices\":16}")!;
+        var settings = UiSettings.Parse(_minimalSettingsJson)!;
         restored.ApplySettings(settings with { ExporterOptions = persisted });
         SelectFormat(restored, "sample");
         Assert.Equal(42, restored.CaptureSettings().ExporterOptions.GetInt("count"));
@@ -227,6 +281,25 @@ public sealed class ExporterOptionsTests
     }
 
     [AvaloniaFact]
+    public void CliBooleanFlagsWorkBareAndNegatedAndEnumsIgnoreCase()
+    {
+        _ = CreateViewModel();
+        var output = Path.Join(Path.GetTempPath(), "GMConverter.SchemaTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        var input = Path.Join(output, "input.sample");
+        File.WriteAllText(input, "test");
+        string[] common = ["--input-format", "sample", "--output-format", "sample", "--input-path", input, "--output-path", output];
+
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "bare", "--sample-enabled", "--sample-mode", "B"]));
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "negated", "--no-sample-enabled"]));
+
+        JsonElement Result(string name) => JsonDocument.Parse(File.ReadAllText(Path.Join(output, name + ".json"))).RootElement;
+        Assert.True(Result("bare").GetProperty("enabled").GetBoolean());
+        Assert.Equal("b", Result("bare").GetProperty("mode").GetString());
+        Assert.False(Result("negated").GetProperty("enabled").GetBoolean());
+    }
+
+    [AvaloniaFact]
     public void CliImporterArgumentsAndAliasesReachImporter()
     {
         _ = CreateViewModel();
@@ -262,7 +335,7 @@ public sealed class ExporterOptionsTests
 
         var persisted = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, object?>>>(JsonSerializer.Serialize(vm.SnapshotImporterOptions()));
         var restored = CreateViewModel();
-        var settings = JsonSerializer.Deserialize<UiSettings>("{\"ScaleFactor\":1,\"PhysicsMass\":100,\"CoacdThreshold\":0.05,\"MaxConvexPieces\":16,\"MaxHullVertices\":16}")!;
+        var settings = UiSettings.Parse(_minimalSettingsJson)!;
         restored.ApplySettings(settings with { ImporterOptions = persisted });
         restored.SelectedInputFormat = restored.InputFormats.Single(option => option.Value == "sample");
         Assert.Equal("edited", restored.CaptureSettings().ImporterOptions.GetString("modelName"));

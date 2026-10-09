@@ -17,24 +17,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.SelectedInputFormat),
         nameof(ConvertViewModel.SelectedOutputFormat),
         nameof(ConvertViewModel.SelectedAxisMode),
-        nameof(ConvertViewModel.SelectedPhysicsMode),
         nameof(ConvertViewModel.ConfigPath),
         nameof(ConvertViewModel.InputPath),
         nameof(ConvertViewModel.OutputPath),
         nameof(ConvertViewModel.BaseName),
-        nameof(ConvertViewModel.ModelPath),
-        nameof(ConvertViewModel.StudioMdlPath),
-        nameof(ConvertViewModel.VtfCmdPath),
         nameof(ConvertViewModel.MaterialDirectory),
         nameof(ConvertViewModel.ScaleFactor),
-        nameof(ConvertViewModel.BuildMaterials),
-        nameof(ConvertViewModel.GeneratePhysics),
-        nameof(ConvertViewModel.PhysicsMass),
-        nameof(ConvertViewModel.CoacdThreshold),
-        nameof(ConvertViewModel.MaxConvexPieces),
-        nameof(ConvertViewModel.MaxHullVertices),
-        nameof(ConvertViewModel.SelectedMaxTextureSize),
-        nameof(ConvertViewModel.DeduplicateTextures),
         nameof(ConvertViewModel.CurrentExporterOptions),
         nameof(ConvertViewModel.CurrentImporterOptions)
     };
@@ -102,7 +90,6 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
         Convert.TryLoadDefaultConfig();
         TryLoadSettings();
-        Convert.ApplyLocalToolDefaults();
         _suppressSettingsSave = false;
 
         Convert.PropertyChanged += (_, e) =>
@@ -260,38 +247,19 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.SelectedOutputFormat.Value,
             Convert.SelectedAxisMode.Value,
             Explorer.SelectedExplorerProfile.Value,
-            Convert.SelectedPhysicsMode.Value,
             EmptyToNull(Convert.ConfigPath),
             EmptyToNull(Convert.InputPath),
             EmptyToNull(Convert.OutputPath),
             EmptyToNull(Convert.BaseName),
-            EmptyToNull(Convert.ModelPath),
-            EmptyToNull(Convert.StudioMdlPath),
-            EmptyToNull(Convert.VtfCmdPath),
             EmptyToNull(Convert.MaterialDirectory),
             EmptyToNull(Explorer.ExplorerRootDirectory),
             EmptyToNull(Explorer.ExplorerFilter),
             Convert.ScaleFactor,
-            Convert.BuildMaterials,
-            Convert.GeneratePhysics,
             Preview.PreviewOrthographic,
             Preview.PreviewWireframe,
             Preview.PreviewPhysicsOverlay,
-            Convert.PhysicsMass,
-            Convert.CoacdThreshold,
-            Convert.MaxConvexPieces,
-            Convert.MaxHullVertices,
-            ParseMaxTextureSize(Convert.SelectedMaxTextureSize.Value),
-            Convert.DeduplicateTextures,
             Convert.SnapshotExporterOptions(),
             Convert.SnapshotImporterOptions());
-    }
-
-    private static int ParseMaxTextureSize(string value)
-    {
-        return int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var result)
-            ? Math.Max(0, result)
-            : 1024;
     }
 
     private void QueueSettingsSave()

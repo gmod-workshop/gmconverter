@@ -11,6 +11,8 @@ namespace GMConverter.UI.ViewModels.Options;
 /// </summary>
 public sealed class OptionSetViewModel
 {
+    private readonly Dictionary<string, object?> _defaults;
+
     /// <summary>The input or output format whose schema this set renders.</summary>
     public string Format { get; }
 
@@ -25,6 +27,7 @@ public sealed class OptionSetViewModel
         Format = format;
         Schema = schema;
         Groups = [.. schema.Groups.Select(group => new OptionGroupViewModel(group))];
+        _defaults = Snapshot();
     }
 
     /// <summary>Snapshot every option's current value into an <see cref="OptionValues"/> bag.</summary>
@@ -48,6 +51,24 @@ public sealed class OptionSetViewModel
             }
         }
         return snapshot;
+    }
+
+    /// <summary>
+    /// The values that differ from the schema defaults. This is what the host persists, so a
+    /// default that is computed at runtime (such as a discovered tool path) is never saved and
+    /// changed defaults reach users who never edited the option.
+    /// </summary>
+    public Dictionary<string, object?> SnapshotChanged()
+    {
+        return Snapshot()
+            .Where(pair => !Equals(pair.Value, _defaults.GetValueOrDefault(pair.Key)))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    /// <summary>Puts every option back to the value it had when this set was created.</summary>
+    public void ResetToDefaults()
+    {
+        LoadFrom(_defaults);
     }
 
     /// <summary>

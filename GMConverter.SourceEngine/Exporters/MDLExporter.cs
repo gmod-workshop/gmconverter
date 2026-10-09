@@ -15,7 +15,7 @@ namespace GMConverter.SourceEngine.Exporters;
 /// <summary>
 /// Exports a model to the Source Engine MDL format.
 /// </summary>
-internal sealed class MDLExporter : IExporter
+internal sealed class MDLExporter : IExporter, ICollisionPreview
 {
     private static readonly UTF8Encoding _utf8NoBom = new(false);
     private const int _sourceMaxConvexPieces = 1024;
@@ -46,19 +46,27 @@ internal sealed class MDLExporter : IExporter
             new OptionDescriptor("modelPath", OptionType.String, "Model path")
             {
                 Description = "Output MDL path under the game models directory. Defaults to gmconverter/<name>.mdl.",
+                Aliases = ["model-path"],
             },
+            // Defaults point at tools already extracted next to the app, so the field shows what
+            // an export would use; blank still means "find or download it at export time".
             new OptionDescriptor("studioMdlPath", OptionType.Path, "StudioMDL override")
             {
                 Description = "Optional StudioMDL-CE executable. Auto-downloads to tools/ when omitted.",
+                DefaultValueFactory = () => SourceToolPaths.TryFindLocalDefaults().StudioMdl,
+                Aliases = ["studiomdl-path", "studiomdl"],
             },
             new OptionDescriptor("vtfCmdPath", OptionType.Path, "VTFCmd override")
             {
                 Description = "Optional VTFCmd executable. Auto-downloads VTFEdit Reloaded to tools/ when omitted and materials are built.",
+                DefaultValueFactory = () => SourceToolPaths.TryFindLocalDefaults().VtfCmd,
+                Aliases = ["vtfcmd-path", "vtfcmd"],
             },
             new OptionDescriptor("buildMaterials", OptionType.Bool, "Build materials")
             {
                 DefaultValue = true,
                 Description = "Compile VTFs and VMTs alongside the MDL. Disable for mesh-only output.",
+                Aliases = ["no-materials"],
             },
         ]),
         new OptionGroup("material", "Materials",
@@ -68,11 +76,13 @@ internal sealed class MDLExporter : IExporter
                 DefaultValue = "0",
                 Choices = ["0", "512", "1024", "2048", "4096"],
                 Description = "Cap the longest edge before VTF compile. 0 disables resizing.",
+                Aliases = ["max-texture-size"],
             },
             new OptionDescriptor("material:deduplicateTextures", OptionType.Bool, "Deduplicate identical textures")
             {
                 DefaultValue = false,
                 Description = "Hash resized texture content and reuse an existing VTF when materials produce byte-identical maps.",
+                Aliases = ["deduplicate-textures"],
             },
         ]),
         new OptionGroup("physics", "Physics",
@@ -81,12 +91,14 @@ internal sealed class MDLExporter : IExporter
             {
                 DefaultValue = false,
                 Description = "Generate a simple collision mesh alongside the MDL.",
+                Aliases = ["physics"],
             },
             new OptionDescriptor("physics:mode", OptionType.Enum, "Physics mode")
             {
                 DefaultValue = "bounds",
                 Choices = ["bounds", "coacd"],
                 Description = "bounds: single AABB hull. coacd: native convex decomposition.",
+                Aliases = ["physics-mode"],
             },
             new OptionDescriptor("physics:mass", OptionType.Float, "Mass (kg)")
             {
@@ -94,6 +106,7 @@ internal sealed class MDLExporter : IExporter
                 Maximum = 100000m,
                 Increment = 10m,
                 DefaultValue = 100f,
+                Aliases = ["physics-mass"],
             },
             new OptionDescriptor("physics:coacdThreshold", OptionType.Float, "CoACD threshold")
             {
@@ -102,18 +115,22 @@ internal sealed class MDLExporter : IExporter
                 Increment = 0.001m,
                 DefaultValue = 0.05f,
                 Description = "CoACD termination threshold from 0.01 to 1.",
+                Aliases = ["coacd-threshold"],
             },
             new OptionDescriptor("physics:maxConvexPieces", OptionType.Int, "Max convex pieces")
             {
-                Minimum = 1m,
+                Minimum = -1m,
                 Maximum = 128m,
-                DefaultValue = 32,
+                DefaultValue = 16,
+                Description = "Maximum CoACD convex hull count. Use -1 for no limit.",
+                Aliases = ["max-convex-pieces"],
             },
             new OptionDescriptor("physics:maxHullVertices", OptionType.Int, "Max hull vertices")
             {
                 Minimum = 4m,
                 Maximum = 256m,
-                DefaultValue = 32,
+                DefaultValue = 16,
+                Aliases = ["coacd-max-hull-vertices", "max-hull-vertices"],
             },
         ]),
     ]);
@@ -189,8 +206,8 @@ internal sealed class MDLExporter : IExporter
                 Coacd: o.GetString("physics:mode") == "coacd"
                     ? new CoacdOptions(
                         Threshold: o.GetFloat("physics:coacdThreshold", 0.05f),
-                        MaxConvexPieces: o.GetInt("physics:maxConvexPieces", 32),
-                        MaxHullVertices: o.GetInt("physics:maxHullVertices", 32))
+                        MaxConvexPieces: o.GetInt("physics:maxConvexPieces", 16),
+                        MaxHullVertices: o.GetInt("physics:maxHullVertices", 16))
                     : null)
             : null;
 
@@ -316,6 +333,63 @@ internal sealed class MDLExporter : IExporter
         return [.. validWeights.Select(weight => new VertexBoneWeight(weight.BoneIndex, weight.Weight / totalWeight))];
     }
 
+    public IReadOnlyList<Mesh> CreateCollisionPreview(Model model, OptionValues options)
+    {
+        return BuildOptions(model.Name, options).Physics switch
+        {
+            null => [],
+            { Mode: PhysicsMode.Coacd, Coacd: { } coacd } => DecomposeCoacd(model, coacd),
+            _ => [CreateBoundsMesh(GetPhysicsBounds(model))],
+        };
+    }
+
+    private static Bounds GetPhysicsBounds(Model model)
+    {
+        return model.Bounds().WithMinimumThickness(1f / _metersToSourceUnits);
+    }
+
+    private static IReadOnlyList<Mesh> DecomposeCoacd(Model model, CoacdOptions options)
+    {
+        return CoacdNative.Decompose(
+            model.Merge(),
+            new CoacdDecompositionOptions(options.Threshold, options.MaxConvexPieces, options.MaxHullVertices));
+    }
+
+    // Twelve outward-facing triangles over the box corners, matching the bounds physics SMD.
+    private static Mesh CreateBoundsMesh(Bounds bounds)
+    {
+        Vector3[] corners =
+        [
+            new(bounds.Min.X, bounds.Min.Y, bounds.Min.Z),
+            new(bounds.Max.X, bounds.Min.Y, bounds.Min.Z),
+            new(bounds.Max.X, bounds.Max.Y, bounds.Min.Z),
+            new(bounds.Min.X, bounds.Max.Y, bounds.Min.Z),
+            new(bounds.Min.X, bounds.Min.Y, bounds.Max.Z),
+            new(bounds.Max.X, bounds.Min.Y, bounds.Max.Z),
+            new(bounds.Max.X, bounds.Max.Y, bounds.Max.Z),
+            new(bounds.Min.X, bounds.Max.Y, bounds.Max.Z)
+        ];
+        (int A, int B, int C, int D, Vector3 Normal)[] faces =
+        [
+            (0, 3, 2, 1, -Vector3.UnitZ),
+            (4, 5, 6, 7, Vector3.UnitZ),
+            (0, 1, 5, 4, -Vector3.UnitY),
+            (3, 7, 6, 2, Vector3.UnitY),
+            (0, 4, 7, 3, -Vector3.UnitX),
+            (1, 2, 6, 5, Vector3.UnitX),
+        ];
+        List<Vertex> vertices = [];
+        List<Triangle> triangles = [];
+        foreach (var (a, b, c, d, normal) in faces)
+        {
+            var start = vertices.Count;
+            vertices.AddRange(new[] { a, b, c, d }.Select(index => new Vertex(corners[index], normal, Vector2.Zero)));
+            triangles.Add(new Triangle(start, start + 1, start + 2));
+            triangles.Add(new Triangle(start, start + 2, start + 3));
+        }
+        return new Mesh(vertices, [new Submesh("physics", triangles)]);
+    }
+
     private static void WritePhysicsSmd(Model model, string physicsSmdPath, PhysicsOptions physicsOptions)
     {
         switch (physicsOptions.Mode)
@@ -336,7 +410,7 @@ internal sealed class MDLExporter : IExporter
 
     private static void WriteBoundsPhysicsSmd(Model model, string physicsSmdPath)
     {
-        var bounds = model.Bounds().WithMinimumThickness(1f / _metersToSourceUnits);
+        var bounds = GetPhysicsBounds(model);
         using var writer = CreatePhysicsSmdWriter(physicsSmdPath);
 
         Vector3[] vertices =
@@ -363,9 +437,7 @@ internal sealed class MDLExporter : IExporter
 
     private static void WriteCoacdPhysicsSmd(Model model, string physicsSmdPath, CoacdOptions options)
     {
-        var parts = CoacdNative.Decompose(
-            model.Merge(),
-            new CoacdDecompositionOptions(options.Threshold, options.MaxConvexPieces, options.MaxHullVertices));
+        var parts = DecomposeCoacd(model, options);
 
         if (parts.Count == 0)
         {

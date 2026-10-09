@@ -54,7 +54,7 @@ jobs:
       # previous CUE4Parse.dll open and break the next overwrite with CS2012.
       - name: Publish library
         run: >
-          dotnet publish GMConverter/GMConverter.csproj
+          dotnet publish GMConverter/GMConverter/GMConverter.csproj
           --configuration Release
           --no-restore
           --output artifacts/publish/GMConverter.Library
@@ -62,7 +62,7 @@ jobs:
 
       - name: Publish CLI
         run: >
-          dotnet publish GMConverter.CLI/GMConverter.CLI.csproj
+          dotnet publish GMConverter/GMConverter.CLI/GMConverter.CLI.csproj
           --configuration Release
           --runtime win-x64
           --self-contained true
@@ -73,7 +73,7 @@ jobs:
 
       - name: Publish UI
         run: >
-          dotnet publish GMConverter.UI/GMConverter.UI.csproj
+          dotnet publish GMConverter/GMConverter.UI/GMConverter.UI.csproj
           --configuration Release
           --runtime win-x64
           --self-contained true

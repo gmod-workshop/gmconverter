@@ -36,16 +36,16 @@
 
     <!-- Plugins bundled with this host build. See GMConverter.CLI.csproj for the rationale. -->
     <ItemGroup>
-        <BundledPlugin Include="..\GMConverter.SourceEngine\GMConverter.SourceEngine.csproj">
+        <BundledPlugin Include="..\..\Plugins\GMConverter.SourceEngine\GMConverter.SourceEngine.csproj">
             <PluginId>sourceengine</PluginId>
         </BundledPlugin>
-        <BundledPlugin Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
+        <BundledPlugin Include="..\..\Plugins\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj">
             <PluginId>unrealengine</PluginId>
         </BundledPlugin>
-        <BundledPlugin Include="..\GMConverter.MenOfWar\GMConverter.MenOfWar.csproj">
+        <BundledPlugin Include="..\..\Plugins\GMConverter.MenOfWar\GMConverter.MenOfWar.csproj">
             <PluginId>menofwar</PluginId>
         </BundledPlugin>
-        <BundledPlugin Include="..\GMConverter.XWingAlliance\GMConverter.XWingAlliance.csproj">
+        <BundledPlugin Include="..\..\Plugins\GMConverter.XWingAlliance\GMConverter.XWingAlliance.csproj">
             <PluginId>xwingalliance</PluginId>
         </BundledPlugin>
     </ItemGroup>

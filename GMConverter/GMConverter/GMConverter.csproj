@@ -20,7 +20,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\GMConverter.SDK\GMConverter.SDK.csproj" />
+      <ProjectReference Include="..\..\Plugins\GMConverter.SDK\GMConverter.SDK.csproj" />
     </ItemGroup>
 
 </Project>

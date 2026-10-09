@@ -33,8 +33,8 @@
              Content item with CopyToOutputDirectory=PreserveNewest. Builds require CMake and a
              C++ compiler available on PATH; GitHub Actions windows-latest images have these
              pre-installed. -->
-        <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse\CUE4Parse.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
-        <ProjectReference Include="..\Dependencies\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+        <ProjectReference Include="..\..\Dependencies\CUE4Parse\CUE4Parse\CUE4Parse.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
+        <ProjectReference Include="..\..\Dependencies\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" AdditionalProperties="Configuration=$(Configuration);Platform=AnyCPU" />
     </ItemGroup>
 
     <ItemGroup>

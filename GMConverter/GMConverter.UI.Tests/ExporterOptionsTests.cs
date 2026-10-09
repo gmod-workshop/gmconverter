@@ -45,14 +45,14 @@ public sealed class ExporterOptionsTests
 #else
         const string configuration = "Release";
 #endif
-        var sourceOutput = Path.GetFullPath($"../../../../GMConverter.SourceEngine/bin/{configuration}/net10.0", AppContext.BaseDirectory);
+        var sourceOutput = Path.GetFullPath($"../../../../../Plugins/GMConverter.SourceEngine/bin/{configuration}/net10.0", AppContext.BaseDirectory);
         var sourceDirectory = Path.Join(root, "source");
         Directory.CreateDirectory(sourceDirectory);
         foreach (var file in Directory.EnumerateFiles(sourceOutput))
         {
             File.Copy(file, Path.Join(sourceDirectory, Path.GetFileName(file)));
         }
-        var unrealOutput = Path.GetFullPath($"../../../../GMConverter.UnrealEngine/bin/{configuration}/net10.0", AppContext.BaseDirectory);
+        var unrealOutput = Path.GetFullPath($"../../../../../Plugins/GMConverter.UnrealEngine/bin/{configuration}/net10.0", AppContext.BaseDirectory);
         var unrealDirectory = Path.Join(root, "unreal");
         foreach (var file in Directory.EnumerateFiles(unrealOutput, "*", SearchOption.AllDirectories))
         {

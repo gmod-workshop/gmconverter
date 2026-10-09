@@ -17,8 +17,8 @@
   <ItemGroup>
     <!-- The plugin is referenced directly (its internals are visible to this assembly), and Core
          supplies the host's texture factory, so tests run without the plugin loader. -->
-    <ProjectReference Include="..\GMConverter.UnrealEngine\GMConverter.UnrealEngine.csproj" />
-    <ProjectReference Include="..\GMConverter\GMConverter.csproj" />
+    <ProjectReference Include="..\GMConverter.SourceEngine\GMConverter.SourceEngine.csproj" />
+    <ProjectReference Include="..\..\GMConverter\GMConverter\GMConverter.csproj" />
   </ItemGroup>
 
   <ItemGroup>

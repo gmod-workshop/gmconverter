@@ -3,7 +3,7 @@ using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Plugins;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 /// <summary>
 /// Aggregated view of importers, exporters, and explorers contributed by loaded plugins. The

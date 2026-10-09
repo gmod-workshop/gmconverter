@@ -1,7 +1,7 @@
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Textures;
 
-namespace GMConverter.Geometry;
+namespace GMConverter.Core.Geometry;
 
 /// <summary>
 /// Pipeline-specific texture transforms exposed as extensions on the SDK <see cref="Texture"/>

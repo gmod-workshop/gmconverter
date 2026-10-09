@@ -1,9 +1,9 @@
-using GMConverter.Geometry;
+using GMConverter.Core.Geometry;
 using GMConverter.SDK.Textures;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 /// <summary>
 /// Default <see cref="ITextureFactory"/> implementation. Produces <see cref="ImageSharpTexture"/>

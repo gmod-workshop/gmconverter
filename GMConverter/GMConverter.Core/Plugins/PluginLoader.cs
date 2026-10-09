@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 /// <summary>
 /// Discovers and loads plugins from a directory. Each plugin lives under its own subdirectory

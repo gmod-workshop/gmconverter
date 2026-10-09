@@ -10,7 +10,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\GMConverter\GMConverter.csproj" />
+      <ProjectReference Include="..\GMConverter.Core\GMConverter.Core.csproj" />
       <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
       <PackageReference Include="System.CommandLine" Version="2.0.7" />
     </ItemGroup>

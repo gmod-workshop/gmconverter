@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GMConverter.Explorer;
-using GMConverter.Plugins;
+using GMConverter.Core.Explorer;
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.UI.Services;
 

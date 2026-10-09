@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GMConverter.Explorer;
+using GMConverter.Core.Explorer;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;

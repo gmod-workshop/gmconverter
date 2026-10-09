@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 internal static partial class PluginLogMessages
 {

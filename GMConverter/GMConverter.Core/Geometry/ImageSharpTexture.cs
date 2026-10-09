@@ -8,7 +8,7 @@ using SixLabors.ImageSharp.Formats.Tga;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
-namespace GMConverter.Geometry;
+namespace GMConverter.Core.Geometry;
 
 internal sealed class ImageSharpTexture : Texture
 {

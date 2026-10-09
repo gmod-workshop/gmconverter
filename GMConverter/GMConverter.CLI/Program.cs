@@ -1,8 +1,8 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text;
-using GMConverter.Exporters;
-using GMConverter.Plugins;
+using GMConverter.Core.Exporters;
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;

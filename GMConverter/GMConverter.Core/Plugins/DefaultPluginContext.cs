@@ -4,7 +4,7 @@ using GMConverter.SDK.Importers;
 using GMConverter.SDK.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 internal sealed class DefaultPluginContext : IPluginContext
 {

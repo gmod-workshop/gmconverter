@@ -1,6 +1,6 @@
 using GMConverter.SDK.Plugins;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 internal sealed record LoadedPlugin(
     PluginManifest Manifest,

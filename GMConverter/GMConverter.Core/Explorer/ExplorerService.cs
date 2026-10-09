@@ -1,8 +1,8 @@
-using GMConverter.Plugins;
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 
-namespace GMConverter.Explorer;
+namespace GMConverter.Core.Explorer;
 
 internal sealed class ExplorerService
 {

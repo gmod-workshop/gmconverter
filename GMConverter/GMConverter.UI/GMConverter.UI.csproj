@@ -31,7 +31,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\GMConverter\GMConverter.csproj" />
+        <ProjectReference Include="..\GMConverter.Core\GMConverter.Core.csproj" />
     </ItemGroup>
 
     <!-- Plugins bundled with this host build. See GMConverter.CLI.csproj for the rationale. -->

@@ -1,5 +1,5 @@
 using Avalonia;
-using GMConverter.Plugins;
+using GMConverter.Core.Plugins;
 using GMConverter.UI.Services;
 using Microsoft.Extensions.Logging;
 

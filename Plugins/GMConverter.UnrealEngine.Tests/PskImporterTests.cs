@@ -1,6 +1,6 @@
 using System.Numerics;
 using System.Text.Json;
-using GMConverter.Plugins;
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;

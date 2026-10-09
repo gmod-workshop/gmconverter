@@ -1,5 +1,5 @@
 using System.Numerics;
-using GMConverter.Plugins;
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;

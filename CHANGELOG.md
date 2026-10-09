@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Renamed the core library from `GMConverter` to `GMConverter.Core`. The assembly is now `GMConverter.Core.dll`, the package ID is `GMConverter.Core`, and its namespaces moved from `GMConverter.Plugins`, `GMConverter.Explorer`, `GMConverter.Geometry`, and `GMConverter.Exporters` to `GMConverter.Core.*`. Plugins are unaffected because they reference only `GMConverter.SDK`.
 - The GUI and CLI no longer have Source-specific code; every Source option comes from the Source plugin.
   - The legacy CLI flags (`--model-path`, `--studiomdl-path`, `--vtfcmd-path`, `--no-materials`, `--physics`, `--physics-mode`, `--physics-mass`, `--coacd-threshold`, `--max-convex-pieces`, `--coacd-max-hull-vertices`) still work, as aliases of the matching `--mdl-` options. Any boolean option flag can now be given bare, and enum values are matched case-insensitively.
   - `--physics-mode` no longer turns physics on by itself; add `--physics`.

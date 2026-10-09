@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GMConverter.Exporters;
-using GMConverter.Plugins;
+using GMConverter.Core.Exporters;
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;

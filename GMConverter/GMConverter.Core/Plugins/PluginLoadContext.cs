@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 /// <summary>
 /// Collectible <see cref="AssemblyLoadContext"/> for a single plugin. The critical job is to

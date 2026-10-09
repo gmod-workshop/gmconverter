@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace GMConverter.Plugins;
+namespace GMConverter.Core.Plugins;
 
 /// <summary>
 /// Static bootstrap surface for the plugin system. Hosts (CLI, UI) call

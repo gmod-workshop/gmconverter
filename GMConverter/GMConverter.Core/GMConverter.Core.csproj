@@ -2,8 +2,8 @@
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
-        <AssemblyName>GMConverter</AssemblyName>
-        <PackageId>GMConverter</PackageId>
+        <AssemblyName>GMConverter.Core</AssemblyName>
+        <PackageId>GMConverter.Core</PackageId>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

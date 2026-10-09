@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using GMConverter.Geometry;
+using GMConverter.Core.Geometry;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
@@ -24,7 +24,7 @@ using TextureMipMapFilter = SharpGLTF.Schema2.TextureMipMapFilter;
 using TextureWrapMode = SharpGLTF.Schema2.TextureWrapMode;
 using WriteSettings = SharpGLTF.Schema2.WriteSettings;
 
-namespace GMConverter.Exporters;
+namespace GMConverter.Core.Exporters;
 
 internal sealed class GLTFExporter : IExporter
 {

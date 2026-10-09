@@ -5,7 +5,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using GMConverter.Plugins;
+using GMConverter.Core.Plugins;
 using GMConverter.UI.Controls.Settings;
 using GMConverter.UI.Services;
 using GMConverter.UI.ViewModels;

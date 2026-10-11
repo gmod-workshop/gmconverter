@@ -81,6 +81,70 @@ public sealed class PskImporterTests
     }
 
     [Fact]
+    public void SceneKeepsSkeletonAndAppliesAnimation()
+    {
+        var (psk, psa) = PskFixtures.WriteFixture();
+        var scene = WriteScene(Path.GetDirectoryName(psk)!, Path.GetFileName(psk));
+
+        var model = _importer.Parse(scene, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) });
+
+        Assert.Equal("root", Assert.Single(model.Skeleton!.Bones).Name);
+        Assert.All(Assert.Single(model.Meshes).Vertices, vertex => Assert.Equal(0, Assert.Single(vertex.BoneWeights!).BoneIndex));
+        var track = Assert.IsType<BoneTransformTrack>(Assert.Single(Assert.Single(model.Animations!).Tracks));
+        Assert.Equal(0.5f, Assert.Single(track.Keyframes).Transform.Translation.X, 5);
+    }
+
+    [Fact]
+    public void SceneMergesPartSkeletonsByBoneName()
+    {
+        // A modular character: body and head share "root" but each adds its own bone, and a
+        // boneless prop rides along. Weights must follow their bone into the merged skeleton.
+        var directory = PskFixtures.CreateDirectory();
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "body.psk"), [("root", -1), ("spine", 0)], weightedBone: 1);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "head.psk"), [("root", -1), ("head", 0)], weightedBone: 1, offsetX: 200);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "prop.pskx"), [], weightedBone: 0, offsetX: 400);
+        var scene = WriteScene(directory, "body.psk", "head.psk", "prop.pskx");
+
+        var model = _importer.Parse(scene, new ModelParseOptions(1f));
+
+        Assert.Equal(["root", "spine", "head"], model.Skeleton!.Bones.Select(bone => bone.Name));
+        Assert.Equal([-1, 0, 0], model.Skeleton.Bones.Select(bone => bone.ParentIndex));
+        Assert.Equal([1, 2], model.Meshes.Take(2).Select(mesh => mesh.Vertices.Select(vertex => Assert.Single(vertex.BoneWeights!).BoneIndex).Distinct().Single()));
+        Assert.All(model.Meshes[2].Vertices, vertex => Assert.Null(vertex.BoneWeights));
+    }
+
+    [Fact]
+    public void SceneIgnoresUnweightedSocketBones()
+    {
+        var directory = PskFixtures.CreateDirectory();
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "hull.pskx"), [("fx_engine_l", -1), ("fx_engine_r", -1)], weightedBone: -1);
+        var scene = WriteScene(directory, "hull.pskx");
+
+        Assert.Null(_importer.Parse(scene, new ModelParseOptions(1f)).Skeleton);
+    }
+
+    private static string WriteScene(string directory, params string[] parts)
+    {
+        var scene = Path.Join(directory, "unit.ue4scene");
+        File.WriteAllText(scene, JsonSerializer.Serialize(new
+        {
+            Version = 1,
+            Name = "unit scene",
+            Entries = parts.Select(part => new
+            {
+                Path = part,
+                Transform = new
+                {
+                    Translation = new { X = 0, Y = 0, Z = 0 },
+                    Rotation = new { X = 0, Y = 0, Z = 0, W = 1 },
+                    Scale = new { X = 1, Y = 1, Z = 1 }
+                }
+            })
+        }));
+        return scene;
+    }
+
+    [Fact]
     public void OpacityTextureKeepsAlphaWhenTgaHeaderDeclaresNoAlphaBits()
     {
         var (psk, _) = PskFixtures.WriteFixture();

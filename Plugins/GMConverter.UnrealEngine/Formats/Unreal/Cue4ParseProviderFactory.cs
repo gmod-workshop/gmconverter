@@ -28,7 +28,7 @@ internal static class Cue4ParseProviderFactory
         var archiveDirectory = ResolveArchiveDirectory(rootPath);
         var profile = SelectProfile(archiveDirectory);
         PerfTimer.Log("ue4.provider", $"profile={profile.GetType().Name} archive={archiveDirectory}");
-        var gameData = profile.TryGetGameData();
+        var gameData = profile.TryGetGameData(archiveDirectory);
         var provider = new DefaultFileProvider(
             archiveDirectory,
             SearchOption.AllDirectories,

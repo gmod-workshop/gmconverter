@@ -1,5 +1,7 @@
 using CUE4Parse.FileProvider;
+using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets.Exports.Texture;
+using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
@@ -20,13 +22,20 @@ internal sealed class GenericUnrealGameProfile : IUnrealGameProfile
         return new VersionContainer(EGame.GAME_UE5_6, ETexturePlatform.DesktopMobile);
     }
 
-    public Cue4ParseGameData? TryGetGameData()
+    public Cue4ParseGameData? TryGetGameData(string archiveDirectory)
     {
-        return null;
+        var mappingsPath = UsmapLocator.Find(archiveDirectory);
+        return mappingsPath is null
+            ? null
+            : new Cue4ParseGameData(string.Empty, mappingsPath, new Dictionary<FGuid, string>());
     }
 
     public void ConfigureProvider(DefaultFileProvider provider, Cue4ParseGameData? gameData)
     {
+        if (!string.IsNullOrWhiteSpace(gameData?.MappingsPath))
+        {
+            provider.MappingsContainer = new FileUsmapTypeMappingsProvider(gameData.MappingsPath);
+        }
     }
 
     public void Mount(DefaultFileProvider provider, Cue4ParseGameData? gameData)

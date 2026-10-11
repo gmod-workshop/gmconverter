@@ -205,6 +205,8 @@ The Explorer can scan Unreal Engine 4 and 5 `.pak` / `.utoc` archives through CU
 
 Fortnite installations use a dedicated Unreal profile. When detected, GMConverter uses the Fortnite package version, fetches current AES keys and mappings from UEDB, downloads the mapping file to the local app-data cache, and submits those keys to CUE4Parse before scanning. Other UE4/UE5 archives use the generic profile and may require future game-specific key or version support.
 
+Most cooked UE5 games (for example Star Wars Zero Company) store "unversioned" properties. The Explorer can still list their assets, but meshes, materials and textures can't be read without a `.usmap` mappings file that matches the game's current build. Dump one from the running game with a tool such as Dumper-7 or UE4SS, then place it in the game's `Paks` folder or anywhere up to the game's install folder. GMConverter picks up the newest `.usmap` it finds there when it opens the archives, so restart GMConverter after adding one, and dump a new file after each game update.
+
 </details>
 
 <details>

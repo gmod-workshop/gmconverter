@@ -54,7 +54,7 @@ internal sealed class FortniteUnrealGameProfile : IUnrealGameProfile
         return new VersionContainer(EGame.GAME_UE5_8, ETexturePlatform.DesktopMobile);
     }
 
-    public Cue4ParseGameData? TryGetGameData()
+    public Cue4ParseGameData? TryGetGameData(string archiveDirectory)
     {
         return UedbClient.TryGetFortniteData();
     }

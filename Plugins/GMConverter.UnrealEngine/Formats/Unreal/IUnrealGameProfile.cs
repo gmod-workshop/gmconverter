@@ -13,7 +13,7 @@ internal interface IUnrealGameProfile
 
     VersionContainer CreateVersionContainer();
 
-    Cue4ParseGameData? TryGetGameData();
+    Cue4ParseGameData? TryGetGameData(string archiveDirectory);
 
     void ConfigureProvider(DefaultFileProvider provider, Cue4ParseGameData? gameData);
 

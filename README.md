@@ -71,7 +71,7 @@ Passing an option for a format that isn't selected is an error. The same keys an
 
 | Option | Alias | Description | Default |
 | --- | --- | --- | --- |
-| `--psk-import-animationPath <path.psa>` | `--animation-path` | PSA animation file to import alongside the mesh. | None |
+| `--psk-import-animationPath <path.psa>` | `--animation-path` | PSA animation files to import alongside the mesh. Separate several files with `;`. | None |
 
 </details>
 
@@ -186,7 +186,7 @@ ActorX coordinates use centimeters and are normalized to meters on import, inclu
 
 Use `--material-dir` to resolve UModel-style `.mat` sidecars and texture files. Diffuse, normal, specular, opacity, and emissive references are supported. If a material has no explicit normal map reference, nearby diffuse-name `_normal`, `_norm`, or `_bump` textures are used as normal-map fallbacks.
 
-PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA with `--animation-path` (`--psk-import-animationPath`) to export animation clips to glTF/GLB or Source `$sequence` SMDs.
+PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA with `--animation-path` (`--psk-import-animationPath`) to export animation clips to glTF/GLB or Source `$sequence` SMDs. To bundle several animations, separate the PSA paths with `;`. For long lists, put the arguments in a response file (one per line) and pass `@args.rsp`, because Windows limits command lines to about 32,000 characters.
 
 ```powershell
 ./GMConverter.CLI --input-format psk --output-format glb `
@@ -206,6 +206,8 @@ The Explorer can scan Unreal Engine 4 and 5 `.pak` / `.utoc` archives through CU
 Fortnite installations use a dedicated Unreal profile. When detected, GMConverter uses the Fortnite package version, fetches current AES keys and mappings from UEDB, downloads the mapping file to the local app-data cache, and submits those keys to CUE4Parse before scanning. Other UE4/UE5 archives use the generic profile and may require future game-specific key or version support.
 
 Most cooked UE5 games (for example Star Wars Zero Company) store "unversioned" properties. The Explorer can still list their assets, but meshes, materials and textures can't be read without a `.usmap` mappings file that matches the game's current build. Dump one from the running game with a tool such as Dumper-7 or UE4SS, then place it in the game's `Paks` folder or anywhere up to the game's install folder. GMConverter picks up the newest `.usmap` it finds there when it opens the archives, so restart GMConverter after adding one, and dump a new file after each game update.
+
+Skeletal meshes and animations are matched by the skeleton they were made for. To add animations to a model, double-click the skeletal mesh to load it, select it again and click **Related** to list the animations made for its skeleton, then select one or more (Ctrl- or Shift-click) and click **Add Animations**. Each one becomes a separate sequence in the exported model. To bundle every animation for the skeleton automatically, turn on **Include all compatible animations** before previewing or exporting the mesh. This includes animation sequences only; add montages by hand. The preview always shows the model in its rest pose.
 
 </details>
 

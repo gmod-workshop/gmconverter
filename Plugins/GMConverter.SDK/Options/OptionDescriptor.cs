@@ -29,6 +29,16 @@ public sealed record OptionDescriptor(string Key, OptionType Type, string Label)
     /// </summary>
     public Func<object?>? DefaultValueFactory { get; init; }
 
+    /// <summary>
+    /// For <see cref="OptionType.Path"/> options: the value may hold several paths separated by
+    /// <see cref="MultipleValueSeparator"/>. Hosts append to the list instead of replacing it when
+    /// they add a value; read it with <see cref="OptionValues.GetStrings"/>.
+    /// </summary>
+    public bool AllowsMultiple { get; init; }
+
+    /// <summary>Separator between the values of an <see cref="AllowsMultiple"/> option.</summary>
+    public const char MultipleValueSeparator = ';';
+
     /// <summary>Optional human-readable help text shown alongside the control.</summary>
     public string? Description { get; init; }
 

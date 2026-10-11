@@ -21,7 +21,7 @@ internal static class UE4ScanCache
 {
     // Bump this when ExplorerFileEntry or the cached envelope changes shape in a non-additive way
     // — readers will treat older files as a miss and regenerate.
-    private const int _cacheVersion = 2;
+    private const int _cacheVersion = 3;
 
     // Files whose presence/size/mtime defines "this archive set." We deliberately do not hash file
     // contents (would be slower than the scan we're trying to skip). The set covers PAK and IoStore

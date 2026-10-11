@@ -67,7 +67,7 @@
                                 Classes="Outline"
                                 Content="Related"
                                 Command="{Binding FindRelatedExplorerAnimationsCommand}"
-                                ToolTip.Tip="Find animation assets with names related to the selected asset"
+                                ToolTip.Tip="Find animations made for the selected asset's skeleton, or with related names when the skeleton is unknown"
                                 VerticalAlignment="Bottom"/>
                     </Grid>
                 </StackPanel>
@@ -89,6 +89,8 @@
                           Classes="explorer-tree"
                           ItemsSource="{Binding ExplorerNodes}"
                           SelectedItem="{Binding SelectedExplorerNode}"
+                          SelectionMode="Multiple"
+                          SelectionChanged="ExplorerTree_SelectionChanged"
                           DoubleTapped="ExplorerTree_DoubleTapped">
                     <TreeView.Styles>
                         <Style Selector="TreeViewItem">
@@ -111,11 +113,15 @@
                         HorizontalAlignment="Right"
                         Spacing="8"
                         Margin="0,12,0,0">
+                <CheckBox Content="Include all compatible animations"
+                          IsChecked="{Binding IncludeCompatibleAnimations}"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="When previewing or exporting a skeletal mesh, bundle every animation made for its skeleton"/>
                 <Button Classes="Outline"
-                        Content="Set Animation"
-                        Command="{Binding UseSelectionAsAnimationCommand}"
+                        Content="Add Animations"
+                        Command="{Binding AddSelectedAnimationsCommand}"
                         IsEnabled="{Binding HasAnimationExplorerEntry}"
-                        ToolTip.Tip="Export this animation and set it as the active animation on the Convert page"/>
+                        ToolTip.Tip="Export the selected animations (Ctrl/Shift-click to pick several) and add them to the model on the Convert page"/>
                 <Button Classes="Outline" Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
                 <Button Classes="Primary" Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
             </StackPanel>

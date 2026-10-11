@@ -59,6 +59,15 @@ public sealed partial class ConvertViewModel
         }
     }
 
+    /// <summary>
+    /// Applies explorer-resolved option values, appending to list options (such as several
+    /// animation files) rather than replacing them. Returns how many list values were added.
+    /// </summary>
+    internal int AppendImporterOptions(IReadOnlyDictionary<string, object?>? values)
+    {
+        return values is null ? 0 : CurrentImporterOptions.AppendFrom(values);
+    }
+
     /// <summary>Resets the active importer's options to their schema defaults.</summary>
     private void ResetCurrentImporterOptions()
     {

@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using GMConverter.Core.Plugins;
+using GMConverter.SDK.Options;
 using GMConverter.UI.Controls.Settings;
 using GMConverter.UI.Services;
 using GMConverter.UI.ViewModels;
@@ -234,6 +235,24 @@ public sealed class ExporterOptionsTests
         {
             window.Close();
         }
+    }
+
+    [Fact]
+    public void ListOptionsAppendExplorerValuesWithoutDuplicates()
+    {
+        var vm = new OptionSetViewModel("sample", new OptionSchema([
+            new OptionGroup("animation", "Animation", [
+                new OptionDescriptor("animations", OptionType.Path, "Animations") { AllowsMultiple = true },
+                new OptionDescriptor("name", OptionType.String, "Name"),
+            ]),
+        ]));
+
+        Assert.Equal(1, vm.AppendFrom(new Dictionary<string, object?> { ["animations"] = "walk.psa", ["name"] = "first" }));
+        Assert.Equal(1, vm.AppendFrom(new Dictionary<string, object?> { ["animations"] = "run.psa;walk.psa", ["name"] = "second" }));
+
+        var options = vm.BuildOptionValues();
+        Assert.Equal(["walk.psa", "run.psa"], options.GetStrings("animations"));
+        Assert.Equal("second", options.GetString("name"));
     }
 
     [Fact]

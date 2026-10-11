@@ -33,6 +33,18 @@ public sealed class PskImporterTests
     }
 
     [Fact]
+    public void SeveralAnimationFilesAreBundledWithUniqueClipNames()
+    {
+        var (psk, psa) = PskFixtures.WriteFixture();
+        var (_, otherPsa) = PskFixtures.WriteFixture();
+        var paths = $"{psa}{OptionDescriptor.MultipleValueSeparator} {otherPsa}";
+
+        var model = _importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
+
+        Assert.Equal(["move", "move_2"], model.Animations!.Select(clip => clip.Name));
+    }
+
+    [Fact]
     public void AnimationOptionMustNameAnExistingPsaFile()
     {
         var (psk, psa) = PskFixtures.WriteFixture();

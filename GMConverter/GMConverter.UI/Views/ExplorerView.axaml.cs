@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
+using GMConverter.UI.Models;
 using GMConverter.UI.ViewModels;
 
 namespace GMConverter.UI.Views;
@@ -48,6 +49,14 @@ public partial class ExplorerView : UserControl
 
             e.Handled = true;
         });
+    }
+
+    private void ExplorerTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is ExplorerViewModel viewModel && sender is TreeView tree)
+        {
+            viewModel.SetSelectedExplorerNodes(tree.SelectedItems.OfType<ExplorerNode>());
+        }
     }
 
     private void ExplorerTree_DoubleTapped(object? sender, TappedEventArgs e)

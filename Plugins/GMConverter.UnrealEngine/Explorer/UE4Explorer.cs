@@ -20,6 +20,7 @@ using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Exceptions;
+using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
@@ -1322,6 +1323,7 @@ public sealed class UE4Explorer : IExplorer
         stats = scanStats;
         List<ExplorerFileEntry> entries = [];
         var provider = providerContext.Provider;
+        List<(string ProviderPath, FAssetRegistryState Registry)> registries = [];
 
         foreach (var (providerPath, registryFile) in provider.Files.Where(IsAssetRegistryFile))
         {
@@ -1345,6 +1347,22 @@ public sealed class UE4Explorer : IExplorer
                 continue;
             }
 
+            registries.Add((providerPath, registry));
+        }
+
+        UnrealSkeletonIndex skeletonIndex;
+        using (PerfTimer.Measure("ue4.scan", "BuildSkeletonIndex"))
+        {
+            skeletonIndex = UnrealSkeletonIndex.FromContainers(
+                provider.MountedVfs.OfType<IoStoreReader>(),
+                registries
+                    .SelectMany(pair => pair.Registry.PreallocatedAssetDataBuffers)
+                    .Where(asset => asset.AssetClass.Text.Equals("Skeleton", StringComparison.OrdinalIgnoreCase))
+                    .Select(asset => asset.PackageName.Text));
+        }
+
+        foreach (var (providerPath, registry) in registries)
+        {
             foreach (var asset in registry.PreallocatedAssetDataBuffers)
             {
                 var registryClass = asset.AssetClass.Text;
@@ -1362,6 +1380,9 @@ public sealed class UE4Explorer : IExplorer
                     ? $"Class {assetClass} | Object {objectPath} | Registry {providerPath} | Browse only"
                     : $"Class {assetClass} | Object {objectPath} | Registry {providerPath}";
                 scanStats.SupportedAssetCount++;
+                var skeletonId = isExportableAnimation || assetClass.Equals("SkeletalMesh", StringComparison.OrdinalIgnoreCase)
+                    ? skeletonIndex.FindSkeleton(asset.PackageName.Text)
+                    : null;
 
                 entries.Add(new ExplorerFileEntry(
                     displayPath,
@@ -1374,7 +1395,8 @@ public sealed class UE4Explorer : IExplorer
                     Id,
                     details,
                     IsConvertible: !isAnimation,
-                    AssetClass: assetClass));
+                    AssetClass: assetClass,
+                    SkeletonId: skeletonId));
             }
         }
 

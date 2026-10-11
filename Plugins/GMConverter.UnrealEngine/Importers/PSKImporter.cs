@@ -36,8 +36,9 @@ internal sealed class PSKImporter : IImporter
         [
             new OptionDescriptor(PSKImporterOptions.AnimationPath, OptionType.Path, "Animation path")
             {
-                Description = "Optional PSA animation file to import alongside the mesh.",
+                Description = "Optional PSA animation files to import alongside the mesh. Separate several files with ';'.",
                 Aliases = ["animation-path"],
+                AllowsMultiple = true,
             },
         ]),
     ]);
@@ -394,12 +395,35 @@ internal sealed class PSKImporter : IImporter
 
     private static List<AnimationClip>? BuildAnimations(Skeleton? skeleton, ModelParseOptions options)
     {
-        var animationOption = options.Options.GetString(PSKImporterOptions.AnimationPath);
-        if (skeleton is null || string.IsNullOrWhiteSpace(animationOption))
+        var animationPaths = options.Options.GetStrings(PSKImporterOptions.AnimationPath);
+        if (skeleton is null || animationPaths.Count == 0)
         {
             return null;
         }
 
+        // Every bundled PSA becomes its own set of clips. UE5 exports one sequence per file, so
+        // names rarely collide, but a repeated name would make exporters drop or overwrite one.
+        List<AnimationClip> clips = [];
+        HashSet<string> clipNames = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var animationOption in animationPaths)
+        {
+            foreach (var clip in ReadAnimationClips(skeleton, animationOption, options))
+            {
+                var name = clip.Name;
+                for (var suffix = 2; !clipNames.Add(name); suffix++)
+                {
+                    name = FormattableString.Invariant($"{clip.Name}_{suffix}");
+                }
+
+                clips.Add(clip with { Name = name });
+            }
+        }
+
+        return clips;
+    }
+
+    private static List<AnimationClip> ReadAnimationClips(Skeleton skeleton, string animationOption, ModelParseOptions options)
+    {
         var animationPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(animationOption));
         if (!File.Exists(animationPath))
         {

@@ -665,12 +665,22 @@ internal static class MultiLayerBaker
             // rewrites the part's submesh material-name keys so sibling parts that share an
             // upstream material name don't collide in the glTF/MDL material table (which would
             // pick the first-resolved part's textures and shade every sibling with them).
+            // Carry the blend settings through untouched so baked cut-out materials stay cut out.
+            var blendMode = root.TryGetProperty("BlendMode", out var blendModeEl) && blendModeEl.ValueKind == JsonValueKind.String
+                ? blendModeEl.GetString()
+                : null;
+            float? alphaCutoff = root.TryGetProperty("AlphaCutoff", out var alphaCutoffEl) && alphaCutoffEl.ValueKind == JsonValueKind.Number
+                ? alphaCutoffEl.GetSingle()
+                : null;
+
             var updated = new
             {
                 Textures = textures,
                 Parameters = parametersBlock,
                 BakedUv0Scale = bakedScale,
                 MaterialAlias = materialAlias,
+                BlendMode = blendMode,
+                AlphaCutoff = alphaCutoff,
             };
             File.WriteAllText(sidecarPath, JsonSerializer.Serialize(updated, jsonOptions));
         }

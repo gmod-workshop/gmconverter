@@ -5,6 +5,7 @@ using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
+using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.UnrealEngine.Importers;
 
@@ -93,6 +94,58 @@ public sealed class PskImporterTests
         Assert.True(material.HasAlpha);
         var pixels = material.DiffuseTexture!.GetRgbaPixels();
         Assert.All(Enumerable.Range(0, pixels.Length / 4), index => Assert.Equal(128, pixels[(index * 4) + 3]));
+    }
+
+    [Fact]
+    public void MaskedUnrealMaterialWithClearTexelsIsAlphaTested()
+    {
+        var material = ParseUnrealMaterial("Masked", halfCutOut: true);
+
+        Assert.Equal(MaterialBlendMode.AlphaTest, material.BlendMode);
+        Assert.Equal(0.4f, material.AlphaCutoff, 5);
+        Assert.True(material.HasAlpha);
+    }
+
+    [Fact]
+    public void MaskedUnrealMaterialWithoutClearTexelsStaysOpaque()
+    {
+        // Alpha here is packed data (e.g. a dithered-fade mask), not a cut-out.
+        var material = ParseUnrealMaterial("Masked", halfCutOut: false);
+
+        Assert.Equal(MaterialBlendMode.Unspecified, material.BlendMode);
+        Assert.False(material.HasAlpha);
+    }
+
+    [Fact]
+    public void TranslucentUnrealMaterialBlendsDiffuseAlpha()
+    {
+        var material = ParseUnrealMaterial("Translucent", halfCutOut: false);
+
+        Assert.Equal(MaterialBlendMode.AlphaBlend, material.BlendMode);
+        Assert.True(material.HasAlpha);
+    }
+
+    // halfCutOut writes a diffuse whose top half is fully clear (a real cut-out such as netting);
+    // otherwise every texel carries the same partial alpha, like packed data.
+    private Material ParseUnrealMaterial(string blendMode, bool halfCutOut)
+    {
+        var (psk, _) = PskFixtures.WriteFixture();
+        var directory = Path.GetDirectoryName(psk)!;
+        File.WriteAllText(
+            Path.Join(directory, "test.json"),
+            $$"""{ "Textures": { "Diffuse": "panel" }, "BlendMode": "{{blendMode}}", "AlphaCutoff": 0.4 }""");
+        const int size = 4;
+        var pixels = new byte[size * size * 4];
+        for (var texel = 0; texel < size * size; texel++)
+        {
+            pixels[(texel * 4) + 0] = 80;
+            pixels[(texel * 4) + 3] = halfCutOut ? (byte)(texel < size * size / 2 ? 0 : 255) : (byte)128;
+        }
+
+        using var diffuse = new DefaultTextureFactory().FromRgba("panel", size, size, pixels, hasAlpha: true);
+        diffuse.WritePng(Path.Join(directory, "panel.png"));
+
+        return Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
     }
 
     [Fact]

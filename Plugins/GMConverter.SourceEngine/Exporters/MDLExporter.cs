@@ -738,10 +738,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
     // extracted too (LZR) only when the root actually turns. Layers never move the character.
     private static IEnumerable<string> GetMotionExtraction(Model model, AnimationClip clip)
     {
-        if (!clip.RootMotion ||
-            clip.Layering is not null ||
-            model.Skeleton?.Bones.FirstOrDefault(bone => bone.ParentIndex < 0) is not { } root ||
-            clip.Tracks.OfType<BoneTransformTrack>().FirstOrDefault(track => track.BoneIndex == root.Index) is not { Keyframes.Count: > 1 } rootTrack)
+        if (GetRootMotionTrack(model, clip) is not { } rootTrack)
         {
             yield break;
         }
@@ -772,6 +769,34 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
                 previousFrame = endFrame;
             }
         }
+    }
+
+    // The root's track when the clip's root motion is extracted, or null when it isn't.
+    private static BoneTransformTrack? GetRootMotionTrack(Model model, AnimationClip clip)
+    {
+        return clip.RootMotion &&
+            clip.Layering is null &&
+            model.Skeleton?.Bones.FirstOrDefault(bone => bone.ParentIndex < 0) is { } root &&
+            clip.Tracks.OfType<BoneTransformTrack>().FirstOrDefault(track => track.BoneIndex == root.Index) is { Keyframes.Count: > 1 } rootTrack
+                ? rootTrack
+                : null;
+    }
+
+    // Extraction only takes out the root's motion from its first frame on, so wherever the root
+    // starts stays in the pose. Unreal stops and pivots are authored to end on the origin and start
+    // metres away (and turned), which would draw the model off to the side for the whole sequence.
+    // Like Unreal's root lock, the root is moved so the first frame sits on its bind pose, and the
+    // rest of the clip keeps its motion relative to that.
+    private static Func<Transform, Transform> CreateRootMotionRebase(Bone root, BoneTransformTrack rootTrack, float frameRate)
+    {
+        var first = ToTransformMatrix(GetFrameTransform(root, rootTrack, 0, frameRate), includeScale: true);
+        Matrix4x4.Invert(first, out var inverseFirst);
+        var correction = inverseFirst * ToTransformMatrix(root.LocalBindPose, includeScale: true);
+        return transform =>
+        {
+            Matrix4x4.Decompose(ToTransformMatrix(transform, includeScale: true) * correction, out var scale, out var rotation, out var translation);
+            return new Transform(translation, rotation, scale);
+        };
     }
 
     // The turn about the model's vertical axis between two root rotations.
@@ -992,6 +1017,10 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             .GroupBy(track => track.BoneIndex)
             .ToDictionary(group => group.Key, group => group.First());
         var lastFrame = GetLastAnimationFrame(clip, tracksByBone.Values);
+        var root = model.Skeleton.Bones.FirstOrDefault(bone => bone.ParentIndex < 0);
+        var rebaseRoot = root is not null && GetRootMotionTrack(model, clip) is { } rootTrack
+            ? CreateRootMotionRebase(root, rootTrack, clip.FrameRate)
+            : null;
 
         for (var frameIndex = 0; frameIndex <= lastFrame; frameIndex++)
         {
@@ -999,6 +1028,10 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             var frameTransforms = model.Skeleton.Bones.ToDictionary(
                 bone => bone.Index,
                 bone => GetFrameTransform(bone, tracksByBone.GetValueOrDefault(bone.Index), frameIndex, clip.FrameRate));
+            if (rebaseRoot is not null)
+            {
+                frameTransforms[root!.Index] = rebaseRoot(frameTransforms[root.Index]);
+            }
             var sourceTransforms = BuildSourceLocalTransforms(model.Skeleton, frameTransforms);
 
             foreach (var bone in model.Skeleton.Bones.OrderBy(bone => bone.Index))

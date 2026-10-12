@@ -141,6 +141,38 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void RootMotionClipsStartOnTheBindPose()
+    {
+        // Like an Unreal stop: the root starts 1 m away and turned 90 degrees, and ends on its bind
+        // pose. Extraction only removes motion from the first frame on, so the first frame is
+        // moved onto the bind pose and the rest follows it.
+        var stop = new AnimationClip(
+            "stop",
+            8f,
+            1f,
+            [
+                new BoneTransformTrack(0,
+                [
+                    new TransformKeyframe(0f, new Transform(new Vector3(1.25f, 0, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2), Vector3.One)),
+                    new TransformKeyframe(1f, new Transform(new Vector3(0.25f, 0, 0), Quaternion.Identity, Vector3.One)),
+                ]),
+            ],
+            RootMotion: true);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with { Animations = [stop] };
+
+        var smd = File.ReadAllLines(Directory.GetFiles(ExportWithStubCompiler(model), "triangle_0_stop.smd", SearchOption.AllDirectories).Single());
+
+        float[] Root(int frame) => [.. smd[Array.IndexOf(smd, FormattableString.Invariant($"time {frame}")) + 1]
+            .Split(' ')[1..]
+            .Select(value => float.Parse(value, CultureInfo.InvariantCulture))];
+        void AssertRoot(float[] expected, int frame) => Assert.All(expected.Zip(Root(frame)), pair => Assert.Equal(pair.First, pair.Second, 3));
+        AssertRoot([9.84252f, 0, 0, 0, 0, 0], 0);
+        // It moved 1 m to its own left (world -X while it faced +Y) and turned 90 degrees right;
+        // from the bind facing, that is 1 m along +Y.
+        AssertRoot([9.84252f, 39.37008f, 0, 0, 0, -MathF.PI / 2], 8);
+    }
+
+    [Fact]
     public void AttachmentsAreWrittenRelativeToTheirSourceBone()
     {
         // The root is scaled 2x; Source bones carry no scale, so the attachment's offset from the

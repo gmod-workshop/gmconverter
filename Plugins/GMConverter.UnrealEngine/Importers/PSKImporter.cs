@@ -405,9 +405,10 @@ internal sealed class PSKImporter : IImporter
         // names rarely collide, but a repeated name would make exporters drop or overwrite one.
         List<AnimationClip> clips = [];
         HashSet<string> clipNames = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<(string Base, int Frame), AnimationPose> basePoses = [];
         foreach (var animationOption in animationPaths)
         {
-            foreach (var clip in ReadAnimationClips(skeleton, animationOption, options))
+            foreach (var clip in ReadAnimationClips(skeleton, animationOption, options, basePoses))
             {
                 var name = clip.Name;
                 for (var suffix = 2; !clipNames.Add(name); suffix++)
@@ -422,7 +423,11 @@ internal sealed class PSKImporter : IImporter
         return clips;
     }
 
-    private static List<AnimationClip> ReadAnimationClips(Skeleton skeleton, string animationOption, ModelParseOptions options)
+    private static List<AnimationClip> ReadAnimationClips(
+        Skeleton skeleton,
+        string animationOption,
+        ModelParseOptions options,
+        Dictionary<(string Base, int Frame), AnimationPose> basePoses)
     {
         var animationPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(animationOption));
         if (!File.Exists(animationPath))
@@ -441,12 +446,8 @@ internal sealed class PSKImporter : IImporter
             return [];
         }
 
-        var boneNameToIndex = skeleton.Bones
-            .GroupBy(bone => NormalizeBoneName(bone.Name), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First().Index, StringComparer.OrdinalIgnoreCase);
-        var psaBoneToSkeletonBone = psa.Bones
-            .Select(bone => boneNameToIndex.TryGetValue(NormalizeBoneName(bone.Name), out var boneIndex) ? boneIndex : -1)
-            .ToArray();
+        var psaBoneToSkeletonBone = MapPsaBones(skeleton, psa);
+        var layering = ReadLayering(skeleton, animationPath, options, basePoses);
         List<AnimationClip> clips = [];
 
         foreach (var sequence in psa.Sequences)
@@ -468,15 +469,7 @@ internal sealed class PSKImporter : IImporter
                 for (var frameIndex = 0; frameIndex < sequence.FrameCount; frameIndex++)
                 {
                     var keyIndex = checked(frameIndex * psa.Bones.Count + psaBoneIndex);
-                    var key = keys[keyIndex];
-                    var scale = scaleKeys.Count == keys.Count
-                        ? TransformScale(scaleKeys[keyIndex].Scale, options)
-                        : Vector3.One;
-                    var skeletonBone = skeleton.Bones[skeletonBoneIndex];
-                    var transform = new Transform(
-                        TransformPosition(key.Location, options),
-                        TransformBoneRotation(key.Rotation, options, skeletonBone.ParentIndex >= 0),
-                        scale);
+                    var transform = ReadBoneTransform(skeleton, skeletonBoneIndex, keys, scaleKeys, keyIndex, options);
                     keyframes.Add(new TransformKeyframe(frameIndex / fps, transform));
                 }
 
@@ -495,10 +488,97 @@ internal sealed class PSKImporter : IImporter
                 sequence.Name,
                 fps,
                 sequence.FrameCount <= 1 ? 0.0f : (sequence.FrameCount - 1) / fps,
-                tracks));
+                tracks,
+                layering));
         }
 
         return clips;
+    }
+
+    private static int[] MapPsaBones(Skeleton skeleton, PSAFile psa)
+    {
+        var boneNameToIndex = skeleton.Bones
+            .GroupBy(bone => NormalizeBoneName(bone.Name), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Index, StringComparer.OrdinalIgnoreCase);
+        return [.. psa.Bones.Select(bone => boneNameToIndex.TryGetValue(NormalizeBoneName(bone.Name), out var boneIndex) ? boneIndex : -1)];
+    }
+
+    private static Transform ReadBoneTransform(
+        Skeleton skeleton,
+        int skeletonBoneIndex,
+        IReadOnlyList<PSAKey> keys,
+        IReadOnlyList<PSAScaleKey> scaleKeys,
+        int keyIndex,
+        ModelParseOptions options)
+    {
+        var key = keys[keyIndex];
+        var scale = scaleKeys.Count == keys.Count
+            ? TransformScale(scaleKeys[keyIndex].Scale, options)
+            : Vector3.One;
+        return new Transform(
+            TransformPosition(key.Location, options),
+            TransformBoneRotation(key.Rotation, options, skeleton.Bones[skeletonBoneIndex].ParentIndex >= 0),
+            scale);
+    }
+
+    // The explorer leaves a sidecar next to additive animations naming the pose they were authored
+    // against. Clips that share a base share one AnimationPose, so exporters can write it once.
+    private static AnimationLayering? ReadLayering(
+        Skeleton skeleton,
+        string animationPath,
+        ModelParseOptions options,
+        Dictionary<(string Base, int Frame), AnimationPose> basePoses)
+    {
+        if (PSALayerSidecar.TryRead(animationPath) is not { } sidecar)
+        {
+            return null;
+        }
+
+        if (sidecar.ResolveBasePath(animationPath) is not { } basePath)
+        {
+            return new AnimationLayering(sidecar.Space);
+        }
+
+        if (!basePoses.TryGetValue((sidecar.BaseId ?? basePath, sidecar.BaseFrame), out var basePose))
+        {
+            if (!File.Exists(basePath) || ReadPose(skeleton, basePath, sidecar.BaseFrame, options) is not { } pose)
+            {
+                // Without its base the layer can't be recovered; the baked clip still plays as-is.
+                return null;
+            }
+
+            basePose = pose;
+            basePoses.Add((sidecar.BaseId ?? basePath, sidecar.BaseFrame), basePose);
+        }
+
+        return new AnimationLayering(sidecar.Space, basePose);
+    }
+
+    private static AnimationPose? ReadPose(Skeleton skeleton, string psaPath, int frame, ModelParseOptions options)
+    {
+        var psa = PSAFile.Read(psaPath);
+        if (psa.Bones.Count == 0 || psa.Sequences.Count == 0)
+        {
+            return null;
+        }
+
+        var sequence = psa.Sequences[0];
+        var keys = psa.GetSequenceKeys(sequence);
+        var scaleKeys = psa.GetSequenceScaleKeys(sequence);
+        var frameIndex = Math.Clamp(frame, 0, Math.Max(0, sequence.FrameCount - 1));
+        var psaBoneToSkeletonBone = MapPsaBones(skeleton, psa);
+        Dictionary<int, Transform> transforms = [];
+        for (var psaBoneIndex = 0; psaBoneIndex < psa.Bones.Count; psaBoneIndex++)
+        {
+            var skeletonBoneIndex = psaBoneToSkeletonBone[psaBoneIndex];
+            if (skeletonBoneIndex >= 0)
+            {
+                var keyIndex = checked(frameIndex * psa.Bones.Count + psaBoneIndex);
+                transforms.TryAdd(skeletonBoneIndex, ReadBoneTransform(skeleton, skeletonBoneIndex, keys, scaleKeys, keyIndex, options));
+            }
+        }
+
+        return new AnimationPose(FormattableString.Invariant($"{sequence.Name}_{frameIndex}"), transforms);
     }
 
     private static string NormalizeBoneName(string name)

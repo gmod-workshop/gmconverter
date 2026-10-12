@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using GMConverter.Core.Plugins;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
@@ -71,6 +72,35 @@ public sealed class MdlExporterTests
         // The flat triangle is padded to Source's one-inch minimum collision thickness.
         var zs = bounds.Vertices.Select(vertex => vertex.Position.Z).ToArray();
         Assert.Equal(0.0254f, zs.Max() - zs.Min(), 4);
+    }
+
+    [Fact]
+    public void LayeredClipsBecomeDeltaSequencesAgainstTheirBasePose()
+    {
+        var basePose = new AnimationPose("idle_0", new Dictionary<int, Transform> { [0] = Transform.Identity });
+        AnimationClip Clip(string name, AnimationLayering? layering) => new(
+            name, 30f, 0f, [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity)])], layering);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            Animations =
+            [
+                Clip("walk", null),
+                Clip("aim_up", new AnimationLayering(LayerSpace.Model, basePose)),
+                Clip("aim_down", new AnimationLayering(LayerSpace.Model, basePose)),
+                Clip("flinch", new AnimationLayering(LayerSpace.Local)),
+            ],
+        };
+
+        var output = ExportWithStubCompiler(model);
+
+        var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        var baseAnimation = Assert.Single(qc.Split('\n'), line => line.StartsWith("$animation", StringComparison.Ordinal));
+        Assert.Contains("triangle_base0_idle_0", baseAnimation);
+        Assert.Single(Directory.GetFiles(output, "triangle_base0_idle_0.smd", SearchOption.AllDirectories));
+        Assert.Equal(2, qc.Split("subtract \"triangle_base0_idle_0\" 0").Length - 1);
+        Assert.Contains("subtract \"idle\" 0", qc);
+        Assert.Equal(3, qc.Split("    delta").Length - 1);
+        Assert.Contains("$sequence \"walk\" \"triangle_0_walk.smd\" fps 30", qc);
     }
 
     [Fact]

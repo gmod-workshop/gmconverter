@@ -209,6 +209,8 @@ Most cooked UE5 games (for example Star Wars Zero Company) store "unversioned" p
 
 Skeletal meshes and animations are matched by the skeleton they were made for. To add animations to a model, double-click the skeletal mesh to load it, select it again and click **Related** to list the animations made for its skeleton, then select one or more (Ctrl- or Shift-click) and click **Add Animations**. Each one becomes a separate sequence in the exported model. To bundle every animation for the skeleton automatically, turn on **Include all compatible animations** before previewing or exporting the mesh. This includes animation sequences only; add montages by hand. The preview always shows the model in its rest pose.
 
+Additive animations (layers such as aim poses, flinches and hit reactions that the game adds on top of another animation) keep that role in MDL output: each becomes a `delta` sequence measured against the pose it was authored for, so it can be played as a layer or gesture in Garry's Mod. Played on its own, a delta sequence does not show a normal pose. Formats without layers, such as glTF, receive the layer already applied to its base pose. Layers that Unreal applies in model space are applied in each bone's local space by Source, so they match exactly on their own base pose and approximately on others.
+
 </details>
 
 <details>

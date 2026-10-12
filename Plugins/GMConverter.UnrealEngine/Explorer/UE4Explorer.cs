@@ -19,6 +19,7 @@ using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
@@ -216,7 +217,14 @@ public sealed class UE4Explorer : IExplorer
         UObject sourceExport;
         using (PerfTimer.Measure("ue4.resolve", "LoadPackageObject", fileEntry.ArchiveEntryPath))
         {
-            sourceExport = provider.LoadPackageObject(fileEntry.ArchiveEntryPath);
+            try
+            {
+                sourceExport = provider.LoadPackageObject(fileEntry.ArchiveEntryPath);
+            }
+            catch (MappingException)
+            {
+                throw new GMConverterException(CreateMissingMappingsMessage(archiveRoot, fileEntry.ArchiveEntryPath));
+            }
         }
         PerfTimer.Log("ue4.resolve", $"sourceExport type={sourceExport.ExportType}");
 
@@ -243,6 +251,10 @@ public sealed class UE4Explorer : IExplorer
                 {
                     resolvedExports = ResolveMeshExports(sourceExport, provider);
                 }
+            }
+            catch (MappingException)
+            {
+                throw new GMConverterException(CreateMissingMappingsMessage(archiveRoot, fileEntry.ArchiveEntryPath));
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -1378,6 +1390,13 @@ public sealed class UE4Explorer : IExplorer
         }
 
         return loadedProvider;
+    }
+
+    private static string CreateMissingMappingsMessage(string archiveRoot, string assetPath)
+    {
+        return $"Cannot read {assetPath}: this game stores unversioned properties, which require a .usmap " +
+            "mappings file for the game's current build. Dump one from the running game (for example with " +
+            $"Dumper-7 or UE4SS), place it in {archiveRoot} or the game's install folder, then restart GMConverter.";
     }
 
     private static bool IsPackageFile(GameFile file)

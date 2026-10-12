@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Added two-texture `Combiner` materials (add or multiply). The second texture becomes the new SDK `Material.DetailLayer`, with its own transform, and is written to Source as `$detail`. Examples are Republic Commando's tiled burlap over a lightmap, a drifting scope line, and a rotating light swirl.
 - Added colour-only glows. A `ConstantColor` or `FadeColor` used as a material's self-illumination glows in that colour, and a `FadeColor` pulses between its two colours (the new SDK `MaterialEmissiveLayer.Pulse`). An example is Republic Commando's demolition charge.
 - Added masked-blend `Combiner` materials to UE2 Explorer exports, such as Republic Commando's destroyed-dispenser scorch overlay. The overlay and its mask are now composited into the diffuse instead of the overlay texture replacing the whole material.
+- Added `.usmap` mappings support for Unreal Engine 4/5 games other than Fortnite. GMConverter now loads the newest `.usmap` in the archive folder or any parent up to the game's install folder, which lets the Explorer read meshes from cooked UE5 games with unversioned properties, such as Star Wars Zero Company. When mappings are missing, the Explorer explains how to supply them instead of reporting a raw CUE4Parse error.
 
 ### Changed
 

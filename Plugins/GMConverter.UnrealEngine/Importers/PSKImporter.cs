@@ -6,6 +6,7 @@ using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
+using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 using GMConverter.UnrealEngine.Common;
 using GMConverter.UnrealEngine.Formats.PSA;
@@ -106,9 +107,16 @@ internal sealed class PSKImporter : IImporter
         Dictionary<string, Dictionary<string, Material>> skins = new(StringComparer.OrdinalIgnoreCase);
         List<Attachment> attachments = [];
         HashSet<string> attachmentNames = new(StringComparer.OrdinalIgnoreCase);
+        List<PhysicsBody> bodies = [];
+        List<PhysicsJoint> joints = [];
         foreach (var model in parts)
         {
             meshes.AddRange(model.Meshes);
+
+            // Parts that share a skeleton usually share its physics asset too; keep one body and
+            // one joint per bone.
+            bodies.AddRange(model.Physics?.Bodies.Where(body => bodies.All(existing => existing.BoneIndex != body.BoneIndex)) ?? []);
+            joints.AddRange(model.Physics?.Joints.Where(joint => joints.All(existing => existing.BoneIndex != joint.BoneIndex)) ?? []);
             foreach (var attachment in model.Attachments ?? [])
             {
                 // Repeated parts (the same prop placed twice) repeat their sockets too.
@@ -153,7 +161,8 @@ internal sealed class PSKImporter : IImporter
             skeleton,
             BuildAnimations(skeleton, options),
             Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))],
-            Attachments: attachments.Count == 0 ? null : attachments);
+            Attachments: attachments.Count == 0 ? null : attachments,
+            Physics: bodies.Count == 0 ? null : new ModelPhysics(bodies, joints));
     }
 
     private Model ParseSingle(string inputPath, ModelParseOptions options, PSKSceneTransform? sceneTransform)
@@ -266,7 +275,89 @@ internal sealed class PSKImporter : IImporter
             skeleton,
             buildAnimations ? BuildAnimations(skeleton, options) : null,
             BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath),
-            BuildAttachments(inputPath, skeleton, options, sceneTransform));
+            BuildAttachments(inputPath, skeleton, options, sceneTransform),
+            BuildPhysics(inputPath, skeleton, options));
+    }
+
+    // Bodies and joints are relative to their bones, so like bone sockets they need no scene
+    // placement. Bodies on bones this mesh doesn't have are dropped, and so are joints whose
+    // bodies are gone.
+    private static ModelPhysics? BuildPhysics(string inputPath, Skeleton? skeleton, ModelParseOptions options)
+    {
+        if (skeleton is null || PSKPhysicsSidecar.TryRead(inputPath) is not { Bodies.Count: > 0 } sidecar)
+        {
+            return null;
+        }
+
+        Dictionary<string, int> boneIndices = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var bone in skeleton.Bones)
+        {
+            boneIndices.TryAdd(NormalizeBoneName(bone.Name), bone.Index);
+        }
+
+        int BoneIndexOf(string name) => boneIndices.GetValueOrDefault(NormalizeBoneName(name), -1);
+
+        List<PhysicsBody> bodies =
+        [
+            .. sidecar.Bodies
+                .Select(body => (Body: body, BoneIndex: BoneIndexOf(body.Bone)))
+                .Where(item => item.BoneIndex >= 0)
+                .DistinctBy(item => item.BoneIndex)
+                .Select(item => new PhysicsBody(item.BoneIndex, [.. item.Body.Shapes.Select(shape => BuildCollisionShape(shape, options))])),
+        ];
+        var bodyBones = bodies.Select(body => body.BoneIndex).ToHashSet();
+
+        // Y-up swaps the frame's Y and Z axes along with everything else.
+        var isYUp = options.AxisMode is ModelAxisMode.YUp;
+        List<PhysicsJoint> joints =
+        [
+            .. sidecar.Joints
+                .Select(joint => (Joint: joint, BoneIndex: BoneIndexOf(joint.Bone), ParentBoneIndex: BoneIndexOf(joint.ParentBone)))
+                .Where(item => bodyBones.Contains(item.BoneIndex) && bodyBones.Contains(item.ParentBoneIndex))
+                .DistinctBy(item => item.BoneIndex)
+                .Select(item =>
+                {
+                    var swing1 = ToAngularLimit(item.Joint.Swing1Limit);
+                    var swing2 = ToAngularLimit(item.Joint.Swing2Limit);
+                    return new PhysicsJoint(
+                        item.BoneIndex,
+                        item.ParentBoneIndex,
+                        TransformRotation(item.Joint.Frame, options),
+                        ToAngularLimit(item.Joint.TwistLimit),
+                        isYUp ? swing1 : swing2,
+                        isYUp ? swing2 : swing1);
+                }),
+        ];
+
+        return bodies.Count == 0 ? null : new ModelPhysics(bodies, joints);
+    }
+
+    private static AngularLimit? ToAngularLimit(float? halfAngle)
+    {
+        return halfAngle is { } degrees ? new AngularLimit(-degrees, degrees) : null;
+    }
+
+    private static CollisionShape BuildCollisionShape(PSKPhysicsShape shape, ModelParseOptions options)
+    {
+        var rotation = TransformRotation(shape.Rotation, options);
+        var transform = new Transform(TransformPosition(shape.Center, options), rotation, Vector3.One);
+        switch (shape.Kind)
+        {
+            case PSKPhysicsShapeKind.Sphere:
+                return new SphereShape(transform, shape.Radius * options.ScaleFactor);
+            case PSKPhysicsShapeKind.Box:
+                return new BoxShape(transform, TransformScale(shape.HalfExtents, options) * options.ScaleFactor);
+            case PSKPhysicsShapeKind.Capsule:
+                // Y-up maps the capsule's Z axis to the shape's Y axis; turn it back onto Z.
+                if (options.AxisMode is ModelAxisMode.YUp)
+                {
+                    transform = transform with { Rotation = rotation * Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f) };
+                }
+
+                return new CapsuleShape(transform, shape.Radius * options.ScaleFactor, shape.Length * options.ScaleFactor);
+            default:
+                return new ConvexShape(transform, [.. (shape.Points ?? []).Select(point => TransformPosition(point, options))]);
+        }
     }
 
     // Sockets on a bone stay relative to it; sockets on a static mesh are relative to the mesh,

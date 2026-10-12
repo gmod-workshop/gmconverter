@@ -1,5 +1,6 @@
 using System.Numerics;
 using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Physics;
 
 namespace GMConverter.UnrealEngine.Importers;
 
@@ -23,10 +24,10 @@ internal static class PSKSceneSkeleton
             if (part.Skeleton is not { Bones.Count: > 0 } skeleton || !IsSkinned(part))
             {
                 // Without a rig the part's bones are dropped, so its bone attachments move to
-                // the model origin at their bind-pose placement.
+                // the model origin at their bind-pose placement, and its ragdoll has nothing to move.
                 merged[partIndex] = part.Skeleton is { } unusedSkeleton && part.Attachments is { Count: > 0 } attachments
-                    ? part with { Attachments = [.. attachments.Select(attachment => ToModelSpace(attachment, unusedSkeleton))] }
-                    : part;
+                    ? part with { Attachments = [.. attachments.Select(attachment => ToModelSpace(attachment, unusedSkeleton))], Physics = null }
+                    : part with { Physics = null };
                 continue;
             }
 
@@ -57,6 +58,7 @@ internal static class PSKSceneSkeleton
                     Attachments = part.Attachments?
                         .Select(attachment => attachment.BoneIndex is { } boneIndex ? attachment with { BoneIndex = boneMap[boneIndex] } : attachment)
                         .ToArray(),
+                    Physics = part.Physics is { } physics ? RemapPhysics(physics, boneMap) : null,
                 };
         }
 
@@ -94,6 +96,13 @@ internal static class PSKSceneSkeleton
         return Matrix4x4.CreateScale(transform.Scale) *
             Matrix4x4.CreateFromQuaternion(transform.Rotation) *
             Matrix4x4.CreateTranslation(transform.Translation);
+    }
+
+    private static ModelPhysics RemapPhysics(ModelPhysics physics, int[] boneMap)
+    {
+        return new ModelPhysics(
+            [.. physics.Bodies.Select(body => body with { BoneIndex = boneMap[body.BoneIndex] })],
+            [.. physics.Joints.Select(joint => joint with { BoneIndex = boneMap[joint.BoneIndex], ParentBoneIndex = boneMap[joint.ParentBoneIndex] })]);
     }
 
     private static Mesh RemapWeights(Mesh mesh, int[] boneMap)

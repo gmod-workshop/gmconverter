@@ -1,6 +1,7 @@
 using System.Numerics;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Materials;
+using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 
 namespace GMConverter.SDK.Geometry;
@@ -12,7 +13,8 @@ public sealed record Model(
     Skeleton? Skeleton = null,
     IReadOnlyList<AnimationClip>? Animations = null,
     IReadOnlyList<MaterialSkin>? Skins = null,
-    IReadOnlyList<Attachment>? Attachments = null)
+    IReadOnlyList<Attachment>? Attachments = null,
+    ModelPhysics? Physics = null)
 {
     public IReadOnlyList<Texture> Textures => Materials
         .SelectMany(material => material.Textures)

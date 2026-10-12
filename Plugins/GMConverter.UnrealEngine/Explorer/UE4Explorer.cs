@@ -481,6 +481,7 @@ public sealed class UE4Explorer : IExplorer
                     }
 
                     WriteSocketSidecar(resolvedExport.Export, exportedPart.MeshPath);
+                    WritePhysicsSidecar(resolvedExport.Export, exportedPart.MeshPath);
 
                     try
                     {
@@ -588,6 +589,25 @@ public sealed class UE4Explorer : IExplorer
         if (sockets.Count > 0)
         {
             new PSKSocketSidecar(sockets).Write(meshPath);
+        }
+    }
+
+    // Physics is optional extra data: a physics asset this CUE4Parse build can't read must not
+    // stop the mesh itself from exporting.
+    private static void WritePhysicsSidecar(UObject export, string meshPath)
+    {
+        if (export is not USkeletalMesh skeletalMesh)
+        {
+            return;
+        }
+
+        try
+        {
+            UnrealPhysicsAssetReader.Read(skeletalMesh)?.Write(meshPath);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            PerfTimer.Log("ue4.export", $"physics asset skipped for {skeletalMesh.Name}: {ex.Message}");
         }
     }
 

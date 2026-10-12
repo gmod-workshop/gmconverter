@@ -87,7 +87,7 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | `--mdl-material-maxTextureSize <size>` | `--max-texture-size` | Cap the longest texture edge before VTF compile: `0`, `512`, `1024`, `2048`, or `4096`. `0` disables resizing. | `0` |
 | `--mdl-material-deduplicateTextures [true\|false]` | `--deduplicate-textures` | Reuse one VTF for byte-identical textures. | `false` |
 | `--mdl-physics-enabled [true\|false]` | `--physics` | Generate a collision model. | `false` |
-| `--mdl-physics-mode <mode>` | `--physics-mode` | Collision mode: `bounds` or `coacd`. Takes effect with `--physics`. See [Physics](#physics). | `bounds` |
+| `--mdl-physics-mode <mode>` | `--physics-mode` | Collision mode: `auto`, `bounds` or `coacd`. Takes effect with `--physics`. See [Physics](#physics). | `auto` |
 | `--mdl-physics-mass <value>` | `--physics-mass` | Physics mass in kilograms. | `100` |
 | `--mdl-physics-coacdThreshold <value>` | `--coacd-threshold` | CoACD termination threshold. | `0.05` |
 | `--mdl-physics-maxConvexPieces <count>` | `--max-convex-pieces` | Maximum CoACD convex hull count. Use `-1` for no limit. | `16` |
@@ -263,6 +263,28 @@ glTF/GLB export writes portable mesh assets with materials, normal maps, skeleto
 </details>
 
 ## Physics
+
+The default `auto` mode uses the model's own collision when it has one, and a simple collision box otherwise.
+
+<details>
+<summary>Ragdolls</summary>
+
+Unreal Engine 4/5 skeletal meshes that come with a physics asset are exported as a ragdoll. Each collision body (sphere, box, capsule or convex hull) becomes a convex piece on its bone in `$collisionjoints`, and each constraint's angular limits become `$jointconstrain` limits on the child bone, so the model falls apart and goes limp in Garry's Mod. `--physics-mass` sets the whole ragdoll's mass, which studiomdl shares out between the parts by volume.
+
+The same bodies are also written as hitboxes (`$hbox`), whether or not `--physics` is set. Hit groups (head, chest, stomach, arms, legs) are guessed from bone names, such as `head`, `spine_02` or `upperarm_l`. Bones they can't be guessed for are generic.
+
+Unreal limits rotation about a constraint's own axes, while Source limits it about the bone's axes. Each limit goes to the bone axis closest to the constraint axis, so limits on constraints that are turned relative to their bone are approximate.
+
+```powershell
+./GMConverter.CLI --input-format psk --output-format mdl `
+  --input-path "SK_B1_Battledroid.ue4scene" `
+  --output-path "out1-source" `
+  --physics
+```
+
+Use `--physics-mode bounds` or `--physics-mode coacd` to replace the ragdoll with a single rigid collision model.
+
+</details>
 
 <details>
 <summary>Bounds</summary>

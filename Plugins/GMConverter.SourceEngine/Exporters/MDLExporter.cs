@@ -6,6 +6,7 @@ using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
+using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Common;
 using GMConverter.SourceEngine.Geometry;
@@ -95,9 +96,9 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             },
             new OptionDescriptor("physics:mode", OptionType.Enum, "Physics mode")
             {
-                DefaultValue = "bounds",
-                Choices = ["bounds", "coacd"],
-                Description = "bounds: single AABB hull. coacd: native convex decomposition.",
+                DefaultValue = "auto",
+                Choices = ["auto", "bounds", "coacd"],
+                Description = "auto: the model's own per-bone collision as a ragdoll when it has one, otherwise bounds. bounds: single AABB hull. coacd: native convex decomposition.",
                 Aliases = ["physics-mode"],
             },
             new OptionDescriptor("physics:mass", OptionType.Float, "Mass (kg)")
@@ -206,7 +207,8 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
                 Mode: o.GetString("physics:mode") switch
                 {
                     "coacd" => PhysicsMode.Coacd,
-                    _ => PhysicsMode.Bounds,
+                    "bounds" => PhysicsMode.Bounds,
+                    _ => PhysicsMode.Auto,
                 },
                 Mass: o.GetFloat("physics:mass", 100f),
                 Coacd: o.GetString("physics:mode") == "coacd"
@@ -345,8 +347,58 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         {
             null => [],
             { Mode: PhysicsMode.Coacd, Coacd: { } coacd } => DecomposeCoacd(model, coacd),
+            { Mode: PhysicsMode.Auto } when GetRagdoll(model) is { } ragdoll => CreateRagdollMeshes(ragdoll),
             _ => [CreateBoundsMesh(GetPhysicsBounds(model))],
         };
+    }
+
+    // A ragdoll needs bones to hang its bodies on.
+    private static (Skeleton Skeleton, ModelPhysics Physics)? GetRagdoll(Model model)
+    {
+        return model is { Skeleton: { Bones.Count: > 0 } skeleton, Physics: { Bodies.Count: > 0 } physics }
+            ? (skeleton, physics)
+            : null;
+    }
+
+    private static bool UsesRagdoll(Model model, PhysicsOptions? physicsOptions)
+    {
+        return physicsOptions?.Mode is PhysicsMode.Auto && GetRagdoll(model) is not null;
+    }
+
+    // Every collision shape as a convex hull in model space, tagged with its body's bone.
+    private static List<(int BoneIndex, Vector3[] Points, IReadOnlyList<Triangle> Triangles)> BuildRagdollHulls(
+        (Skeleton Skeleton, ModelPhysics Physics) ragdoll)
+    {
+        var worlds = BuildSourceWorldTransforms(ragdoll.Skeleton);
+        List<(int, Vector3[], IReadOnlyList<Triangle>)> hulls = [];
+        foreach (var body in ragdoll.Physics.Bodies)
+        {
+            if (!worlds.Original.TryGetValue(body.BoneIndex, out var boneWorld))
+            {
+                continue;
+            }
+
+            foreach (var shape in body.Shapes)
+            {
+                Vector3[] points = [.. CollisionShapePoints.Get(shape).Select(point => Vector3.Transform(point, boneWorld))];
+                if (ConvexHull.Build(points) is { Count: > 0 } triangles)
+                {
+                    hulls.Add((body.BoneIndex, points, triangles));
+                }
+            }
+        }
+
+        return hulls;
+    }
+
+    private static IReadOnlyList<Mesh> CreateRagdollMeshes((Skeleton Skeleton, ModelPhysics Physics) ragdoll)
+    {
+        return
+        [
+            .. BuildRagdollHulls(ragdoll).Select(hull => new Mesh(
+                [.. hull.Points.Select(point => new Vertex(point, Vector3.UnitZ, Vector2.Zero))],
+                [new Submesh("physics", hull.Triangles)])),
+        ];
     }
 
     private static Bounds GetPhysicsBounds(Model model)
@@ -400,6 +452,11 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
     {
         switch (physicsOptions.Mode)
         {
+            case PhysicsMode.Auto when GetRagdoll(model) is { } ragdoll:
+                WriteRagdollPhysicsSmd(physicsSmdPath, ragdoll);
+                break;
+
+            case PhysicsMode.Auto:
             case PhysicsMode.Bounds:
                 WriteBoundsPhysicsSmd(model, physicsSmdPath);
                 break;
@@ -485,6 +542,32 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         writer.WriteLine("end");
     }
 
+    // Each hull's vertices are bound to its body's bone; studiomdl turns every bone with
+    // collision into one ragdoll part and the triangles connected on it into one convex piece.
+    private static void WriteRagdollPhysicsSmd(string physicsSmdPath, (Skeleton Skeleton, ModelPhysics Physics) ragdoll)
+    {
+        var hulls = BuildRagdollHulls(ragdoll);
+        if (hulls.Count == 0)
+        {
+            throw new GMConverterException("The model's collision bodies did not produce any convex hulls.");
+        }
+
+        using var writer = CreatePhysicsSmdWriter(physicsSmdPath, ragdoll.Skeleton);
+        foreach (var (boneIndex, points, triangles) in hulls)
+        {
+            foreach (var triangle in triangles)
+            {
+                var normal = triangle.Normal(points);
+                writer.WriteLine("physics");
+                WritePhysicsVertex(writer, points[triangle.A], normal, boneIndex);
+                WritePhysicsVertex(writer, points[triangle.C], normal, boneIndex);
+                WritePhysicsVertex(writer, points[triangle.B], normal, boneIndex);
+            }
+        }
+
+        writer.WriteLine("end");
+    }
+
     // The collision SMD must declare the same skeleton and bind pose as the reference mesh.
     // studiomdl attaches collision to the model's root bone and reads the vertices relative to
     // that bone's pose in this file, so a lone identity "root" node would leave the hulls offset
@@ -536,11 +619,11 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         WritePhysicsVertex(writer, c, normal);
     }
 
-    private static void WritePhysicsVertex(StreamWriter writer, Vector3 vertex, Vector3 normal)
+    private static void WritePhysicsVertex(StreamWriter writer, Vector3 vertex, Vector3 normal, int boneIndex = 0)
     {
         var scaled = vertex * _metersToSourceUnits;
         writer.WriteLine(FormattableString.Invariant(
-            $"0 {scaled.X:0.######} {scaled.Y:0.######} {scaled.Z:0.######} {normal.X:0.######} {normal.Y:0.######} {normal.Z:0.######} 0 0"));
+            $"{boneIndex} {scaled.X:0.######} {scaled.Y:0.######} {scaled.Z:0.######} {normal.X:0.######} {normal.Y:0.######} {normal.Z:0.######} 0 0"));
     }
 
     private static void WriteQc(
@@ -572,6 +655,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         writer.WriteLine("$surfaceprop \"metal\"");
         WriteTextureGroup(writer, model);
         WriteAttachments(writer, model);
+        WriteHitboxes(writer, model);
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
@@ -607,7 +691,11 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             writer.WriteLine("}");
         }
 
-        if (physicsSmdPath is not null)
+        if (physicsSmdPath is not null && UsesRagdoll(model, physicsOptions))
+        {
+            WriteCollisionJoints(writer, model, Path.GetFileName(physicsSmdPath), physicsOptions!.Mass);
+        }
+        else if (physicsSmdPath is not null)
         {
             writer.WriteLine(FormattableString.Invariant($"$collisionmodel \"{Path.GetFileName(physicsSmdPath)}\""));
             writer.WriteLine("{");
@@ -619,6 +707,106 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
 
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
             writer.WriteLine("}");
+        }
+    }
+
+    // The damping and inertia values are the ones Valve's own character ragdolls use.
+    private static void WriteCollisionJoints(StreamWriter writer, Model model, string physicsSmdFileName, float mass)
+    {
+        var (skeleton, physics) = GetRagdoll(model)!.Value;
+        writer.WriteLine(FormattableString.Invariant($"$collisionjoints \"{physicsSmdFileName}\""));
+        writer.WriteLine("{");
+        writer.WriteLine(FormattableString.Invariant($"    $mass {mass:0.###}"));
+        writer.WriteLine("    $inertia 10");
+        writer.WriteLine("    $damping 0.01");
+        writer.WriteLine("    $rotdamping 1.5");
+        if (physics.Bodies.Any(body => body.Shapes.Count > 1))
+        {
+            writer.WriteLine("    $concave");
+        }
+
+        var worlds = BuildSourceWorldTransforms(skeleton);
+        foreach (var joint in physics.Joints)
+        {
+            var bone = skeleton.Bones.FirstOrDefault(bone => bone.Index == joint.BoneIndex);
+            if (bone is null)
+            {
+                continue;
+            }
+
+            var limits = MapJointLimits(joint, worlds.Original[bone.Index], worlds.Source[bone.Index]);
+            foreach (var (axis, limit) in new[] { ("x", limits[0]), ("y", limits[1]), ("z", limits[2]) })
+            {
+                // Free axes get a full turn each way; studiomdl parses the `limit` form the same
+                // way in every version.
+                var (min, max) = limit is null ? (-180f, 180f) : (limit.MinDegrees, limit.MaxDegrees);
+                writer.WriteLine(FormattableString.Invariant(
+                    $"    $jointconstrain \"{EscapeQcString(bone.Name)}\" {axis} limit {MathF.Round(min, 2) + 0f} {MathF.Round(max, 2) + 0f} 0"));
+            }
+        }
+
+        writer.WriteLine("}");
+    }
+
+    // Source limits rotation about the child bone's own axes, while the joint's limits are about
+    // its frame's axes. Each bone axis takes the limit of the frame axis it lines up with best
+    // (as a whole permutation), with the range flipped when the two point opposite ways.
+    private static AngularLimit?[] MapJointLimits(PhysicsJoint joint, Matrix4x4 originalBoneWorld, Matrix4x4 sourceBoneWorld)
+    {
+        Matrix4x4.Invert(sourceBoneWorld, out var inverseSourceBoneWorld);
+        Vector3 ToSourceBone(Vector3 axis) => Vector3.Normalize(Vector3.TransformNormal(
+            Vector3.TransformNormal(Vector3.Transform(axis, joint.Frame), originalBoneWorld), inverseSourceBoneWorld));
+        Vector3[] frameAxes = [ToSourceBone(Vector3.UnitX), ToSourceBone(Vector3.UnitY), ToSourceBone(Vector3.UnitZ)];
+        AngularLimit?[] frameLimits = [joint.X, joint.Y, joint.Z];
+        Vector3[] boneAxes = [Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ];
+
+        int[][] permutations = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+        var best = permutations.MaxBy(permutation =>
+            Enumerable.Range(0, 3).Sum(axis => MathF.Abs(Vector3.Dot(boneAxes[axis], frameAxes[permutation[axis]]))))!;
+        return
+        [
+            .. Enumerable.Range(0, 3).Select(axis =>
+            {
+                var limit = frameLimits[best[axis]];
+                return limit is not null && Vector3.Dot(boneAxes[axis], frameAxes[best[axis]]) < 0f
+                    ? new AngularLimit(-limit.MaxDegrees, -limit.MinDegrees)
+                    : limit;
+            }),
+        ];
+    }
+
+    // Hitboxes are the bounds of each body's hulls in its Source bone's space, so they match the
+    // ragdoll's shapes. Models without bodies are left to studiomdl's generated hitboxes.
+    private static void WriteHitboxes(StreamWriter writer, Model model)
+    {
+        if (GetRagdoll(model) is not { } ragdoll)
+        {
+            return;
+        }
+
+        var worlds = BuildSourceWorldTransforms(ragdoll.Skeleton);
+        var hitboxes = BuildRagdollHulls(ragdoll)
+            .GroupBy(hull => hull.BoneIndex)
+            .Select(group =>
+            {
+                Matrix4x4.Invert(worlds.Source[group.Key], out var inverseSourceBoneWorld);
+                var bounds = Bounds.FromPoints([.. group
+                    .SelectMany(hull => hull.Points)
+                    .Select(point => Vector3.Transform(point, inverseSourceBoneWorld) * _metersToSourceUnits)]);
+                return (Bone: ragdoll.Skeleton.Bones.First(bone => bone.Index == group.Key), Bounds: bounds);
+            })
+            .ToArray();
+        if (hitboxes.Length == 0)
+        {
+            return;
+        }
+
+        static float Clean(float value) => MathF.Round(value, 3) + 0f;
+        writer.WriteLine("$hboxset \"default\"");
+        foreach (var (bone, bounds) in hitboxes)
+        {
+            writer.WriteLine(FormattableString.Invariant(
+                $"$hbox {SourceHitGroups.FromBoneName(bone.Name)} \"{EscapeQcString(bone.Name)}\" {Clean(bounds.Min.X)} {Clean(bounds.Min.Y)} {Clean(bounds.Min.Z)} {Clean(bounds.Max.X)} {Clean(bounds.Max.Y)} {Clean(bounds.Max.Z)}"));
         }
     }
 

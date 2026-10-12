@@ -7,6 +7,7 @@ using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
+using GMConverter.SDK.Physics;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Importers;
@@ -161,6 +162,44 @@ public sealed class PskImporterTests
         Assert.Equal([-1, 0, 0], model.Skeleton.Bones.Select(bone => bone.ParentIndex));
         Assert.Equal([1, 2], model.Meshes.Take(2).Select(mesh => mesh.Vertices.Select(vertex => Assert.Single(vertex.BoneWeights!).BoneIndex).Distinct().Single()));
         Assert.All(model.Meshes[2].Vertices, vertex => Assert.Null(vertex.BoneWeights));
+    }
+
+    [Fact]
+    public void ScenePhysicsBodiesAndJointsFollowTheMergedSkeleton()
+    {
+        // Merged bones: root 0, spine 1, head 2. The body on a bone the mesh doesn't have is
+        // dropped, and so is the joint that needs it.
+        var directory = PskFixtures.CreateDirectory();
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "body.psk"), [("root", -1), ("spine", 0)], weightedBone: 1);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "head.psk"), [("root", -1), ("head", 0)], weightedBone: 1);
+        new PSKPhysicsSidecar(
+            [new PSKPhysicsBody("spine", [new PSKPhysicsShape(PSKPhysicsShapeKind.Capsule, new Vector3(0, 0, 20), Quaternion.Identity, Radius: 10, Length: 50)])],
+            []).Write(Path.Join(directory, "body.psk"));
+        new PSKPhysicsSidecar(
+            [
+                new PSKPhysicsBody("head", [new PSKPhysicsShape(PSKPhysicsShapeKind.Sphere, Vector3.Zero, Quaternion.Identity, Radius: 15)]),
+                new PSKPhysicsBody("root", [new PSKPhysicsShape(PSKPhysicsShapeKind.Box, Vector3.Zero, Quaternion.Identity, HalfExtents: new Vector3(5))]),
+                new PSKPhysicsBody("tail", [new PSKPhysicsShape(PSKPhysicsShapeKind.Sphere, Vector3.Zero, Quaternion.Identity, Radius: 5)]),
+            ],
+            [
+                new PSKPhysicsJoint("head", "root", Quaternion.Identity, TwistLimit: 0, Swing1Limit: 30, Swing2Limit: null),
+                new PSKPhysicsJoint("tail", "root", Quaternion.Identity, 10, 10, 10),
+            ]).Write(Path.Join(directory, "head.psk"));
+
+        var model = _importer.Parse(WriteScene(directory, "body.psk", "head.psk"), new ModelParseOptions(1f));
+
+        var physics = model.Physics!;
+        Assert.Equal([1, 2, 0], physics.Bodies.Select(body => body.BoneIndex));
+        var capsule = Assert.IsType<CapsuleShape>(Assert.Single(physics.Bodies[0].Shapes));
+        Assert.Equal(0.1f, capsule.Radius, 5);
+        Assert.Equal(0.5f, capsule.Length, 5);
+        Assert.Equal(0.2f, capsule.LocalTransform.Translation.Z, 5);
+        var joint = Assert.Single(physics.Joints);
+        Assert.Equal((2, 0), (joint.BoneIndex, joint.ParentBoneIndex));
+        // Twist turns about X, swing 2 about Y and swing 1 about Z.
+        Assert.Equal(new AngularLimit(0, 0), joint.X);
+        Assert.Null(joint.Y);
+        Assert.Equal(new AngularLimit(-30, 30), joint.Z);
     }
 
     [Fact]

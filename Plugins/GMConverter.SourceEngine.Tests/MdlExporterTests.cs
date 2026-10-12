@@ -5,6 +5,7 @@ using GMConverter.SDK.Animation;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
+using GMConverter.SDK.Physics;
 using GMConverter.SourceEngine.Exporters;
 
 namespace GMConverter.SourceEngine.Tests;
@@ -125,6 +126,60 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void PhysicsBodiesBecomeARagdollWithJointLimitsAndHitboxes()
+    {
+        var model = CreateRagdoll();
+
+        var output = ExportWithStubCompiler(model, new Dictionary<string, object?> { ["physics:enabled"] = true });
+
+        var qc = File.ReadAllLines(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        Assert.Contains("$collisionjoints \"triangle_phys.smd\"", qc);
+        Assert.DoesNotContain(qc, line => line.StartsWith("$collisionmodel", StringComparison.Ordinal));
+        // The joint frame is turned 90 degrees about Z from the head bone: its X limit lands on
+        // the bone's Y axis, and its Y limit on the bone's X axis, reversed because they point
+        // opposite ways.
+        Assert.Contains("    $jointconstrain \"head\" x limit -20 5 0", qc);
+        Assert.Contains("    $jointconstrain \"head\" y limit -10 10 0", qc);
+        Assert.Contains("    $jointconstrain \"head\" z limit 0 0 0", qc);
+        // Hitboxes are in each bone's own space: a 0.1 m box and a 0.1 m sphere.
+        Assert.Contains("$hbox 0 \"root\" -3.937 -3.937 -3.937 3.937 3.937 3.937", qc);
+        Assert.Contains("$hbox 1 \"head\" -3.937 -3.937 -3.937 3.937 3.937 3.937", qc);
+
+        // Each hull is bound to its body's bone.
+        var physicsSmd = File.ReadAllLines(Directory.GetFiles(output, "triangle_phys.smd", SearchOption.AllDirectories).Single());
+        var vertexBones = physicsSmd[(Array.IndexOf(physicsSmd, "triangles") + 1)..^1]
+            .Where(line => line != "physics")
+            .Select(line => line.Split(' ')[0])
+            .ToHashSet();
+        Assert.Equal(["0", "1"], vertexBones.Order());
+    }
+
+    [Fact]
+    public void BoundsPhysicsModeIgnoresTheModelsBodies()
+    {
+        var output = ExportWithStubCompiler(CreateRagdoll(), new Dictionary<string, object?>
+        {
+            ["physics:enabled"] = true,
+            ["physics:mode"] = "bounds",
+        });
+
+        var qc = File.ReadAllLines(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        Assert.Contains("$collisionmodel \"triangle_phys.smd\"", qc);
+        Assert.DoesNotContain(qc, line => line.StartsWith("$collisionjoints", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CollisionPreviewShowsEachRagdollShape()
+    {
+        var preview = new MDLExporter(new DefaultTextureFactory()).CreateCollisionPreview(
+            CreateRagdoll(),
+            new OptionValues(new Dictionary<string, object?> { ["physics:enabled"] = true }));
+
+        Assert.Equal(2, preview.Count);
+        Assert.Equal(12, preview[0].Triangles.Count());
+    }
+
+    [Fact]
     public void LegacyCliFlagsAndDefaultsAreDeclaredOnTheSchema()
     {
         var schema = new MDLExporter(new DefaultTextureFactory()).OptionSchema;
@@ -149,6 +204,32 @@ public sealed class MdlExporterTests
         var mesh = new Mesh(vertices, [new Submesh("test", [new Triangle(0, 1, 2)])]);
         var skeleton = new Skeleton([new Bone(0, "root", -1, new Transform(new Vector3(0.25f, 0, 0), rootRotation, Vector3.One))]);
         return new Model("triangle", [mesh], [new Material("test")], skeleton);
+    }
+
+    // The skinned triangle with a "head" bone 1 m above the root, a box body on the root, a sphere
+    // body on the head, and a joint between them.
+    private static Model CreateRagdoll()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var head = new Bone(1, "head", 0, new Transform(Vector3.UnitZ, Quaternion.Identity, Vector3.One));
+        return model with
+        {
+            Skeleton = new Skeleton([model.Skeleton!.Bones[0], head]),
+            Physics = new ModelPhysics(
+                [
+                    new PhysicsBody(0, [new BoxShape(Transform.Identity, new Vector3(0.1f))]),
+                    new PhysicsBody(1, [new SphereShape(Transform.Identity, 0.1f)]),
+                ],
+                [
+                    new PhysicsJoint(
+                        1,
+                        0,
+                        Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2),
+                        new AngularLimit(-10, 10),
+                        new AngularLimit(-5, 20),
+                        new AngularLimit(0, 0)),
+                ]),
+        };
     }
 
     // buildMaterials=false makes the exporter write the SMD/QC workspace itself before studiomdl

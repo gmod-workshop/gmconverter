@@ -692,6 +692,7 @@ internal sealed class PSKImporter : IImporter
                 colors = cueMaterial.Colors;
                 bakedUv0Scale = cueMaterial.BakedUv0Scale;
                 materialAlias = cueMaterial.MaterialAlias;
+                sidecarSettings = cueMaterial.BlendSettings;
                 usesCueMaterial = true;
             }
             else if (TryGetLocalSidecar(material, meshPath, ".mat", out var localMaterialPath))
@@ -711,6 +712,7 @@ internal sealed class PSKImporter : IImporter
                 colors = cueMaterial.Colors;
                 bakedUv0Scale = cueMaterial.BakedUv0Scale;
                 materialAlias = cueMaterial.MaterialAlias;
+                sidecarSettings = cueMaterial.BlendSettings;
                 usesCueMaterial = true;
             }
 
@@ -730,8 +732,29 @@ internal sealed class PSKImporter : IImporter
             if (usesCueMaterial)
             {
                 var materialContext = CreateMaterialContext(material.Name, meshName);
-                diffuseTexture = TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Diffuse, references.ContainsKey("Opacity")) ??
+                // Fortnite supplies a separate Opacity texture; other games keep opacity in the
+                // diffuse alpha, and only the material's blend mode says whether it matters.
+                var diffuseHasAlpha = references.ContainsKey("Opacity") ||
+                    sidecarSettings.BlendMode is MaterialBlendMode.AlphaTest or MaterialBlendMode.AlphaBlend;
+                diffuseTexture = TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Diffuse, diffuseHasAlpha) ??
                     TryCreateColorTexture(material.Name, colors);
+                if (!references.ContainsKey("Opacity") &&
+                    sidecarSettings.BlendMode is MaterialBlendMode.AlphaTest &&
+                    diffuseTexture is { HasAlpha: true } maskedDiffuse &&
+                    !HasCutoutTexels(maskedDiffuse, out var maskedPixels))
+                {
+                    // Masked masters are also used for dithered fades and object hiding, where the
+                    // diffuse alpha holds unrelated packed data. Alpha-testing that would punch holes
+                    // in solid surfaces, so only honour the mask when the alpha has real cut-outs.
+                    diffuseTexture = _textureFactory.FromRgba(
+                        maskedDiffuse.Name,
+                        maskedDiffuse.Width,
+                        maskedDiffuse.Height,
+                        maskedPixels,
+                        hasAlpha: false,
+                        maskedDiffuse.Path);
+                    sidecarSettings = sidecarSettings with { BlendMode = MaterialBlendMode.Unspecified };
+                }
                 normalTexture = TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Normal, hasAlpha: false);
                 specularTexture = TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Specular, hasAlpha: false);
                 emissiveTexture = ShouldResolveCueEmissive(materialContext)
@@ -1707,13 +1730,7 @@ internal sealed class PSKImporter : IImporter
                     : null;
             }
 
-            var blendMode = values.GetValueOrDefault(UnrealMaterialExporter.BlendKey)?.ToLowerInvariant() switch
-            {
-                "translucent" => MaterialBlendMode.AlphaBlend,
-                "masked" => MaterialBlendMode.AlphaTest,
-                "additive" => MaterialBlendMode.Additive,
-                _ => MaterialBlendMode.Unspecified
-            };
+            var blendMode = ParseSidecarBlendMode(values.GetValueOrDefault(UnrealMaterialExporter.BlendKey));
 
             // UE2 keeps pixels whose alpha exceeds AlphaRef; a zero reference still drops fully
             // transparent texels, so never let the cutoff reach zero.
@@ -1779,6 +1796,41 @@ internal sealed class PSKImporter : IImporter
         // Period is a full cycle, in seconds.
         private sealed record SidecarFade(byte[] Color, float Period, float Phase);
 
+        // A cut-out texture has clearly transparent regions; packed data in the alpha channel
+        // (roughness, AO, fade masks) almost never reaches exactly zero across a meaningful area.
+        private static bool HasCutoutTexels(Texture texture, out byte[] pixels)
+        {
+            const double minimumClearFraction = 0.01;
+            pixels = texture.GetRgbaPixels();
+            var texelCount = pixels.Length / 4;
+            if (texelCount == 0)
+            {
+                return false;
+            }
+
+            var clearCount = 0;
+            for (var index = 3; index < pixels.Length; index += 4)
+            {
+                if (pixels[index] == 0)
+                {
+                    clearCount++;
+                }
+            }
+
+            return clearCount >= texelCount * minimumClearFraction;
+        }
+
+        private static MaterialBlendMode ParseSidecarBlendMode(string? value)
+        {
+            return value?.ToLowerInvariant() switch
+            {
+                "translucent" => MaterialBlendMode.AlphaBlend,
+                "masked" => MaterialBlendMode.AlphaTest,
+                "additive" => MaterialBlendMode.Additive,
+                _ => MaterialBlendMode.Unspecified
+            };
+        }
+
         private static CueMaterial ReadCueMaterial(string materialPath)
         {
             Dictionary<string, string> references = new(StringComparer.OrdinalIgnoreCase);
@@ -1830,7 +1882,21 @@ internal sealed class PSKImporter : IImporter
                 materialAlias = aliasEl.GetString();
             }
 
-            return new CueMaterial(references, colors, bakedUv0Scale, materialAlias);
+            var blendSettings = SidecarMaterialSettings.Default;
+            if (document.RootElement.TryGetProperty("BlendMode", out var blendModeEl) &&
+                blendModeEl.ValueKind is JsonValueKind.String)
+            {
+                blendSettings = blendSettings with
+                {
+                    BlendMode = ParseSidecarBlendMode(blendModeEl.GetString()),
+                    AlphaCutoff = document.RootElement.TryGetProperty("AlphaCutoff", out var cutoffEl) &&
+                        cutoffEl.ValueKind is JsonValueKind.Number
+                            ? Math.Clamp(cutoffEl.GetSingle(), 1 / 255f, 1f)
+                            : blendSettings.AlphaCutoff
+                };
+            }
+
+            return new CueMaterial(references, colors, bakedUv0Scale, materialAlias, blendSettings);
         }
 
         private static bool TryReadCueMaterialColor(JsonElement element, out CueMaterialColor color)
@@ -1921,7 +1987,11 @@ internal sealed class PSKImporter : IImporter
             Dictionary<string, string> Textures,
             Dictionary<string, CueMaterialColor> Colors,
             System.Numerics.Vector2? BakedUv0Scale = null,
-            string? MaterialAlias = null);
+            string? MaterialAlias = null,
+            SidecarMaterialSettings? BlendSettingsOverride = null)
+        {
+            public SidecarMaterialSettings BlendSettings => BlendSettingsOverride ?? SidecarMaterialSettings.Default;
+        }
 
         private sealed record MaterialTextureContext(
             string MaterialName,

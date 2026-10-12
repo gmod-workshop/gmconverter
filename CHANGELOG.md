@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Fixed Unreal Engine 4/5 cut-out and see-through materials, such as netting, decals and glass, rendering with black backgrounds. The Explorer now records each material's Unreal blend mode, so masked materials are alpha-tested and translucent ones are alpha-blended in previews and exports. A masked material is only cut out when its diffuse alpha has fully transparent areas, so solid surfaces whose alpha holds other data stay opaque. Previously exported Unreal assets are re-exported automatically.
 - Fixed Source collision models being turned or offset from the mesh when the model's root bone is rotated, such as Men of War models, whose root bone faces backwards. The collision SMD now uses the same skeleton as the mesh.
 - Fixed builds failing on new SixLabors.ImageSharp 3.1.12 security advisories. The patched 4.x release requires a Six Labors license key to compile, so the advisories are suppressed with documented reasons until ImageSharp is upgraded or replaced.
 - Normalized standalone Unreal PSK/PSKX geometry, skeletons, and PSA animation translations from centimeters to meters, matching scene imports. Source exports at scale 1 now retain their physical size instead of being 100 times too large. Bounds collision and its preview use a one-inch minimum thickness instead of one meter.

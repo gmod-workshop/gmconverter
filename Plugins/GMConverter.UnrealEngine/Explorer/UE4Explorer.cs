@@ -79,6 +79,7 @@ public sealed class UE4Explorer : IExplorer
         ".utoc"
     };
     private static readonly JsonSerializerOptions _sceneManifestJsonOptions = new() { WriteIndented = true };
+    private const string _maskedSidecarBlendMode = "Masked";
 
     private readonly Dictionary<string, Cue4ParseProviderContext> _providerCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _cacheLock = new();
@@ -712,9 +713,12 @@ public sealed class UE4Explorer : IExplorer
                 }
 
                 var materialPath = GetLocalMaterialSidecarPath(outputDirectory, material.Name);
+                var blendMode = GetSidecarBlendMode(parameters.BlendMode);
                 var sidecar = new UnrealMaterialTextureOverride(
                     textures,
-                    colors.Count == 0 ? null : new UnrealMaterialParameterOverride(colors));
+                    colors.Count == 0 ? null : new UnrealMaterialParameterOverride(colors),
+                    blendMode,
+                    blendMode == _maskedSidecarBlendMode ? GetOpacityMaskClipValue(material) : null);
                 File.WriteAllText(materialPath, JsonSerializer.Serialize(sidecar, _sceneManifestJsonOptions));
 
                 WriteMaterialDebugDump(outputDirectory, material, parameters, textures);
@@ -1217,6 +1221,38 @@ public sealed class UE4Explorer : IExplorer
         var hash = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path)))[..8];
         return $"{NameHelpers.SanitizeMaterialName(texture.Name)}_{hash.ToLowerInvariant()}";
+    }
+
+    // Recorded in the material sidecar so the importer can tell cut-out and translucent materials
+    // apart from opaque ones. Games outside Fortnite usually pack opacity into the diffuse alpha
+    // instead of a separate Opacity texture, so the blend mode is the only reliable signal.
+    private static string? GetSidecarBlendMode(EBlendMode blendMode)
+    {
+        return blendMode switch
+        {
+            EBlendMode.BLEND_Masked => _maskedSidecarBlendMode,
+            EBlendMode.BLEND_Translucent or EBlendMode.BLEND_AlphaComposite => "Translucent",
+            EBlendMode.BLEND_Additive => "Additive",
+            _ => null
+        };
+    }
+
+    // CUE4Parse does not expose the per-instance clip value override flag, so use the base
+    // material's value, which defaults to Unreal's 0.333.
+    private static float GetOpacityMaskClipValue(UMaterialInterface material)
+    {
+        var current = material;
+        for (var depth = 0; current is not null && depth < 16; depth++)
+        {
+            if (current is UMaterial baseMaterial)
+            {
+                return baseMaterial.OpacityMaskClipValue;
+            }
+
+            current = (current as UMaterialInstance)?.Parent as UMaterialInterface;
+        }
+
+        return 0.333f;
     }
 
     private static string GetLocalMaterialSidecarPath(string directory, string materialName)
@@ -2855,7 +2891,9 @@ public sealed class UE4Explorer : IExplorer
 
     private sealed record UnrealMaterialTextureOverride(
         Dictionary<string, string> Textures,
-        UnrealMaterialParameterOverride? Parameters = null);
+        UnrealMaterialParameterOverride? Parameters = null,
+        string? BlendMode = null,
+        float? AlphaCutoff = null);
 
     private sealed record UnrealMaterialParameterOverride(Dictionary<string, UnrealMaterialColorOverride> Colors);
 

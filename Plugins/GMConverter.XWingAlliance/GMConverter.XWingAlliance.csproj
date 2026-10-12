@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\GMConverter.SDK\GMConverter.SDK.csproj" />
+        <ProjectReference Include="..\..\GMConverter\GMConverter.SDK\GMConverter.SDK.csproj" />
     </ItemGroup>
 
     <ItemGroup>

@@ -1,12 +1,12 @@
 <Solution>
   <Folder Name="/GMConverter/">
+    <Project Path="GMConverter/GMConverter.SDK/GMConverter.SDK.csproj" />
     <Project Path="GMConverter/GMConverter.Core/GMConverter.Core.csproj" />
     <Project Path="GMConverter/GMConverter.CLI/GMConverter.CLI.csproj" />
     <Project Path="GMConverter/GMConverter.UI/GMConverter.UI.csproj" />
     <Project Path="GMConverter/GMConverter.UI.Tests/GMConverter.UI.Tests.csproj" />
   </Folder>
   <Folder Name="/Plugins/">
-    <Project Path="Plugins/GMConverter.SDK/GMConverter.SDK.csproj" />
     <Project Path="Plugins/GMConverter.MenOfWar/GMConverter.MenOfWar.csproj" />
     <Project Path="Plugins/GMConverter.MenOfWar.Tests/GMConverter.MenOfWar.Tests.csproj" />
     <Project Path="Plugins/GMConverter.SourceEngine/GMConverter.SourceEngine.csproj" />

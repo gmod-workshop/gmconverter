@@ -326,7 +326,7 @@ public sealed class UE4Explorer : IExplorer
                 $"CUE4Parse did not export a PSA animation for: {fileEntry.ArchiveEntryPath}");
 
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
-            "Export a matching SkeletalMesh separately and use Set Animation to pair them.";
+            "Load a matching SkeletalMesh and use Add Animations to pair them.";
         return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
     }
 

@@ -101,13 +101,8 @@ public sealed class OptionSetViewModel
 
             var current = SplitValues(option.GetCurrentValue() as string);
             var before = current.Count;
-            foreach (var value in SplitValues(values[option.Key] as string))
-            {
-                if (!current.Contains(value, StringComparer.OrdinalIgnoreCase))
-                {
-                    current.Add(value);
-                }
-            }
+            HashSet<string> seen = new(current, StringComparer.OrdinalIgnoreCase);
+            current.AddRange(SplitValues(values[option.Key] as string).Where(seen.Add));
 
             added += current.Count - before;
             option.TryLoad(string.Join(OptionDescriptor.MultipleValueSeparator, current));

@@ -1,3 +1,4 @@
+using System.Numerics;
 using GMConverter.SDK.Geometry;
 
 namespace GMConverter.UnrealEngine.Importers;
@@ -21,7 +22,11 @@ internal static class PSKSceneSkeleton
             var part = parts[partIndex];
             if (part.Skeleton is not { Bones.Count: > 0 } skeleton || !IsSkinned(part))
             {
-                merged[partIndex] = part;
+                // Without a rig the part's bones are dropped, so its bone attachments move to
+                // the model origin at their bind-pose placement.
+                merged[partIndex] = part.Skeleton is { } unusedSkeleton && part.Attachments is { Count: > 0 } attachments
+                    ? part with { Attachments = [.. attachments.Select(attachment => ToModelSpace(attachment, unusedSkeleton))] }
+                    : part;
                 continue;
             }
 
@@ -46,7 +51,13 @@ internal static class PSKSceneSkeleton
 
             merged[partIndex] = isIdentity
                 ? part
-                : part with { Meshes = [.. part.Meshes.Select(mesh => RemapWeights(mesh, boneMap))] };
+                : part with
+                {
+                    Meshes = [.. part.Meshes.Select(mesh => RemapWeights(mesh, boneMap))],
+                    Attachments = part.Attachments?
+                        .Select(attachment => attachment.BoneIndex is { } boneIndex ? attachment with { BoneIndex = boneMap[boneIndex] } : attachment)
+                        .ToArray(),
+                };
         }
 
         return (bones.Count == 0 ? null : new Skeleton(bones), merged);
@@ -55,6 +66,34 @@ internal static class PSKSceneSkeleton
     private static bool IsSkinned(Model part)
     {
         return part.Meshes.Any(mesh => mesh.Vertices.Any(vertex => vertex.BoneWeights is { Count: > 0 }));
+    }
+
+    private static Attachment ToModelSpace(Attachment attachment, Skeleton skeleton)
+    {
+        if (attachment.BoneIndex is not { } boneIndex)
+        {
+            return attachment;
+        }
+
+        var world = ToMatrix(attachment.LocalTransform);
+        for (var bone = skeleton.Bones[boneIndex]; ; bone = skeleton.Bones[bone.ParentIndex])
+        {
+            world *= ToMatrix(bone.LocalBindPose);
+            if (bone.ParentIndex < 0)
+            {
+                break;
+            }
+        }
+
+        Matrix4x4.Decompose(world, out _, out var rotation, out var translation);
+        return attachment with { BoneIndex = null, LocalTransform = new Transform(translation, rotation, Vector3.One) };
+    }
+
+    private static Matrix4x4 ToMatrix(Transform transform)
+    {
+        return Matrix4x4.CreateScale(transform.Scale) *
+            Matrix4x4.CreateFromQuaternion(transform.Rotation) *
+            Matrix4x4.CreateTranslation(transform.Translation);
     }
 
     private static Mesh RemapWeights(Mesh mesh, int[] boneMap)

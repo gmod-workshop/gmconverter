@@ -104,6 +104,27 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void AttachmentsAreWrittenRelativeToTheirSourceBone()
+    {
+        // The root is scaled 2x; Source bones carry no scale, so the attachment's offset from the
+        // bone doubles. A model-space attachment lands on the root as seen from the origin.
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            Attachments =
+            [
+                new Attachment("muzzle", 0, new Transform(new Vector3(0, 0, 1), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2), Vector3.One)),
+                new Attachment("origin", null, Transform.Identity),
+            ],
+        };
+        model = model with { Skeleton = new Skeleton([model.Skeleton!.Bones[0] with { LocalBindPose = model.Skeleton.Bones[0].LocalBindPose with { Scale = new Vector3(2) } }]) };
+
+        var qc = File.ReadAllLines(Directory.GetFiles(ExportWithStubCompiler(model), "triangle.qc", SearchOption.AllDirectories).Single());
+
+        Assert.Contains("$attachment \"muzzle\" \"root\" 0 0 78.7402 rotate 0 90 0", qc);
+        Assert.Contains("$attachment \"origin\" \"root\" -9.8425 0 0 rotate 0 0 0", qc);
+    }
+
+    [Fact]
     public void LegacyCliFlagsAndDefaultsAreDeclaredOnTheSchema()
     {
         var schema = new MDLExporter(new DefaultTextureFactory()).OptionSchema;

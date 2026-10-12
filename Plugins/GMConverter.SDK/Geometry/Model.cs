@@ -11,7 +11,8 @@ public sealed record Model(
     IReadOnlyList<Material> Materials,
     Skeleton? Skeleton = null,
     IReadOnlyList<AnimationClip>? Animations = null,
-    IReadOnlyList<MaterialSkin>? Skins = null)
+    IReadOnlyList<MaterialSkin>? Skins = null,
+    IReadOnlyList<Attachment>? Attachments = null)
 {
     public IReadOnlyList<Texture> Textures => Materials
         .SelectMany(material => material.Textures)

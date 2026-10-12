@@ -1,6 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using GMConverter.Core.Pipeline;
 using GMConverter.SDK.Options;
-using GMConverter.UI.Services;
 using GMConverter.UI.ViewModels.Options;
 
 namespace GMConverter.UI.ViewModels;
@@ -24,11 +24,10 @@ public sealed partial class ConvertViewModel
     /// <summary>Lookup or create the option VM for the active output format and swap it in.</summary>
     private void RefreshCurrentExporterOptions()
     {
-        var format = SelectedOutputFormat?.Value;
-        if (format == "source")
-        {
-            format = "mdl";
-        }
+        var selected = SelectedOutputFormat?.Value;
+        var format = string.IsNullOrEmpty(selected)
+            ? selected
+            : AssetFormats.FindExport(selected)?.OptionsKey ?? selected;
         if (string.IsNullOrEmpty(format))
         {
             CurrentExporterOptions = new OptionSetViewModel("", OptionSchema.Empty);
@@ -58,14 +57,8 @@ public sealed partial class ConvertViewModel
         {
             return OptionSchema.Empty;
         }
-        var schema = ConversionService.GetExporter(format).OptionSchema;
-        // The selected glTF format owns binary/text output; avoid a conflicting checkbox.
-        return format is "glb" or "gltf"
-            ? new OptionSchema([.. schema.Groups.Select(group => group with
-            {
-                Options = [.. group.Options.Where(option => option.Key != "binary")]
-            })])
-            : schema;
+        // Options the format sets itself (glTF's binary/text choice) get no control.
+        return AssetFormats.GetExport(format).OptionSchema;
     }
 
     internal Dictionary<string, Dictionary<string, object?>> SnapshotExporterOptions()

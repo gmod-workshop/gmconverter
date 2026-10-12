@@ -1,8 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GMConverter.Core.Exporters;
-using GMConverter.Core.Plugins;
+using GMConverter.Core.Pipeline;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;
@@ -71,23 +70,13 @@ public sealed partial class ConvertViewModel : ViewModelBase
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
-        [.. PluginHost.Registry.Importers
-            .DistinctBy(importer => importer.InputFormat, StringComparer.OrdinalIgnoreCase)
-            .OrderBy(importer => importer.InputFormat, StringComparer.OrdinalIgnoreCase)
+        [.. AssetFormats.Importers
             .Select(importer => new DisplayOption(importer.InputFormat, importer.InputFormat.ToUpperInvariant(), importer.InputName))];
 
     public ObservableCollection<DisplayOption> OutputFormats { get; } =
     [
         new("info", "Info", "Summary"),
-        new("obj", "OBJ", new OBJExporter().OutputName),
-        new("glb", "GLB", new GLTFExporter().OutputName),
-        new("gltf", "glTF", new GLTFExporter().OutputName),
-        .. PluginHost.Registry.Exporters
-            .Where(exporter => exporter.OutputFormat is not ("info" or "obj" or "glb" or "gltf"))
-            .Select(exporter => new DisplayOption(exporter.OutputFormat, exporter.OutputFormat.ToUpperInvariant(), exporter.OutputName)),
-        .. PluginHost.Registry.GetExporter("mdl") is { } source
-            ? new[] { new DisplayOption("source", "Source", source.OutputName) }
-            : []
+        .. AssetFormats.Exports.Select(format => new DisplayOption(format.Format, format.Label, format.Exporter.OutputName))
     ];
 
     public ObservableCollection<DisplayOption> AxisModes { get; } =

@@ -1,11 +1,9 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text;
-using GMConverter.Core.Exporters;
+using GMConverter.Core.Pipeline;
 using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
-using GMConverter.SDK.Exporters;
-using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
 using Microsoft.Extensions.Logging;
@@ -14,8 +12,6 @@ namespace GMConverter.CLI;
 
 internal static class Program
 {
-    private static readonly string[] _builtInOutputFormats = ["info", "obj", "glb", "gltf"];
-
     public static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
@@ -54,8 +50,8 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", PluginHost.Registry.Importers.Select(importer => importer.InputFormat)) + ".");
-        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", _builtInOutputFormats.Concat(PluginHost.Registry.Exporters.Select(exporter => exporter.OutputFormat))) + ". Source is an alias for mdl.");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", AssetFormats.Importers.Select(importer => importer.InputFormat)) + ".");
+        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", AssetFormats.Exports.Select(format => format.Format).Prepend("info")) + ". Source is an alias for mdl.");
         var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
         var outputPathOption = new Option<string>("--output-path")
         {
@@ -101,14 +97,16 @@ internal static class Program
         // and an exporter (mdl does), and their option keys must not collide.
         var usedNames = rootCommand.Options.SelectMany(option => option.Aliases.Prepend(option.Name)).ToHashSet(StringComparer.Ordinal);
         var importerArguments = new List<SchemaArgument>();
-        foreach (var importer in PluginHost.Registry.Importers)
+        foreach (var importer in AssetFormats.Importers)
         {
             AddSchemaArguments(rootCommand, $"{importer.InputFormat}-import", importer.InputFormat, importer.OptionSchema, usedNames, importerArguments);
         }
         var exporterArguments = new List<SchemaArgument>();
-        foreach (var exporter in new IExporter[] { new GLTFExporter() }.Concat(PluginHost.Registry.Exporters))
+        // Formats that share an exporter (glb/gltf, mdl/source) share its flags, named after the
+        // exporter; options a format sets itself, like glTF's binary/text choice, get no flag.
+        foreach (var format in AssetFormats.DistinctExporters)
         {
-            AddSchemaArguments(rootCommand, exporter.OutputFormat, exporter.OutputFormat, exporter.OptionSchema, usedNames, exporterArguments);
+            AddSchemaArguments(rootCommand, format.Exporter.OutputFormat, format.Exporter.OutputFormat, format.OptionSchema, usedNames, exporterArguments);
         }
 
         rootCommand.SetAction(parseResult => Run(
@@ -135,7 +133,7 @@ internal static class Program
         HashSet<string> usedNames,
         List<SchemaArgument> arguments)
     {
-        foreach (var descriptor in schema.AllOptions.Where(descriptor => !IsHostControlled(format, descriptor)))
+        foreach (var descriptor in schema.AllOptions)
         {
             var isBool = descriptor.Type == OptionType.Bool;
             var argument = CreateSchemaOption($"--{prefix}-{descriptor.Key.Replace(':', '-')}", descriptor.Description ?? descriptor.Label, isBool);
@@ -160,12 +158,6 @@ internal static class Program
         }
     }
 
-    // glTF's binary/text choice follows --output-format, so its own flag would be ignored.
-    private static bool IsHostControlled(string format, OptionDescriptor descriptor)
-    {
-        return format == "glb" && descriptor.Key == "binary";
-    }
-
     // Boolean flags also work bare (--physics means --physics true).
     private static Option<string> CreateSchemaOption(string name, string description, bool isBool)
     {
@@ -181,14 +173,10 @@ internal static class Program
         return inputFormat.Trim().ToLowerInvariant();
     }
 
+    // Exporter flags are named after the exporter, so map a format name to its exporter's.
     private static string NormalizeOutputFormat(string outputFormat)
     {
-        return outputFormat.Trim().ToLowerInvariant() switch
-        {
-            "source" => "mdl",
-            "gltf" => "glb",
-            var value => value
-        };
+        return AssetFormats.FindExport(outputFormat)?.Exporter.OutputFormat ?? outputFormat.Trim().ToLowerInvariant();
     }
 
     private static OptionValues ReadSchemaOptions(
@@ -238,17 +226,6 @@ internal static class Program
         return new OptionValues(values);
     }
 
-    // Schema defaults first, then whatever the command line set explicitly.
-    private static OptionValues WithDefaults(OptionSchema schema, OptionValues overrides)
-    {
-        var values = schema.AllOptions.ToDictionary(option => option.Key, option => option.ResolveDefault());
-        foreach (var (key, value) in overrides.AsDictionary())
-        {
-            values[key] = value;
-        }
-        return new OptionValues(values);
-    }
-
     private static int Run(
         string inputFormat,
         string outputFormat,
@@ -265,73 +242,29 @@ internal static class Program
         inputFormat = NormalizeFormat(inputFormat, "input-format");
         outputFormat = NormalizeFormat(outputFormat, "output-format");
 
-        var importer = GetImporter(inputFormat);
-        var fullInputPath = RequireInputFile(inputPath, importer);
-        baseName ??= Path.GetFileNameWithoutExtension(fullInputPath);
-        var parseOptions = new ModelParseOptions(
-            GetScaleFactor(scaleFactor, noScale),
-            NormalizeAxisMode(axisModeText),
-            CreateMaterialResolveOptions(materialDirectory))
+        var importer = AssetFormats.FindImporter(inputFormat)
+            ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Formats are contributed by plugins: {string.Join(", ", AssetFormats.Importers.Select(importer => importer.InputFormat))}.");
+
+        if (outputFormat is "info")
         {
-            Options = WithDefaults(importer.OptionSchema, importerOptions),
-        };
-
-        switch (outputFormat)
-        {
-            case "info":
-                Console.WriteLine(importer.Summarize(fullInputPath));
-                return 0;
-
-            case "obj":
-                RunObj(importer.Parse(fullInputPath, parseOptions), RequireOutputPath(outputPath, outputFormat), baseName);
-                return 0;
-
-            case "glb":
-            case "gltf":
-                RunGltf(
-                    importer.Parse(fullInputPath, parseOptions),
-                    RequireOutputPath(outputPath, outputFormat),
-                    baseName,
-                    outputFormat is "glb",
-                    exporterOptions);
-                return 0;
-
-            default:
-                var exporter = PluginHost.Registry.GetExporter(NormalizeOutputFormat(outputFormat))
-                    ?? throw new GMConverterException($"Unsupported output format or plugin not loaded: {outputFormat}");
-                var directory = RequireOutputPath(outputPath, outputFormat);
-                Directory.CreateDirectory(directory);
-                exporter.Export(importer.Parse(fullInputPath, parseOptions), directory, baseName, WithDefaults(exporter.OptionSchema, exporterOptions));
-                Console.WriteLine($"Wrote {outputFormat} output to {directory}");
-                return 0;
+            Console.WriteLine(importer.Summarize(AssetFormats.RequireInputFile(inputPath, importer)));
+            return 0;
         }
-    }
 
-    private static void RunObj(Model model, string outputDirectory, string baseName)
-    {
-        Directory.CreateDirectory(outputDirectory);
-
-        Console.WriteLine($"Writing OBJ output to {outputDirectory}");
-        new OBJExporter().Export(model, outputDirectory, baseName, OptionValues.Empty);
-    }
-
-    private static void RunGltf(Model model, string outputDirectory, string baseName, bool binary, OptionValues overrides)
-    {
-        Directory.CreateDirectory(outputDirectory);
-
-        Console.WriteLine($"Writing {(binary ? "GLB" : "glTF")} output to {outputDirectory}");
-        var options = new OptionValues(new Dictionary<string, object?>(overrides.AsDictionary())
+        var request = new AssetRequest(inputFormat, inputPath)
         {
-            ["binary"] = binary,
-        });
-        new GLTFExporter().Export(model, outputDirectory, baseName, options);
-    }
-
-
-    private static IImporter GetImporter(string inputFormat)
-    {
-        return PluginHost.Registry.GetImporter(inputFormat)
-            ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Formats are contributed by plugins: {string.Join(", ", PluginHost.Registry.Importers.Select(importer => importer.InputFormat))}.");
+            OutputFormat = outputFormat,
+            OutputDirectory = RequireOutputPath(outputPath, outputFormat),
+            BaseName = baseName,
+            ImporterOptions = importerOptions,
+            ExporterOptions = exporterOptions,
+            ScaleFactor = GetScaleFactor(scaleFactor, noScale),
+            AxisMode = NormalizeAxisMode(axisModeText),
+            MaterialDirectory = materialDirectory,
+        };
+        var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
+        Console.WriteLine($"Wrote {outputFormat} output to {result.Destination.Directory}");
+        return 0;
     }
 
     private static Option<T> RequiredOption<T>(string name, string description)
@@ -353,23 +286,6 @@ internal static class Program
         return value.Trim().ToLowerInvariant();
     }
 
-    private static string RequireInputFile(string path, IImporter importer)
-    {
-        var fullPath = FullPath(path);
-
-        if (!File.Exists(fullPath))
-        {
-            throw new ArgumentException($"File not found: {fullPath}");
-        }
-
-        if (!importer.FileExtensions.Contains(Path.GetExtension(fullPath), StringComparer.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException($"Expected a {string.Join(" or ", importer.FileExtensions)} file: {fullPath}");
-        }
-
-        return fullPath;
-    }
-
     private static string RequireOutputPath(string? path, string outputFormat)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -377,31 +293,8 @@ internal static class Program
             throw new ArgumentException($"Option --output-path is required when --output-format is '{outputFormat}'.");
         }
 
-        return FullPath(path);
+        return path;
     }
-
-    private static string FullPath(string path)
-    {
-        return Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
-    }
-
-
-    private static MaterialResolveOptions? CreateMaterialResolveOptions(string? materialDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(materialDirectory))
-        {
-            return null;
-        }
-
-        var fullPath = FullPath(materialDirectory);
-        if (!Directory.Exists(fullPath))
-        {
-            throw new ArgumentException($"Material directory not found: {fullPath}");
-        }
-
-        return new MaterialResolveOptions(fullPath);
-    }
-
 
     private static float GetScaleFactor(float scaleFactor, bool noScale)
     {

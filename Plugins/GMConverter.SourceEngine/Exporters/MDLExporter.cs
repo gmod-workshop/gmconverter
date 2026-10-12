@@ -762,7 +762,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         var previousFrame = 0;
         for (var piece = 1; piece <= pieces; piece++)
         {
-            var endFrame = (int)MathF.Round(lastFrame * piece / (float)pieces);
+            var endFrame = (int)MathF.Round(lastFrame * (piece / (float)pieces));
             if (endFrame > previousFrame)
             {
                 yield return FormattableString.Invariant($"walkframe {endFrame} {axes}");

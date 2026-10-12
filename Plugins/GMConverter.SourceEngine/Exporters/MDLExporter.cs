@@ -571,6 +571,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
 
         writer.WriteLine("$surfaceprop \"metal\"");
         WriteTextureGroup(writer, model);
+        WriteAttachments(writer, model);
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
@@ -829,12 +830,63 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         writer.WriteLine("end");
     }
 
+    // Attachments are written relative to their bone as it ends up in the SMD. Source bones carry
+    // no scale (BuildSourceLocalTransforms folds it into child offsets), so the attachment's
+    // placement is resolved through the original skeleton and re-expressed in the Source bone.
+    private static void WriteAttachments(StreamWriter writer, Model model)
+    {
+        if (model.Attachments is not { Count: > 0 } attachments)
+        {
+            return;
+        }
+
+        var skeleton = model.Skeleton is { Bones.Count: > 0 } existing ? existing : null;
+        (Dictionary<int, Matrix4x4> Original, Dictionary<int, Matrix4x4> Source)? worlds = skeleton is null ? null : BuildSourceWorldTransforms(skeleton);
+        var rootIndex = skeleton?.Bones.FirstOrDefault(bone => bone.ParentIndex < 0)?.Index ?? 0;
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var attachment in attachments)
+        {
+            if (!names.Add(attachment.Name))
+            {
+                continue;
+            }
+
+            var boneIndex = skeleton is null ? 0 : attachment.BoneIndex ?? rootIndex;
+            var boneName = skeleton?.Bones.FirstOrDefault(bone => bone.Index == boneIndex)?.Name ?? "root";
+            var local = ToTransformMatrix(attachment.LocalTransform, includeScale: false);
+            if (worlds is not null)
+            {
+                var originalBoneWorld = attachment.BoneIndex is null ? Matrix4x4.Identity : worlds.Value.Original[boneIndex];
+                Matrix4x4.Invert(worlds.Value.Source[boneIndex], out var inverseSourceBoneWorld);
+                local = local * originalBoneWorld * inverseSourceBoneWorld;
+            }
+
+            Matrix4x4.Decompose(local, out _, out var rotation, out var translation);
+            // Rounded (and -0 folded to 0) so float noise doesn't show up as 90.00001 or -0.
+            var position = translation * _metersToSourceUnits;
+            var angles = ToEulerRadians(rotation) * (180f / MathF.PI);
+            static float Clean(float value, int digits) => MathF.Round(value, digits) + 0f;
+            writer.WriteLine(FormattableString.Invariant(
+                $"$attachment \"{EscapeQcString(attachment.Name)}\" \"{EscapeQcString(boneName)}\" {Clean(position.X, 4)} {Clean(position.Y, 4)} {Clean(position.Z, 4)} rotate {Clean(angles.Y, 3)} {Clean(angles.Z, 3)} {Clean(angles.X, 3)}"));
+        }
+    }
+
+    private static (Dictionary<int, Matrix4x4> Original, Dictionary<int, Matrix4x4> Source) BuildSourceWorldTransforms(Skeleton skeleton)
+    {
+        Dictionary<int, Matrix4x4> original = [];
+        Dictionary<int, Matrix4x4> source = [];
+        BuildSourceLocalTransforms(skeleton, null, original, source);
+        return (original, source);
+    }
+
     private static Dictionary<int, Transform> BuildSourceLocalTransforms(
         Skeleton skeleton,
-        Dictionary<int, Transform>? localTransforms = null)
+        Dictionary<int, Transform>? localTransforms = null,
+        Dictionary<int, Matrix4x4>? originalWorldTransforms = null,
+        Dictionary<int, Matrix4x4>? sourceWorldTransforms = null)
     {
-        Dictionary<int, Matrix4x4> originalWorldTransforms = [];
-        Dictionary<int, Matrix4x4> sourceWorldTransforms = [];
+        originalWorldTransforms ??= [];
+        sourceWorldTransforms ??= [];
         Dictionary<int, Transform> sourceLocalTransforms = [];
 
         foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))

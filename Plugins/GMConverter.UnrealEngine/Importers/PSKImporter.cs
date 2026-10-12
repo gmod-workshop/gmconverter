@@ -104,9 +104,23 @@ internal sealed class PSKImporter : IImporter
         List<Mesh> meshes = [];
         Dictionary<string, Material> materials = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, Dictionary<string, Material>> skins = new(StringComparer.OrdinalIgnoreCase);
+        List<Attachment> attachments = [];
+        HashSet<string> attachmentNames = new(StringComparer.OrdinalIgnoreCase);
         foreach (var model in parts)
         {
             meshes.AddRange(model.Meshes);
+            foreach (var attachment in model.Attachments ?? [])
+            {
+                // Repeated parts (the same prop placed twice) repeat their sockets too.
+                var name = attachment.Name;
+                for (var suffix = 2; !attachmentNames.Add(name); suffix++)
+                {
+                    name = FormattableString.Invariant($"{attachment.Name}_{suffix}");
+                }
+
+                attachments.Add(attachment with { Name = name });
+            }
+
             foreach (var material in model.Materials)
             {
                 materials.TryAdd(material.Name, material);
@@ -138,7 +152,8 @@ internal sealed class PSKImporter : IImporter
             materials.Count == 0 ? [new Material("default")] : materials.Values.ToArray(),
             skeleton,
             BuildAnimations(skeleton, options),
-            Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))]);
+            Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))],
+            Attachments: attachments.Count == 0 ? null : attachments);
     }
 
     private Model ParseSingle(string inputPath, ModelParseOptions options, PSKSceneTransform? sceneTransform)
@@ -250,7 +265,50 @@ internal sealed class PSKImporter : IImporter
             materials,
             skeleton,
             buildAnimations ? BuildAnimations(skeleton, options) : null,
-            BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath));
+            BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath),
+            BuildAttachments(inputPath, skeleton, options, sceneTransform));
+    }
+
+    // Sockets on a bone stay relative to it; sockets on a static mesh are relative to the mesh,
+    // so they take the part's scene placement like its vertices do.
+    private static List<Attachment>? BuildAttachments(
+        string inputPath,
+        Skeleton? skeleton,
+        ModelParseOptions options,
+        PSKSceneTransform? sceneTransform)
+    {
+        if (PSKSocketSidecar.TryRead(inputPath) is not { Sockets.Count: > 0 } sidecar)
+        {
+            return null;
+        }
+
+        List<Attachment> attachments = [];
+        foreach (var socket in sidecar.Sockets)
+        {
+            if (socket.Bone is null)
+            {
+                var location = sceneTransform?.TransformPosition(socket.Location) ?? socket.Location;
+                var rotation = sceneTransform is null ? socket.Rotation : sceneTransform.Rotation.ToQuaternion() * socket.Rotation;
+                attachments.Add(new Attachment(
+                    socket.Name,
+                    null,
+                    new Transform(TransformPosition(location, options), TransformRotation(rotation, options), Vector3.One)));
+                continue;
+            }
+
+            // A socket on a bone this mesh doesn't have can't be placed.
+            var bone = skeleton?.Bones.FirstOrDefault(bone =>
+                NormalizeBoneName(bone.Name).Equals(NormalizeBoneName(socket.Bone), StringComparison.OrdinalIgnoreCase));
+            if (bone is not null)
+            {
+                attachments.Add(new Attachment(
+                    socket.Name,
+                    bone.Index,
+                    new Transform(TransformPosition(socket.Location, options), TransformRotation(socket.Rotation, options), Vector3.One)));
+            }
+        }
+
+        return attachments.Count == 0 ? null : attachments;
     }
 
     // Each material's sidecar variants become skins named by what follows the shared stem

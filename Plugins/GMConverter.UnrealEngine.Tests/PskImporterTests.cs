@@ -8,6 +8,7 @@ using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.UnrealEngine.Formats.PSA;
+using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Tests;
@@ -160,6 +161,32 @@ public sealed class PskImporterTests
         Assert.Equal([-1, 0, 0], model.Skeleton.Bones.Select(bone => bone.ParentIndex));
         Assert.Equal([1, 2], model.Meshes.Take(2).Select(mesh => mesh.Vertices.Select(vertex => Assert.Single(vertex.BoneWeights!).BoneIndex).Distinct().Single()));
         Assert.All(model.Meshes[2].Vertices, vertex => Assert.Null(vertex.BoneWeights));
+    }
+
+    [Fact]
+    public void SceneSocketsBecomeAttachmentsOnTheMergedSkeleton()
+    {
+        // The head's own bone list puts "head" at 1; in the merged skeleton it is 2. The prop has
+        // no bones, so its socket is placed relative to the model.
+        var directory = PskFixtures.CreateDirectory();
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "body.psk"), [("root", -1), ("spine", 0)], weightedBone: 1);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "head.psk"), [("root", -1), ("head", 0)], weightedBone: 1);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "prop.pskx"), [], weightedBone: 0);
+        new PSKSocketSidecar([
+            new PSKSocket("hat", "head", new Vector3(100, 0, 0), Quaternion.Identity),
+            new PSKSocket("missing_bone", "tail", Vector3.Zero, Quaternion.Identity),
+        ]).Write(Path.Join(directory, "head.psk"));
+        new PSKSocketSidecar([new PSKSocket("muzzle", null, new Vector3(50, 0, 0), Quaternion.Identity)])
+            .Write(Path.Join(directory, "prop.pskx"));
+
+        var model = _importer.Parse(WriteScene(directory, "body.psk", "head.psk", "prop.pskx"), new ModelParseOptions(1f));
+
+        var attachments = model.Attachments!;
+        Assert.Equal(["hat", "muzzle"], attachments.Select(attachment => attachment.Name));
+        Assert.Equal(2, attachments[0].BoneIndex);
+        Assert.Equal(1f, attachments[0].LocalTransform.Translation.X, 5);
+        Assert.Null(attachments[1].BoneIndex);
+        Assert.Equal(0.5f, attachments[1].LocalTransform.Translation.X, 5);
     }
 
     [Fact]

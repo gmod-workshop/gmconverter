@@ -480,6 +480,8 @@ public sealed class UE4Explorer : IExplorer
                         exportedPart = ExportResolvedMeshPart(fileEntry, resolvedExport, partRoot);
                     }
 
+                    WriteSocketSidecar(resolvedExport.Export, exportedPart.MeshPath);
+
                     try
                     {
                         using (PerfTimer.Measure("ue4.export", "WriteResolvedMaterialOverrides", partDetail))
@@ -537,6 +539,56 @@ public sealed class UE4Explorer : IExplorer
             WaitForExportTree(exportRoot);
         }
         return new ExplorerResolvedEntry(manifestPath, exportRoot, Details: CreateResolveDetails(exportRoot, partSummaries));
+    }
+
+    // Mesh sockets win over skeleton sockets of the same name, as in Unreal. Locations and
+    // rotations are mirrored on Y the way CUE4Parse writes the PSK's own points and bones.
+    private static void WriteSocketSidecar(UObject export, string meshPath)
+    {
+        List<PSKSocket> sockets = [];
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        void Add(string name, string? bone, FVector location, FRotator rotation)
+        {
+            if (names.Add(name))
+            {
+                var quaternion = rotation.Quaternion();
+                sockets.Add(new PSKSocket(
+                    name,
+                    bone,
+                    new System.Numerics.Vector3(location.X, -location.Y, location.Z),
+                    new System.Numerics.Quaternion(-quaternion.X, quaternion.Y, -quaternion.Z, quaternion.W)));
+            }
+        }
+
+        switch (export)
+        {
+            case USkeletalMesh skeletalMesh:
+                var skeletonSockets = skeletalMesh.Skeleton.TryLoad<USkeleton>(out var skeleton) ? skeleton.Sockets : [];
+                foreach (var socketIndex in skeletalMesh.Sockets.Concat(skeletonSockets))
+                {
+                    if (socketIndex.TryLoad<USkeletalMeshSocket>(out var socket))
+                    {
+                        Add(socket.SocketName.Text, socket.BoneName.Text, socket.RelativeLocation, socket.RelativeRotation);
+                    }
+                }
+
+                break;
+            case UStaticMesh staticMesh:
+                foreach (var socketIndex in staticMesh.Sockets ?? [])
+                {
+                    if (socketIndex.TryLoad<UStaticMeshSocket>(out var socket))
+                    {
+                        Add(socket.SocketName.Text, null, socket.RelativeLocation, socket.RelativeRotation);
+                    }
+                }
+
+                break;
+        }
+
+        if (sockets.Count > 0)
+        {
+            new PSKSocketSidecar(sockets).Write(meshPath);
+        }
     }
 
     private static UnrealMeshExportResult ExportResolvedMeshPart(
@@ -1576,7 +1628,9 @@ public sealed class UE4Explorer : IExplorer
             TextureFormat = ETextureFormat.Png,
             CompressionFormat = EFileCompressionFormat.None,
             Platform = ETexturePlatform.DesktopMobile,
-            SocketFormat = ESocketFormat.Bone,
+            // Sockets go to a sidecar instead (WriteSocketSidecar); as bones they would pollute
+            // the skeleton with unweighted extras.
+            SocketFormat = ESocketFormat.None,
             ExportMorphTargets = true,
             ExportMaterials = exportMaterials
         };

@@ -687,14 +687,15 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         string safeBaseName)
     {
         Dictionary<AnimationPose, string> paths = new(ReferenceEqualityComparer.Instance);
-        foreach (var basePose in animationSmdPaths.Select(entry => entry.Clip.Layering?.Base).OfType<AnimationPose>())
+        var basePoses = animationSmdPaths
+            .Select(entry => entry.Clip.Layering?.Base)
+            .OfType<AnimationPose>()
+            .Distinct<AnimationPose>(ReferenceEqualityComparer.Instance);
+        foreach (var basePose in basePoses)
         {
-            if (!paths.ContainsKey(basePose))
-            {
-                paths.Add(basePose, Path.Combine(
-                    outputDirectory,
-                    $"{safeBaseName}_base{paths.Count}_{NameHelpers.SanitizeFileName(basePose.Name)}.smd"));
-            }
+            paths.Add(basePose, Path.Join(
+                outputDirectory,
+                $"{safeBaseName}_base{paths.Count}_{NameHelpers.SanitizeFileName(basePose.Name)}.smd"));
         }
 
         return paths;

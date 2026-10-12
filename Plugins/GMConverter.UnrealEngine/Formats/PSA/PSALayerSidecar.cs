@@ -42,6 +42,6 @@ internal sealed record PSALayerSidecar(
     {
         return BasePath is null
             ? null
-            : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(psaPath) ?? string.Empty, BasePath));
+            : Path.GetFullPath(Path.Join(Path.GetDirectoryName(psaPath), BasePath));
     }
 }

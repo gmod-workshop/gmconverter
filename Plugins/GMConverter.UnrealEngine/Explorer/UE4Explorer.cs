@@ -365,9 +365,9 @@ public sealed class UE4Explorer : IExplorer
                 new PSALayerSidecar(space.Value, null, 0).Write(psaPath);
                 break;
             case EAdditiveBasePoseType.ABPT_AnimFrame
-                when sequence.RefPoseSeq?.TryLoad(out var baseExport) == true && baseExport is UAnimSequence baseSequence:
+                when sequence.RefPoseSeq is { } refPoseSeq && refPoseSeq.TryLoad(out var baseExport) && baseExport is UAnimSequence baseSequence:
                 {
-                    var baseRoot = Path.Combine(exportRoot, "__anim_base");
+                    var baseRoot = Path.Join(exportRoot, "__anim_base");
                     new AnimExporter(baseSequence, options).TryWriteToDir(new DirectoryInfo(baseRoot), out _, out _);
                     WaitForExportTree(baseRoot);
                     var basePsaPath = Directory

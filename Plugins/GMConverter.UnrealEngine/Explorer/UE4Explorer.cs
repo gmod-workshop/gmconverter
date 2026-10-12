@@ -337,6 +337,7 @@ public sealed class UE4Explorer : IExplorer
         if (animExport is UAnimSequence sequence)
         {
             WriteLayerSidecar(sequence, psaPath, exportRoot, options);
+            WriteClipSidecar(sequence, psaPath);
         }
 
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
@@ -368,6 +369,7 @@ public sealed class UE4Explorer : IExplorer
         }
 
         WriteLayerSidecar(sequence, psaPath, exportRoot, options);
+        WriteClipSidecar(sequence, psaPath);
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
             "Load a matching SkeletalMesh and use Add Animations to pair them.";
         return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
@@ -378,6 +380,15 @@ public sealed class UE4Explorer : IExplorer
     // exporters with layer support turn the clip back into a layer. Base poses that vary per frame
     // (ABPT_AnimScaled) or come from the additive's own uncooked source (ABPT_LocalAnimFrame) have no
     // single pose to record, so those clips stay plain baked animations.
+    private static void WriteClipSidecar(UAnimSequence sequence, string psaPath)
+    {
+        var clip = new PSAClipSidecar(sequence.GetOrDefault("bEnableRootMotion", false), sequence.GetOrDefault("bLoop", false));
+        if (clip.RootMotion || clip.Loops)
+        {
+            clip.Write(psaPath);
+        }
+    }
+
     private static void WriteLayerSidecar(
         UAnimSequence sequence,
         string psaPath,

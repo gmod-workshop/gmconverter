@@ -668,26 +668,36 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
 
         foreach (var (clip, animationSmdPath) in animationSmdPaths)
         {
-            if (clip.Layering is not { } layering)
+            var playbackOptions = GetPlaybackOptions(model, clip);
+            if (clip.Layering is null && playbackOptions.Count == 0)
             {
                 writer.WriteLine(FormattableString.Invariant(
                     $"$sequence \"{EscapeQcString(clip.Name)}\" \"{Path.GetFileName(animationSmdPath)}\" fps {clip.FrameRate:0.######}"));
                 continue;
             }
 
-            // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
-            // space, and `delta` makes the engine add the result on top of the playing animation.
-            // Source has no model-space deltas (`worldspace` is an absolute override that ignores
-            // `delta`), so model-space layers are also written as local ones. They match exactly on
-            // the pose they were authored against and approximate it on others.
-            var baseName = layering.Base is { } basePose
-                ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
-                : "idle";
             writer.WriteLine(FormattableString.Invariant($"$sequence \"{EscapeQcString(clip.Name)}\" {{"));
             writer.WriteLine(FormattableString.Invariant($"    \"{Path.GetFileName(animationSmdPath)}\""));
             writer.WriteLine(FormattableString.Invariant($"    fps {clip.FrameRate:0.######}"));
-            writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
-            writer.WriteLine("    delta");
+            if (clip.Layering is { } layering)
+            {
+                // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
+                // space, and `delta` makes the engine add the result on top of the playing animation.
+                // Source has no model-space deltas (`worldspace` is an absolute override that ignores
+                // `delta`), so model-space layers are also written as local ones. They match exactly on
+                // the pose they were authored against and approximate it on others.
+                var baseName = layering.Base is { } basePose
+                    ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
+                    : "idle";
+                writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
+                writer.WriteLine("    delta");
+            }
+
+            foreach (var option in playbackOptions)
+            {
+                writer.WriteLine("    " + option);
+            }
+
             writer.WriteLine("}");
         }
 
@@ -708,6 +718,67 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
             writer.WriteLine("}");
         }
+    }
+
+    private static List<string> GetPlaybackOptions(Model model, AnimationClip clip)
+    {
+        List<string> options = [.. GetMotionExtraction(model, clip)];
+        if (clip.Loops)
+        {
+            options.Add("loop");
+        }
+
+        return options;
+    }
+
+    // Root motion is taken out of the root bone and stored as the sequence's movement, which is
+    // what the engine moves NPCs and players by. A loop is one steady stride, so one linear piece
+    // fits it; starts, stops and pivots speed up and slow down, so they are cut into pieces of
+    // about a quarter of a second (studiomdl's `walkframe`) to keep that profile. Turning is
+    // extracted too (LZR) only when the root actually turns. Layers never move the character.
+    private static IEnumerable<string> GetMotionExtraction(Model model, AnimationClip clip)
+    {
+        if (!clip.RootMotion ||
+            clip.Layering is not null ||
+            model.Skeleton?.Bones.FirstOrDefault(bone => bone.ParentIndex < 0) is not { } root ||
+            clip.Tracks.OfType<BoneTransformTrack>().FirstOrDefault(track => track.BoneIndex == root.Index) is not { Keyframes.Count: > 1 } rootTrack)
+        {
+            yield break;
+        }
+
+        var lastFrame = GetLastAnimationFrame(clip, clip.Tracks.OfType<BoneTransformTrack>());
+        if (lastFrame < 1)
+        {
+            yield break;
+        }
+
+        var firstRotation = rootTrack.Keyframes[0].Transform.Rotation;
+        var turns = rootTrack.Keyframes.Any(keyframe => MathF.Abs(GetYawChangeDegrees(firstRotation, keyframe.Transform.Rotation)) > 1f);
+        var axes = turns ? "LX LY LZR" : "LX LY";
+        if (clip.Loops)
+        {
+            yield return axes;
+            yield break;
+        }
+
+        var pieces = Math.Clamp((int)MathF.Ceiling(lastFrame / (clip.FrameRate * 0.25f)), 1, 32);
+        var previousFrame = 0;
+        for (var piece = 1; piece <= pieces; piece++)
+        {
+            var endFrame = (int)MathF.Round(lastFrame * piece / (float)pieces);
+            if (endFrame > previousFrame)
+            {
+                yield return FormattableString.Invariant($"walkframe {endFrame} {axes}");
+                previousFrame = endFrame;
+            }
+        }
+    }
+
+    // The turn about the model's vertical axis between two root rotations.
+    private static float GetYawChangeDegrees(Quaternion from, Quaternion to)
+    {
+        var forward = Vector3.Transform(Vector3.UnitX, NormalizeQuaternion(to) * Quaternion.Inverse(NormalizeQuaternion(from)));
+        return MathF.Atan2(forward.Y, forward.X) * (180f / MathF.PI);
     }
 
     // The damping and inertia values are the ones Valve's own character ragdolls use.

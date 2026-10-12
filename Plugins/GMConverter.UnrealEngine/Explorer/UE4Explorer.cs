@@ -24,8 +24,10 @@ using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Writers;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Animations;
+using CUE4Parse_Conversion.Animations.PSA;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.UEFormat.Enums;
@@ -303,6 +305,11 @@ public sealed class UE4Explorer : IExplorer
         Directory.CreateDirectory(animRoot);
 
         var options = CreateExporterOptions();
+        if (animExport is UAnimSequence { } additive && additive.IsValidAdditive())
+        {
+            return ExportResolvedAdditiveAnimation(fileEntry, exportRoot, animRoot, additive, options);
+        }
+
         AnimExporter animExporter = animExport switch
         {
             UAnimSequence animSeq => new AnimExporter(animSeq, options),
@@ -332,6 +339,35 @@ public sealed class UE4Explorer : IExplorer
             WriteLayerSidecar(sequence, psaPath, exportRoot, options);
         }
 
+        var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
+            "Load a matching SkeletalMesh and use Add Animations to pair them.";
+        return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
+    }
+
+    // Additive sequences are converted here rather than through AnimExporter so the baked result
+    // can be corrected for CUE4Parse's doubled-scale decoding (see UnrealAdditiveScaleFix) before
+    // the PSA is written.
+    private static ExplorerResolvedEntry ExportResolvedAdditiveAnimation(
+        ExplorerFileEntry fileEntry,
+        string exportRoot,
+        string animRoot,
+        UAnimSequence sequence,
+        ExporterOptions options)
+    {
+        var skeleton = sequence.Skeleton.Load<USkeleton>()
+            ?? throw new GMConverterException($"Animation has no skeleton: {fileEntry.ArchiveEntryPath}");
+        var animSet = skeleton.ConvertAnims(sequence);
+        var fixedBones = UnrealAdditiveScaleFix.Apply(sequence, skeleton, animSet.Sequences[0]);
+        PerfTimer.Log("ue4.export", $"additive {sequence.Name} scale-fixed bones={fixedBones}");
+
+        var psaPath = Path.Join(animRoot, sequence.Name + ".psa");
+        using (var writer = new FArchiveWriter())
+        {
+            new ActorXAnim(animSet, 0, options).Save(writer);
+            File.WriteAllBytes(psaPath, writer.GetBuffer());
+        }
+
+        WriteLayerSidecar(sequence, psaPath, exportRoot, options);
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
             "Load a matching SkeletalMesh and use Add Animations to pair them.";
         return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));

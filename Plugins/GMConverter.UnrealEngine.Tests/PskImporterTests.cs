@@ -36,6 +36,19 @@ public sealed class PskImporterTests
     }
 
     [Fact]
+    public void ClipSidecarMarksRootMotionAndLooping()
+    {
+        var (psk, psa) = PskFixtures.WriteFixture();
+        AnimationClip Import() => Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) }).Animations!);
+
+        Assert.Equal((false, false), (Import().RootMotion, Import().Loops));
+
+        new PSAClipSidecar(RootMotion: true, Loops: true).Write(psa);
+
+        Assert.Equal((true, true), (Import().RootMotion, Import().Loops));
+    }
+
+    [Fact]
     public void SeveralAnimationFilesAreBundledWithUniqueClipNames()
     {
         var (psk, psa) = PskFixtures.WriteFixture();

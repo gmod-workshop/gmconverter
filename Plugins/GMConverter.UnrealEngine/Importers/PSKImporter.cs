@@ -597,6 +597,7 @@ internal sealed class PSKImporter : IImporter
 
         var psaBoneToSkeletonBone = MapPsaBones(skeleton, psa);
         var layering = ReadLayering(skeleton, animationPath, options, basePoses);
+        var playback = PSAClipSidecar.TryRead(animationPath);
         List<AnimationClip> clips = [];
 
         foreach (var sequence in psa.Sequences)
@@ -638,7 +639,9 @@ internal sealed class PSKImporter : IImporter
                 fps,
                 sequence.FrameCount <= 1 ? 0.0f : (sequence.FrameCount - 1) / fps,
                 tracks,
-                layering));
+                layering,
+                RootMotion: playback?.RootMotion ?? false,
+                Loops: playback?.Loops ?? false));
         }
 
         return clips;

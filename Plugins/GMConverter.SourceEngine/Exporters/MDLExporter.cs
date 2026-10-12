@@ -668,26 +668,36 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
 
         foreach (var (clip, animationSmdPath) in animationSmdPaths)
         {
-            if (clip.Layering is not { } layering)
+            var playbackOptions = GetPlaybackOptions(model, clip);
+            if (clip.Layering is null && playbackOptions.Count == 0)
             {
                 writer.WriteLine(FormattableString.Invariant(
                     $"$sequence \"{EscapeQcString(clip.Name)}\" \"{Path.GetFileName(animationSmdPath)}\" fps {clip.FrameRate:0.######}"));
                 continue;
             }
 
-            // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
-            // space, and `delta` makes the engine add the result on top of the playing animation.
-            // Source has no model-space deltas (`worldspace` is an absolute override that ignores
-            // `delta`), so model-space layers are also written as local ones. They match exactly on
-            // the pose they were authored against and approximate it on others.
-            var baseName = layering.Base is { } basePose
-                ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
-                : "idle";
             writer.WriteLine(FormattableString.Invariant($"$sequence \"{EscapeQcString(clip.Name)}\" {{"));
             writer.WriteLine(FormattableString.Invariant($"    \"{Path.GetFileName(animationSmdPath)}\""));
             writer.WriteLine(FormattableString.Invariant($"    fps {clip.FrameRate:0.######}"));
-            writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
-            writer.WriteLine("    delta");
+            if (clip.Layering is { } layering)
+            {
+                // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
+                // space, and `delta` makes the engine add the result on top of the playing animation.
+                // Source has no model-space deltas (`worldspace` is an absolute override that ignores
+                // `delta`), so model-space layers are also written as local ones. They match exactly on
+                // the pose they were authored against and approximate it on others.
+                var baseName = layering.Base is { } basePose
+                    ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
+                    : "idle";
+                writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
+                writer.WriteLine("    delta");
+            }
+
+            foreach (var option in playbackOptions)
+            {
+                writer.WriteLine("    " + option);
+            }
+
             writer.WriteLine("}");
         }
 
@@ -708,6 +718,92 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
             writer.WriteLine("}");
         }
+    }
+
+    private static List<string> GetPlaybackOptions(Model model, AnimationClip clip)
+    {
+        List<string> options = [.. GetMotionExtraction(model, clip)];
+        if (clip.Loops)
+        {
+            options.Add("loop");
+        }
+
+        return options;
+    }
+
+    // Root motion is taken out of the root bone and stored as the sequence's movement, which is
+    // what the engine moves NPCs and players by. A loop is one steady stride, so one linear piece
+    // fits it; starts, stops and pivots speed up and slow down, so they are cut into pieces of
+    // about a quarter of a second (studiomdl's `walkframe`) to keep that profile. Turning is
+    // extracted too (LZR) only when the root actually turns. Layers never move the character.
+    private static IEnumerable<string> GetMotionExtraction(Model model, AnimationClip clip)
+    {
+        if (GetRootMotionTrack(model, clip) is not { } rootTrack)
+        {
+            yield break;
+        }
+
+        var lastFrame = GetLastAnimationFrame(clip, clip.Tracks.OfType<BoneTransformTrack>());
+        if (lastFrame < 1)
+        {
+            yield break;
+        }
+
+        var firstRotation = rootTrack.Keyframes[0].Transform.Rotation;
+        var turns = rootTrack.Keyframes.Any(keyframe => MathF.Abs(GetYawChangeDegrees(firstRotation, keyframe.Transform.Rotation)) > 1f);
+        var axes = turns ? "LX LY LZR" : "LX LY";
+        if (clip.Loops)
+        {
+            yield return axes;
+            yield break;
+        }
+
+        var pieces = Math.Clamp((int)MathF.Ceiling(lastFrame / (clip.FrameRate * 0.25f)), 1, 32);
+        var previousFrame = 0;
+        for (var piece = 1; piece <= pieces; piece++)
+        {
+            var endFrame = (int)MathF.Round(lastFrame * (piece / (float)pieces));
+            if (endFrame > previousFrame)
+            {
+                yield return FormattableString.Invariant($"walkframe {endFrame} {axes}");
+                previousFrame = endFrame;
+            }
+        }
+    }
+
+    // The root's track when the clip's root motion is extracted, or null when it isn't.
+    private static BoneTransformTrack? GetRootMotionTrack(Model model, AnimationClip clip)
+    {
+        return clip.RootMotion &&
+            clip.Layering is null &&
+            model.Skeleton?.Bones.FirstOrDefault(bone => bone.ParentIndex < 0) is { } root &&
+            clip.Tracks.OfType<BoneTransformTrack>().FirstOrDefault(track => track.BoneIndex == root.Index) is { Keyframes.Count: > 1 } rootTrack
+                ? rootTrack
+                : null;
+    }
+
+    // Extraction only takes out the root's motion from its first frame on, so wherever the root
+    // starts stays in the pose. Unreal stops and pivots are authored to end on the origin and start
+    // metres away (and turned), which would draw the model off to the side for the whole sequence.
+    // Like Unreal's root lock, the root is moved so the first frame sits on its bind pose, and the
+    // rest of the clip keeps its motion relative to that.
+    private static Func<Transform, Transform> CreateRootMotionRebase(Bone root, BoneTransformTrack rootTrack, float frameRate)
+    {
+        var first = ToTransformMatrix(GetFrameTransform(root, rootTrack, 0, frameRate), includeScale: true);
+        Matrix4x4.Invert(first, out var inverseFirst);
+        var correction = inverseFirst * ToTransformMatrix(root.LocalBindPose, includeScale: true);
+        return transform =>
+        {
+            Matrix4x4.Decompose(ToTransformMatrix(transform, includeScale: true) * correction, out var scale, out var rotation, out var translation);
+            return new Transform(translation, rotation, scale);
+        };
+    }
+
+    // The turn about the model's vertical axis between two root rotations.
+    private static float GetYawChangeDegrees(Quaternion from, Quaternion to)
+    {
+        var forward = Vector3.Transform(Vector3.UnitX, NormalizeQuaternion(to) * Quaternion.Inverse(NormalizeQuaternion(from)));
+        return MathF.Atan2(forward.Y, forward.X) * (180f / MathF.PI);
     }
 
     // The damping and inertia values are the ones Valve's own character ragdolls use.
@@ -921,6 +1017,10 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             .GroupBy(track => track.BoneIndex)
             .ToDictionary(group => group.Key, group => group.First());
         var lastFrame = GetLastAnimationFrame(clip, tracksByBone.Values);
+        var root = model.Skeleton.Bones.FirstOrDefault(bone => bone.ParentIndex < 0);
+        var rebaseRoot = root is not null && GetRootMotionTrack(model, clip) is { } rootTrack
+            ? CreateRootMotionRebase(root, rootTrack, clip.FrameRate)
+            : null;
 
         for (var frameIndex = 0; frameIndex <= lastFrame; frameIndex++)
         {
@@ -928,6 +1028,10 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             var frameTransforms = model.Skeleton.Bones.ToDictionary(
                 bone => bone.Index,
                 bone => GetFrameTransform(bone, tracksByBone.GetValueOrDefault(bone.Index), frameIndex, clip.FrameRate));
+            if (rebaseRoot is not null)
+            {
+                frameTransforms[root!.Index] = rebaseRoot(frameTransforms[root.Index]);
+            }
             var sourceTransforms = BuildSourceLocalTransforms(model.Skeleton, frameTransforms);
 
             foreach (var bone in model.Skeleton.Bones.OrderBy(bone => bone.Index))

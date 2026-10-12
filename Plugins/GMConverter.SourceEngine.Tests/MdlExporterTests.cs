@@ -105,6 +105,74 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void RootMotionIsExtractedAsSequenceMovement()
+    {
+        // One second at 8 fps. The walk loops; the turn doesn't, and its root turns 90 degrees.
+        AnimationClip Clip(string name, Func<float, Transform> root, bool rootMotion, bool loops, AnimationLayering? layering = null) => new(
+            name,
+            8f,
+            1f,
+            [new BoneTransformTrack(0, [.. Enumerable.Range(0, 9).Select(frame => new TransformKeyframe(frame / 8f, root(frame / 8f)))])],
+            layering,
+            rootMotion,
+            loops);
+        Transform Walk(float time) => new(new Vector3(0.25f + time, 0, 0), Quaternion.Identity, Vector3.One);
+        Transform Turn(float time) => new(new Vector3(0.25f, 0, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, time * MathF.PI / 2), Vector3.One);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            Animations =
+            [
+                Clip("walk", Walk, rootMotion: true, loops: true),
+                Clip("turn", Turn, rootMotion: true, loops: false),
+                Clip("idle_loop", Walk, rootMotion: false, loops: true),
+                Clip("lean", Walk, rootMotion: true, loops: false, new AnimationLayering(LayerSpace.Local)),
+            ],
+        };
+
+        var qc = File.ReadAllText(Directory.GetFiles(ExportWithStubCompiler(model), "triangle.qc", SearchOption.AllDirectories).Single()).Replace("\r", "");
+
+        Assert.Contains("$sequence \"walk\" {\n    \"triangle_0_walk.smd\"\n    fps 8\n    LX LY\n    loop\n}", qc);
+        // Quarter-second pieces keep a start or stop's change of speed.
+        Assert.Contains("$sequence \"turn\" {\n    \"triangle_1_turn.smd\"\n    fps 8\n    walkframe 2 LX LY LZR\n    walkframe 4 LX LY LZR\n    walkframe 6 LX LY LZR\n    walkframe 8 LX LY LZR\n}", qc);
+        Assert.Contains("$sequence \"idle_loop\" {\n    \"triangle_2_idle_loop.smd\"\n    fps 8\n    loop\n}", qc);
+        // Layers never move the character.
+        Assert.Contains("    subtract \"idle\" 0\n    delta\n}", qc);
+        Assert.DoesNotContain("walkframe", qc[qc.IndexOf("\"lean\"", StringComparison.Ordinal)..]);
+    }
+
+    [Fact]
+    public void RootMotionClipsStartOnTheBindPose()
+    {
+        // Like an Unreal stop: the root starts 1 m away and turned 90 degrees, and ends on its bind
+        // pose. Extraction only removes motion from the first frame on, so the first frame is
+        // moved onto the bind pose and the rest follows it.
+        var stop = new AnimationClip(
+            "stop",
+            8f,
+            1f,
+            [
+                new BoneTransformTrack(0,
+                [
+                    new TransformKeyframe(0f, new Transform(new Vector3(1.25f, 0, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2), Vector3.One)),
+                    new TransformKeyframe(1f, new Transform(new Vector3(0.25f, 0, 0), Quaternion.Identity, Vector3.One)),
+                ]),
+            ],
+            RootMotion: true);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with { Animations = [stop] };
+
+        var smd = File.ReadAllLines(Directory.GetFiles(ExportWithStubCompiler(model), "triangle_0_stop.smd", SearchOption.AllDirectories).Single());
+
+        float[] Root(int frame) => [.. smd[Array.IndexOf(smd, FormattableString.Invariant($"time {frame}")) + 1]
+            .Split(' ')[1..]
+            .Select(value => float.Parse(value, CultureInfo.InvariantCulture))];
+        void AssertRoot(float[] expected, int frame) => Assert.All(expected.Zip(Root(frame)), pair => Assert.Equal(pair.First, pair.Second, 3));
+        AssertRoot([9.84252f, 0, 0, 0, 0, 0], 0);
+        // It moved 1 m to its own left (world -X while it faced +Y) and turned 90 degrees right;
+        // from the bind facing, that is 1 m along +Y.
+        AssertRoot([9.84252f, 39.37008f, 0, 0, 0, -MathF.PI / 2], 8);
+    }
+
+    [Fact]
     public void AttachmentsAreWrittenRelativeToTheirSourceBone()
     {
         // The root is scaled 2x; Source bones carry no scale, so the attachment's offset from the

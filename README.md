@@ -211,6 +211,8 @@ Skeletal meshes and animations are matched by the skeleton they were made for. T
 
 Additive animations (layers such as aim poses, flinches and hit reactions that the game adds on top of another animation) keep that role in MDL output: each becomes a `delta` sequence measured against the pose it was authored for, so it can be played as a layer or gesture in Garry's Mod. Played on its own, a delta sequence does not show a normal pose. Formats without layers, such as glTF, receive the layer already applied to its base pose. Layers that Unreal applies in model space are applied in each bone's local space by Source, so they match exactly on their own base pose and approximately on others.
 
+Animations that use Unreal's root motion (the character travels or turns with its root bone, as walk cycles, starts, stops and turns usually do) carry that movement in MDL output, so Garry's Mod moves NPCs and players at the speed their feet step. Animations Unreal marks as looping, such as idles and walk cycles, loop in MDL output.
+
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 
 </details>

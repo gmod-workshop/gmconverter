@@ -7,6 +7,7 @@ using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
+using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Tests;
@@ -42,6 +43,42 @@ public sealed class PskImporterTests
         var model = _importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
 
         Assert.Equal(["move", "move_2"], model.Animations!.Select(clip => clip.Name));
+    }
+
+    [Fact]
+    public void LayeredAnimationsShareTheirBasePose()
+    {
+        var (psk, first) = PskFixtures.WriteFixture();
+        var (_, second) = PskFixtures.WriteFixture();
+        // Each additive is exported with its own copy of the base, so the game path identifies it.
+        var (_, basePsa) = PskFixtures.WriteFixture();
+        var (_, baseCopy) = PskFixtures.WriteFixture();
+        new PSALayerSidecar(LayerSpace.Model, Path.GetRelativePath(Path.GetDirectoryName(first)!, basePsa), 0, "/Game/A_Idle").Write(first);
+        new PSALayerSidecar(LayerSpace.Model, Path.GetRelativePath(Path.GetDirectoryName(second)!, baseCopy), 0, "/Game/A_Idle").Write(second);
+        var paths = $"{first}{OptionDescriptor.MultipleValueSeparator}{second}";
+
+        var model = _importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
+
+        var layers = model.Animations!.Select(clip => clip.Layering!).ToArray();
+        Assert.All(layers, layer => Assert.Equal(LayerSpace.Model, layer.Space));
+        Assert.Same(layers[0].Base, layers[1].Base);
+        Assert.Equal(0.5f, Assert.Single(layers[0].Base!.BoneTransforms).Value.Translation.X, 5);
+    }
+
+    [Fact]
+    public void LayerWithoutBaseFileFallsBackToPlainClip()
+    {
+        var (psk, restLayer) = PskFixtures.WriteFixture();
+        var (_, orphanLayer) = PskFixtures.WriteFixture();
+        new PSALayerSidecar(LayerSpace.Local, null, 0).Write(restLayer);
+        new PSALayerSidecar(LayerSpace.Local, "missing.psa", 0).Write(orphanLayer);
+
+        AnimationClip Import(string psa) => Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) }).Animations!);
+
+        var restLayering = Import(restLayer).Layering!;
+        Assert.Equal(LayerSpace.Local, restLayering.Space);
+        Assert.Null(restLayering.Base);
+        Assert.Null(Import(orphanLayer).Layering);
     }
 
     [Fact]

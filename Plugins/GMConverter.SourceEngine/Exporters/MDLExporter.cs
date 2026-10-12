@@ -150,6 +150,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         var physicsSmdPath =
             physicsOptions is null ? null : Path.Combine(outputDirectory, $"{safeBaseName}_phys.smd");
         var animationSmdPaths = GetAnimationSmdPaths(model, outputDirectory, safeBaseName);
+        var basePoseSmdPaths = GetBasePoseSmdPaths(animationSmdPaths, outputDirectory, safeBaseName);
         var qcPath = Path.Combine(outputDirectory, $"{safeBaseName}.qc");
         var materialRoot = Path.Combine(outputDirectory, "materials");
         var materialRelativeDirectories = GetMaterialDirectories(model, modelPath);
@@ -170,7 +171,12 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
             WriteAnimationSmd(model, clip, animationSmdPath);
         }
 
-        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths);
+        foreach (var (pose, basePoseSmdPath) in basePoseSmdPaths)
+        {
+            WriteAnimationSmd(model, CreatePoseClip(pose), basePoseSmdPath);
+        }
+
+        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths);
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -545,7 +551,8 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
-        (AnimationClip Clip, string SmdPath)[] animationSmdPaths)
+        (AnimationClip Clip, string SmdPath)[] animationSmdPaths,
+        Dictionary<AnimationPose, string> basePoseSmdPaths)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
@@ -567,13 +574,36 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
-        if (animationSmdPaths.Length > 0)
+        // Base poses are plain $animations, so they can be subtracted without showing up as sequences.
+        foreach (var basePoseSmdPath in basePoseSmdPaths.Values)
         {
-            foreach (var (clip, animationSmdPath) in animationSmdPaths)
+            writer.WriteLine(FormattableString.Invariant(
+                $"$animation \"{GetBasePoseAnimationName(basePoseSmdPath)}\" \"{Path.GetFileName(basePoseSmdPath)}\""));
+        }
+
+        foreach (var (clip, animationSmdPath) in animationSmdPaths)
+        {
+            if (clip.Layering is not { } layering)
             {
                 writer.WriteLine(FormattableString.Invariant(
                     $"$sequence \"{EscapeQcString(clip.Name)}\" \"{Path.GetFileName(animationSmdPath)}\" fps {clip.FrameRate:0.######}"));
+                continue;
             }
+
+            // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
+            // space, and `delta` makes the engine add the result on top of the playing animation.
+            // Source has no model-space deltas (`worldspace` is an absolute override that ignores
+            // `delta`), so model-space layers are also written as local ones. They match exactly on
+            // the pose they were authored against and approximate it on others.
+            var baseName = layering.Base is { } basePose
+                ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
+                : "idle";
+            writer.WriteLine(FormattableString.Invariant($"$sequence \"{EscapeQcString(clip.Name)}\" {{"));
+            writer.WriteLine(FormattableString.Invariant($"    \"{Path.GetFileName(animationSmdPath)}\""));
+            writer.WriteLine(FormattableString.Invariant($"    fps {clip.FrameRate:0.######}"));
+            writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
+            writer.WriteLine("    delta");
+            writer.WriteLine("}");
         }
 
         if (physicsSmdPath is not null)
@@ -648,6 +678,41 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
                 clip,
                 Path.Combine(outputDirectory, $"{safeBaseName}_{index}_{NameHelpers.SanitizeFileName(clip.Name)}.smd")))
         ];
+    }
+
+    // One SMD per distinct base pose. Clips that share a base share the AnimationPose instance.
+    private static Dictionary<AnimationPose, string> GetBasePoseSmdPaths(
+        (AnimationClip Clip, string SmdPath)[] animationSmdPaths,
+        string outputDirectory,
+        string safeBaseName)
+    {
+        Dictionary<AnimationPose, string> paths = new(ReferenceEqualityComparer.Instance);
+        var basePoses = animationSmdPaths
+            .Select(entry => entry.Clip.Layering?.Base)
+            .OfType<AnimationPose>()
+            .Distinct<AnimationPose>(ReferenceEqualityComparer.Instance);
+        foreach (var basePose in basePoses)
+        {
+            paths.Add(basePose, Path.Join(
+                outputDirectory,
+                $"{safeBaseName}_base{paths.Count}_{NameHelpers.SanitizeFileName(basePose.Name)}.smd"));
+        }
+
+        return paths;
+    }
+
+    private static string GetBasePoseAnimationName(string basePoseSmdPath)
+    {
+        return Path.GetFileNameWithoutExtension(basePoseSmdPath);
+    }
+
+    private static AnimationClip CreatePoseClip(AnimationPose pose)
+    {
+        return new AnimationClip(
+            pose.Name,
+            30f,
+            0f,
+            [.. pose.BoneTransforms.Select(bone => new BoneTransformTrack(bone.Key, [new TransformKeyframe(0f, bone.Value)]))]);
     }
 
     private static void WriteAnimationSmd(Model model, AnimationClip clip, string smdPath)

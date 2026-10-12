@@ -24,14 +24,18 @@ using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Writers;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Animations;
+using CUE4Parse_Conversion.Animations.PSA;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.UEFormat.Enums;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UnrealEngine.Common;
+using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Formats.Unreal;
 using GMConverter.UnrealEngine.Importers;
@@ -301,6 +305,11 @@ public sealed class UE4Explorer : IExplorer
         Directory.CreateDirectory(animRoot);
 
         var options = CreateExporterOptions();
+        if (animExport is UAnimSequence { } additive && additive.IsValidAdditive())
+        {
+            return ExportResolvedAdditiveAnimation(fileEntry, exportRoot, animRoot, additive, options);
+        }
+
         AnimExporter animExporter = animExport switch
         {
             UAnimSequence animSeq => new AnimExporter(animSeq, options),
@@ -325,9 +334,90 @@ public sealed class UE4Explorer : IExplorer
             ?? throw new GMConverterException(
                 $"CUE4Parse did not export a PSA animation for: {fileEntry.ArchiveEntryPath}");
 
+        if (animExport is UAnimSequence sequence)
+        {
+            WriteLayerSidecar(sequence, psaPath, exportRoot, options);
+        }
+
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
             "Load a matching SkeletalMesh and use Add Animations to pair them.";
         return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
+    }
+
+    // Additive sequences are converted here rather than through AnimExporter so the baked result
+    // can be corrected for CUE4Parse's doubled-scale decoding (see UnrealAdditiveScaleFix) before
+    // the PSA is written.
+    private static ExplorerResolvedEntry ExportResolvedAdditiveAnimation(
+        ExplorerFileEntry fileEntry,
+        string exportRoot,
+        string animRoot,
+        UAnimSequence sequence,
+        ExporterOptions options)
+    {
+        var skeleton = sequence.Skeleton.Load<USkeleton>()
+            ?? throw new GMConverterException($"Animation has no skeleton: {fileEntry.ArchiveEntryPath}");
+        var animSet = skeleton.ConvertAnims(sequence);
+        var fixedBones = UnrealAdditiveScaleFix.Apply(sequence, skeleton, animSet.Sequences[0]);
+        PerfTimer.Log("ue4.export", $"additive {sequence.Name} scale-fixed bones={fixedBones}");
+
+        var psaPath = Path.Join(animRoot, sequence.Name + ".psa");
+        using (var writer = new FArchiveWriter())
+        {
+            new ActorXAnim(animSet, 0, options).Save(writer);
+            File.WriteAllBytes(psaPath, writer.GetBuffer());
+        }
+
+        WriteLayerSidecar(sequence, psaPath, exportRoot, options);
+        var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
+            "Load a matching SkeletalMesh and use Add Animations to pair them.";
+        return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
+    }
+
+    // Additive animations are stored as a difference from a base pose. CUE4Parse bakes that difference
+    // onto its base before writing the PSA, so record which pose it was and in which space, letting
+    // exporters with layer support turn the clip back into a layer. Base poses that vary per frame
+    // (ABPT_AnimScaled) or come from the additive's own uncooked source (ABPT_LocalAnimFrame) have no
+    // single pose to record, so those clips stay plain baked animations.
+    private static void WriteLayerSidecar(
+        UAnimSequence sequence,
+        string psaPath,
+        string exportRoot,
+        ExporterOptions options)
+    {
+        LayerSpace? space = sequence.AdditiveAnimType switch
+        {
+            EAdditiveAnimationType.AAT_LocalSpaceBase => LayerSpace.Local,
+            EAdditiveAnimationType.AAT_RotationOffsetMeshSpace => LayerSpace.Model,
+            _ => null,
+        };
+        if (space is null)
+        {
+            return;
+        }
+
+        switch (sequence.RefPoseType)
+        {
+            case EAdditiveBasePoseType.ABPT_RefPose:
+                new PSALayerSidecar(space.Value, null, 0).Write(psaPath);
+                break;
+            case EAdditiveBasePoseType.ABPT_AnimFrame
+                when sequence.RefPoseSeq is { } refPoseSeq && refPoseSeq.TryLoad(out var baseExport) && baseExport is UAnimSequence baseSequence:
+                {
+                    var baseRoot = Path.Join(exportRoot, "__anim_base");
+                    new AnimExporter(baseSequence, options).TryWriteToDir(new DirectoryInfo(baseRoot), out _, out _);
+                    WaitForExportTree(baseRoot);
+                    var basePsaPath = Directory
+                        .EnumerateFiles(baseRoot, baseSequence.Name + ".psa", SearchOption.AllDirectories)
+                        .FirstOrDefault();
+                    if (basePsaPath is not null)
+                    {
+                        var relativeBasePath = Path.GetRelativePath(Path.GetDirectoryName(psaPath)!, basePsaPath);
+                        new PSALayerSidecar(space.Value, relativeBasePath, sequence.RefFrameIndex, baseSequence.GetPathName()).Write(psaPath);
+                    }
+
+                    break;
+                }
+        }
     }
 
     private static ExplorerResolvedEntry ExportResolvedScene(

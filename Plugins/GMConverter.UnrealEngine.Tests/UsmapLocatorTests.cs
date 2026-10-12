@@ -4,12 +4,12 @@ namespace GMConverter.UnrealEngine.Tests;
 
 public sealed class UsmapLocatorTests : IDisposable
 {
-    private readonly string _installRoot = Path.Combine(Path.GetTempPath(), "gmconverter-usmap-" + Guid.NewGuid().ToString("N"));
+    private readonly string _installRoot = Path.Join(Path.GetTempPath(), "gmconverter-usmap-" + Guid.NewGuid().ToString("N"));
     private readonly string _paksDirectory;
 
     public UsmapLocatorTests()
     {
-        _paksDirectory = Path.Combine(_installRoot, "Game", "Content", "Paks");
+        _paksDirectory = Path.Join(_installRoot, "Game", "Content", "Paks");
         Directory.CreateDirectory(_paksDirectory);
     }
 
@@ -53,7 +53,7 @@ public sealed class UsmapLocatorTests : IDisposable
     [Fact]
     public void IgnoresMappingsAboveTheInstallRoot()
     {
-        var nestedPaks = Path.Combine(_installRoot, "Game", "Content", "Paks", "Extra");
+        var nestedPaks = Path.Join(_installRoot, "Game", "Content", "Paks", "Extra");
         Directory.CreateDirectory(nestedPaks);
         WriteMappings(_installRoot, "TooFar.usmap", DateTime.UtcNow);
 
@@ -62,7 +62,7 @@ public sealed class UsmapLocatorTests : IDisposable
 
     private static string WriteMappings(string directory, string fileName, DateTime lastWriteUtc)
     {
-        var path = Path.Combine(directory, fileName);
+        var path = Path.Join(directory, fileName);
         File.WriteAllBytes(path, [0xC4, 0x30]);
         File.SetLastWriteTimeUtc(path, lastWriteUtc);
         return path;

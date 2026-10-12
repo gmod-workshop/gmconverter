@@ -13,6 +13,7 @@ namespace GMConverter.UI.ViewModels;
 public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 {
     private const int _maxDisplayedExplorerEntries = 2500;
+    private const string _skeletonFilterPrefix = "skeleton:";
 
     private static readonly char[] _searchTokenSeparators =
     [
@@ -69,6 +70,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     private readonly Action<bool> _setIsBusy;
     private readonly Action<string> _setStatusMessage;
     private readonly List<ExplorerFileEntry> _explorerEntries = [];
+    private IReadOnlyList<ExplorerFileEntry> _selectedExplorerEntries = [];
     private CancellationTokenSource? _explorerFilterCts;
     private string _explorerProfileName = "Explorer";
     private bool _disposed;
@@ -87,6 +89,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     private string _selectedExplorerDetails = "Select a model in the tree.";
+
+    [ObservableProperty]
+    private bool _includeCompatibleAnimations;
 
     [ObservableProperty]
     private string _explorerStatus = "Select a root directory and scan for supported models.";
@@ -127,10 +132,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     public bool HasConvertibleExplorerEntry => SelectedExplorerNode?.Entry?.IsConvertible is true;
 
-    public bool HasAnimationExplorerEntry =>
-        SelectedExplorerNode?.Entry is { } entry &&
-        entry.InputFormat.Equals("ueanim", StringComparison.OrdinalIgnoreCase) &&
-        IsExportableAnimationEntryClass(entry.AssetClass);
+    public bool HasAnimationExplorerEntry => GetSelectedAnimationEntries().Count > 0;
 
     public bool HasExplorerFilter => !string.IsNullOrWhiteSpace(ExplorerFilter);
 
@@ -149,7 +151,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         FindRelatedExplorerAnimationsCommand.NotifyCanExecuteChanged();
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
-        UseSelectionAsAnimationCommand.NotifyCanExecuteChanged();
+        AddSelectedAnimationsCommand.NotifyCanExecuteChanged();
 
         if (value?.Entry is { } entry)
         {
@@ -175,7 +177,18 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         RefreshExplorerCommand.NotifyCanExecuteChanged();
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
-        UseSelectionAsAnimationCommand.NotifyCanExecuteChanged();
+        AddSelectedAnimationsCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// The tree allows multi-select so several animations can be added at once; the view reports
+    /// the full selection here, while <see cref="SelectedExplorerNode"/> stays the focused item.
+    /// </summary>
+    internal void SetSelectedExplorerNodes(IEnumerable<ExplorerNode> nodes)
+    {
+        _selectedExplorerEntries = [.. nodes.Select(node => node.Entry).OfType<ExplorerFileEntry>()];
+        OnPropertyChanged(nameof(HasAnimationExplorerEntry));
+        AddSelectedAnimationsCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRunCommand))]
@@ -248,11 +261,11 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanUseSelectionAsAnimation))]
-    private async Task UseSelectionAsAnimationAsync()
+    [RelayCommand(CanExecute = nameof(CanAddSelectedAnimations))]
+    private async Task AddSelectedAnimationsAsync()
     {
-        if (_getIsBusy() ||
-            SelectedExplorerNode?.Entry is not { } entry)
+        var animations = GetSelectedAnimationEntries();
+        if (_getIsBusy() || animations.Count == 0)
         {
             return;
         }
@@ -260,22 +273,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         _setIsBusy(true);
         try
         {
-            _setStatusMessage("Exporting animation...");
-            ExplorerStatus = "Exporting animation...";
-            _logSink.Append("Exporting animation...");
-
-            var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
-            _convert.ApplyImporterOptions(resolvedEntry.ImporterOptions);
-            var animPath = resolvedEntry.InputPath;
-
-            if (!string.IsNullOrWhiteSpace(resolvedEntry.Details))
-            {
-                _logSink.Append(resolvedEntry.Details);
-            }
-
-            ExplorerStatus = $"Set animation: {Path.GetFileName(animPath)}.";
-            _logSink.Append($"Set animation: {animPath}");
-            _setStatusMessage("Animation set.");
+            var added = await AddAnimationsAsync(animations);
+            ExplorerStatus = $"Added {added} animation(s) to the current model.";
+            _setStatusMessage("Animations added.");
         }
         catch (Exception ex)
         {
@@ -289,9 +289,43 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private bool CanUseSelectionAsAnimation()
+    private bool CanAddSelectedAnimations()
     {
         return HasAnimationExplorerEntry && !_getIsBusy();
+    }
+
+    // Exports each animation and appends it to the importer's animation list, so they all end up
+    // as sequences of the model that is currently loaded on the Convert page.
+    private async Task<int> AddAnimationsAsync(List<ExplorerFileEntry> animations)
+    {
+        var added = 0;
+        for (var index = 0; index < animations.Count; index++)
+        {
+            var message = $"Exporting animation {index + 1} of {animations.Count}...";
+            _setStatusMessage(message);
+            ExplorerStatus = message;
+
+            var animation = animations[index];
+            var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(animation));
+            added += _convert.AppendImporterOptions(resolvedEntry.ImporterOptions);
+            _logSink.Append($"Added animation: {resolvedEntry.InputPath}");
+        }
+
+        return added;
+    }
+
+    private List<ExplorerFileEntry> GetSelectedAnimationEntries()
+    {
+        IEnumerable<ExplorerFileEntry> selection = _selectedExplorerEntries.Count > 0
+            ? _selectedExplorerEntries
+            : SelectedExplorerNode?.Entry is { } entry ? [entry] : [];
+        return [.. selection.Where(IsExportableAnimationEntry)];
+    }
+
+    private static bool IsExportableAnimationEntry(ExplorerFileEntry entry)
+    {
+        return entry.InputFormat.Equals("ueanim", StringComparison.OrdinalIgnoreCase) &&
+            IsExportableAnimationEntryClass(entry.AssetClass);
     }
 
     private static bool IsExportableAnimationEntryClass(string? assetClass)
@@ -324,6 +358,13 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // An exact skeleton match beats guessing from names when the explorer knows it.
+        if (entry.SkeletonId is { } skeletonId)
+        {
+            ApplyExplorerFilter($"class:Anim {_skeletonFilterPrefix}{skeletonId}");
+            return;
+        }
+
         var tokens = CreateRelatedAnimationTokens(entry);
         var filter = tokens.Length == 0
             ? "class:Anim"
@@ -336,6 +377,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         ConvertViewModel.SetSelected(ExplorerProfiles, settings.ExplorerProfile, value => SelectedExplorerProfile = value);
         ExplorerRootDirectory = settings.ExplorerRootDirectory ?? ExplorerRootDirectory;
         ExplorerFilter = settings.ExplorerFilter ?? ExplorerFilter;
+        IncludeCompatibleAnimations = settings.ExplorerIncludeCompatibleAnimations;
     }
 
     public void Dispose()
@@ -433,6 +475,25 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         ExplorerStatus = resolvedEntry.ImporterOptions is { Count: > 0 }
             ? $"Prepared {entry.DisplayPath} with importer options."
             : $"Prepared {entry.DisplayPath}.";
+
+        if (IncludeCompatibleAnimations && entry.IsConvertible && FindCompatibleAnimations(entry) is { Count: > 0 } animations)
+        {
+            _logSink.Append($"Bundling {animations.Count} animation(s) that share {entry.SkeletonId}.");
+            var added = await AddAnimationsAsync(animations);
+            ExplorerStatus = $"Prepared {entry.DisplayPath} with {added} animation(s).";
+        }
+    }
+
+    // Only plain sequences: montages and composites mostly re-wrap those same sequences, so
+    // bundling them too would duplicate animations. They can still be added by hand.
+    private List<ExplorerFileEntry> FindCompatibleAnimations(ExplorerFileEntry entry)
+    {
+        return entry.SkeletonId is not { } skeletonId
+            ? []
+            : [.. _explorerEntries.Where(candidate =>
+                IsExportableAnimationEntry(candidate) &&
+                string.Equals(candidate.AssetClass, "AnimSequence", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(candidate.SkeletonId, skeletonId, StringComparison.OrdinalIgnoreCase))];
     }
 
     private void PopulateExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)
@@ -597,6 +658,11 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     private static bool MatchesExplorerFilterTerm(ExplorerFileEntry entry, string term)
     {
         if (TryMatchPrefixedFilter(entry, term, "class:", value => entry.AssetClass?.Contains(value, StringComparison.OrdinalIgnoreCase) is true))
+        {
+            return true;
+        }
+
+        if (TryMatchPrefixedFilter(entry, term, _skeletonFilterPrefix, value => string.Equals(entry.SkeletonId, value, StringComparison.OrdinalIgnoreCase)))
         {
             return true;
         }

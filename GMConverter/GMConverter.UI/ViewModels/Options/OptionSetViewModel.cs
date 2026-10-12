@@ -84,6 +84,39 @@ public sealed class OptionSetViewModel
     }
 
     /// <summary>
+    /// Like <see cref="LoadFrom"/>, but list options (<see cref="OptionViewModel.AllowsMultiple"/>)
+    /// gain the new values after their current ones instead of being replaced; duplicates are
+    /// skipped. Returns how many list values were actually added.
+    /// </summary>
+    public int AppendFrom(IReadOnlyDictionary<string, object?> values)
+    {
+        var added = 0;
+        foreach (var option in Groups.SelectMany(g => g.Options).Where(option => values.ContainsKey(option.Key)))
+        {
+            if (!option.AllowsMultiple)
+            {
+                option.TryLoad(values[option.Key]);
+                continue;
+            }
+
+            var current = SplitValues(option.GetCurrentValue() as string);
+            var before = current.Count;
+            HashSet<string> seen = new(current, StringComparer.OrdinalIgnoreCase);
+            current.AddRange(SplitValues(values[option.Key] as string).Where(seen.Add));
+
+            added += current.Count - before;
+            option.TryLoad(string.Join(OptionDescriptor.MultipleValueSeparator, current));
+        }
+
+        return added;
+    }
+
+    private static List<string> SplitValues(string? value)
+    {
+        return [.. (value ?? string.Empty).Split(OptionDescriptor.MultipleValueSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+    }
+
+    /// <summary>
     /// Finds the option whose key or one of whose aliases matches <paramref name="name"/> after
     /// <paramref name="normalize"/> is applied to both sides. Used to map config-file keys.
     /// </summary>

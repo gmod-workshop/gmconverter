@@ -42,6 +42,16 @@ public sealed class OptionValues
         return value as string ?? value.ToString();
     }
 
+    /// <summary>
+    /// Returns the non-empty values of an <see cref="OptionDescriptor.AllowsMultiple"/> option,
+    /// split on <see cref="OptionDescriptor.MultipleValueSeparator"/>, or an empty list.
+    /// </summary>
+    public IReadOnlyList<string> GetStrings(string key)
+    {
+        return GetString(key)?
+            .Split(OptionDescriptor.MultipleValueSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+    }
+
     public bool GetBool(string key, bool defaultValue = false)
     {
         if (!_values.TryGetValue(key, out var value))

@@ -20,7 +20,8 @@ internal sealed record UiSettings(
     bool PreviewWireframe,
     bool PreviewPhysicsOverlay,
     Dictionary<string, Dictionary<string, object?>>? ExporterOptions = null,
-    Dictionary<string, Dictionary<string, object?>>? ImporterOptions = null)
+    Dictionary<string, Dictionary<string, object?>>? ImporterOptions = null,
+    bool ExplorerIncludeCompatibleAnimations = false)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

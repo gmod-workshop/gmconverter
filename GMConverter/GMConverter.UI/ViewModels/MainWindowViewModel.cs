@@ -31,7 +31,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         nameof(ExplorerViewModel.SelectedExplorerProfile),
         nameof(ExplorerViewModel.ExplorerRootDirectory),
-        nameof(ExplorerViewModel.ExplorerFilter)
+        nameof(ExplorerViewModel.ExplorerFilter),
+        nameof(ExplorerViewModel.IncludeCompatibleAnimations)
     };
 
     private static readonly HashSet<string> _shellSettingsProperties = new(StringComparer.Ordinal)
@@ -259,7 +260,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Preview.PreviewWireframe,
             Preview.PreviewPhysicsOverlay,
             Convert.SnapshotExporterOptions(),
-            Convert.SnapshotImporterOptions());
+            Convert.SnapshotImporterOptions(),
+            Explorer.IncludeCompatibleAnimations);
     }
 
     private void QueueSettingsSave()

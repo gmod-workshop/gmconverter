@@ -120,7 +120,9 @@ internal sealed class ConversionService(UiLogSink logSink)
                 ["binary"] = true,
                 ["bakeUvTransforms"] = true,
             });
-            new GLTFExporter().Export(model, previewDirectory, baseName, previewOptions);
+            // The viewer shows the bind pose and never plays clips, and a model with hundreds of
+            // bundled animations would otherwise write a several-times-larger preview file.
+            new GLTFExporter().Export(model with { Animations = null }, previewDirectory, baseName, previewOptions);
         }
 
         PhysicsPreviewExport physicsPreview;

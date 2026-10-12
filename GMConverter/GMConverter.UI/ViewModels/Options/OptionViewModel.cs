@@ -27,6 +27,9 @@ public abstract class OptionViewModel : ViewModelBase
 
     public decimal Increment { get; }
 
+    /// <summary>Whether the value is a list joined by <see cref="OptionDescriptor.MultipleValueSeparator"/>.</summary>
+    public bool AllowsMultiple { get; }
+
     protected static object? UnwrapJsonValue(object? value)
     {
         return value is JsonElement json ? json.ValueKind switch
@@ -50,6 +53,7 @@ public abstract class OptionViewModel : ViewModelBase
         Minimum = descriptor.Minimum ?? (descriptor.Type == OptionType.Int ? int.MinValue : decimal.MinValue);
         Maximum = descriptor.Maximum ?? (descriptor.Type == OptionType.Int ? int.MaxValue : decimal.MaxValue);
         Increment = descriptor.Increment ?? (descriptor.Type == OptionType.Float ? 0.01m : 1m);
+        AllowsMultiple = descriptor.AllowsMultiple;
     }
 
     /// <summary>

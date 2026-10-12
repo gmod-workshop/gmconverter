@@ -93,13 +93,17 @@ internal sealed class PSKImporter : IImporter
                 "psk.import",
                 "ParseScene.Entry",
                 $"{entryIndex + 1}/{manifest.Entries.Count} {Path.GetFileName(entryPath)}");
-            parsedModels[entryIndex] = ParseSingle(entryPath, options, entry.Transform, materialResolver);
+            parsedModels[entryIndex] = ParseSingle(entryPath, options, entry.Transform, materialResolver, buildAnimations: false);
         });
+
+        // Skeletal parts each carry their own copy of the skeleton; merge them so the scene keeps
+        // its rig and the requested animation binds once against the combined bone list.
+        var (skeleton, parts) = PSKSceneSkeleton.Merge(parsedModels);
 
         List<Mesh> meshes = [];
         Dictionary<string, Material> materials = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, Dictionary<string, Material>> skins = new(StringComparer.OrdinalIgnoreCase);
-        foreach (var model in parsedModels)
+        foreach (var model in parts)
         {
             meshes.AddRange(model.Meshes);
             foreach (var material in model.Materials)
@@ -131,6 +135,8 @@ internal sealed class PSKImporter : IImporter
             string.IsNullOrWhiteSpace(manifest.Name) ? Path.GetFileNameWithoutExtension(inputPath) : manifest.Name,
             meshes,
             materials.Count == 0 ? [new Material("default")] : materials.Values.ToArray(),
+            skeleton,
+            BuildAnimations(skeleton, options),
             Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))]);
     }
 
@@ -143,7 +149,8 @@ internal sealed class PSKImporter : IImporter
         string inputPath,
         ModelParseOptions options,
         PSKSceneTransform? sceneTransform,
-        PSKMaterialResolver materialResolver)
+        PSKMaterialResolver materialResolver,
+        bool buildAnimations = true)
     {
         var psk = PSKFile.Read(inputPath);
         var modelName = Path.GetFileNameWithoutExtension(inputPath);
@@ -241,7 +248,7 @@ internal sealed class PSKImporter : IImporter
             [mesh],
             materials,
             skeleton,
-            BuildAnimations(skeleton, options),
+            buildAnimations ? BuildAnimations(skeleton, options) : null,
             BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath));
     }
 

@@ -180,6 +180,69 @@ public static class PskFixtures
         return (psk, psa);
     }
 
+    // A one-triangle PSK whose vertices are all bound to bones[weightedBone]; bones are (name,
+    // parent index) pairs. An empty list writes a boneless static mesh like a .pskx, and a negative
+    // weightedBone keeps the bones but writes no weights, like a static mesh with sockets.
+    public static void WriteSkinnedTriangle(string path, (string Name, int Parent)[] bones, int weightedBone, float offsetX = 0)
+    {
+        using var writer = new BinaryWriter(File.Create(path));
+        WriteSection(writer, "ACTRHEAD", 0, 0, _ => { });
+        WriteSection(writer, "PNTS0000", 12, 3, w =>
+        {
+            WriteVector(w, offsetX + 10, 20, 30);
+            WriteVector(w, offsetX + 110, 20, 30);
+            WriteVector(w, offsetX + 10, 120, 30);
+        });
+        WriteSection(writer, "VTXW0000", 16, 3, w =>
+        {
+            for (var index = 0; index < 3; index++)
+            {
+                w.Write(index);
+                w.Write(index == 1 ? 1f : 0f);
+                w.Write(index == 2 ? 1f : 0f);
+                w.Write(0);
+            }
+        });
+        WriteSection(writer, "FACE0000", 12, 1, w =>
+        {
+            w.Write((ushort)0);
+            w.Write((ushort)1);
+            w.Write((ushort)2);
+            w.Write((ushort)0);
+            w.Write(1);
+        });
+        WriteSection(writer, "MATT0000", 88, 1, w =>
+        {
+            WriteFixedString(w, "test", 64);
+            w.Write(new byte[24]);
+        });
+        WriteSection(writer, "REFSKELT", 120, bones.Length, w =>
+        {
+            foreach (var (name, parent) in bones)
+            {
+                WriteFixedString(w, name, 64);
+                w.Write(0);
+                w.Write(0);
+                w.Write(Math.Max(parent, 0));
+                WriteVector(w, 0, 0, 0);
+                w.Write(1f);
+                WriteVector(w, 25, 0, 0);
+                w.Write(1f);
+                WriteVector(w, 1, 1, 1);
+            }
+        });
+        var weightCount = bones.Length == 0 || weightedBone < 0 ? 0 : 3;
+        WriteSection(writer, "RAWWEIGHTS", 12, weightCount, w =>
+        {
+            for (var index = 0; index < weightCount; index++)
+            {
+                w.Write(1f);
+                w.Write(index);
+                w.Write(weightedBone);
+            }
+        });
+    }
+
     private static void WriteBone(BinaryWriter writer)
     {
         WriteBone(writer, Quaternion.Identity);

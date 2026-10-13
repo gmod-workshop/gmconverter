@@ -23,6 +23,7 @@ using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
+using CUE4Parse.UE4.Objects.Engine.Animation;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Writers;
 using CUE4Parse_Conversion;
@@ -236,7 +237,12 @@ public sealed class UE4Explorer : IExplorer
         PerfTimer.Log("ue4.resolve", $"sourceExport type={sourceExport.ExportType}");
 
         ExplorerResolvedEntry resolvedEntry;
-        if (IsExportableAnimationObject(sourceExport))
+        if (sourceExport is UBlendSpaceBase blendSpace)
+        {
+            using var blendScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedBlendSpace");
+            resolvedEntry = ExportResolvedBlendSpace(fileEntry, exportRoot, blendSpace);
+        }
+        else if (IsExportableAnimationObject(sourceExport))
         {
             using var animScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedAnimation");
             try
@@ -290,6 +296,36 @@ public sealed class UE4Explorer : IExplorer
             fileEntry.ArchiveEntryPath,
             resolvedEntry);
         return resolvedEntry;
+    }
+
+    // A blend space needs its sample sequences. Each is resolved like an entry of its own, so it
+    // shares that entry's export (and cache) with sequences added or bundled separately, and the
+    // importer gets the same PSA path once rather than a second copy of the clip.
+    private ExplorerResolvedEntry ExportResolvedBlendSpace(ExplorerFileEntry fileEntry, string exportRoot, UBlendSpaceBase asset)
+    {
+        var blendSpace = UnrealBlendSpaceReader.Read(asset);
+        List<string> samplePaths = [];
+        List<PSABlendSpaceSample> samples = [];
+        foreach (var sample in blendSpace.Samples)
+        {
+            var sampleEntry = fileEntry with
+            {
+                DisplayPath = sample.ObjectPath,
+                FilePath = sample.ObjectPath,
+                ArchiveEntryPath = sample.ObjectPath,
+                AssetClass = "AnimSequence",
+            };
+            samplePaths.Add(ResolveEntry(sampleEntry).InputPath);
+            samples.Add(new PSABlendSpaceSample(sample.Name, sample.Coordinates));
+        }
+
+        Directory.CreateDirectory(exportRoot);
+        var sidecarPath = Path.Join(exportRoot, blendSpace.Name + PSABlendSpaceSidecar.Extension);
+        new PSABlendSpaceSidecar(blendSpace.Name, blendSpace.IsAimOffset, blendSpace.Axes, samples).Write(sidecarPath);
+
+        var details = $"Resolved UE blend space: {blendSpace.Name} with {samples.Count} sample(s). " +
+            "Load a matching SkeletalMesh and use Add Animations to add it.";
+        return new ExplorerResolvedEntry(sidecarPath, exportRoot, details, PSKImporterOptions.WithBlendSpace(samplePaths, sidecarPath));
     }
 
     private static bool IsExportableAnimationObject(UObject export)
@@ -1561,8 +1597,10 @@ public sealed class UE4Explorer : IExplorer
                     : null;
 
                 // Montages and composites mostly re-wrap plain sequences, so bundling them too would
-                // duplicate animations; they can still be added by hand.
-                var bundlesWithModel = assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase);
+                // duplicate animations; they can still be added by hand. Blend spaces bundle: their
+                // samples are the same sequences, so they only add how those blend.
+                var bundlesWithModel = assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) ||
+                    assetClass.Contains("BlendSpace", StringComparison.OrdinalIgnoreCase);
 
                 entries.Add(new ExplorerFileEntry(
                     displayPath,
@@ -1595,7 +1633,8 @@ public sealed class UE4Explorer : IExplorer
 
     private static bool IsExportableAnimationClass(string assetClass)
     {
-        return assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) ||
+        return assetClass.Contains("BlendSpace", StringComparison.OrdinalIgnoreCase) ||
+            assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) ||
             assetClass.Equals("AnimMontage", StringComparison.OrdinalIgnoreCase) ||
             assetClass.Equals("AnimComposite", StringComparison.OrdinalIgnoreCase);
     }

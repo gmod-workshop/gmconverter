@@ -34,4 +34,6 @@ internal sealed class GenericSourceProfile : ISourceProfile
     {
         return target.IsDirectory && File.Exists(Path.Join(target.FullPath, "gameinfo.txt")) ? GameMatch.Fallback : GameMatch.None;
     }
+
+    public SourcePoseParameter? GetPoseParameter(BlendAxis axis) => SourcePoseParameters.For(axis);
 }

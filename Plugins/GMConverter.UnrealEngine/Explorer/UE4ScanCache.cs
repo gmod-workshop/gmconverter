@@ -23,7 +23,8 @@ internal static class UE4ScanCache
     // when it gains fields whose defaults would be wrong for old entries, or when scanning
     // classifies entries differently; readers treat older files as a miss and regenerate.
     // 4: entry kinds, and folder-only animation assets are no longer models.
-    private const int _cacheVersion = 4;
+    // 5: blend spaces can be added to models and bundle with them.
+    private const int _cacheVersion = 5;
 
     // Files whose presence/size/mtime defines "this archive set." We deliberately do not hash file
     // contents (would be slower than the scan we're trying to skip). The set covers PAK and IoStore

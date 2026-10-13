@@ -111,7 +111,7 @@ public sealed class PskImporterTests
 
         Assert.Contains(".psa", Assert.Throws<GMConverterException>(() => _importer.Import(WithAnimation(notPsa))).Message);
         Assert.Throws<GMConverterException>(() => _importer.Import(WithAnimation(psa + ".missing")));
-        Assert.Contains("animation-path", Assert.Single(_importer.OptionSchema.AllOptions).Aliases);
+        Assert.Contains("animation-path", _importer.OptionSchema.AllOptions.Single(option => option.Key == PSKImporterOptions.AnimationPath).Aliases);
     }
 
     [Theory]

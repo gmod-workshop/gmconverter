@@ -1,5 +1,6 @@
 using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.IO.Objects;
+using GMConverter.SDK.Common;
 
 namespace GMConverter.UnrealEngine.Archives;
 
@@ -32,7 +33,7 @@ internal sealed class UnrealSkeletonIndex
         Dictionary<FPackageId, FPackageId[]> importsByPackage = [];
         foreach (var container in containers)
         {
-            if (container.ContainerHeader is not { StoreEntries.Length: > 0 } header)
+            if (TryReadHeader(container) is not { StoreEntries.Length: > 0 } header)
             {
                 continue;
             }
@@ -44,6 +45,27 @@ internal sealed class UnrealSkeletonIndex
         }
 
         return new UnrealSkeletonIndex(importsByPackage, skeletonPackageNames);
+    }
+
+    // On-demand containers (Fortnite's streamed content) keep their header on a download server, and
+    // fetching it for every container would turn a ~100 ms index into minutes of network requests.
+    // A header that can't be read only leaves its packages unpaired, so the scan carries on.
+    private static FIoContainerHeader? TryReadHeader(IoStoreReader container)
+    {
+        if (container is IoStoreOnDemandReader)
+        {
+            return null;
+        }
+
+        try
+        {
+            return container.ContainerHeader;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            PerfTimer.Log("ue4.scan", $"skeleton index skipped {container.Name}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>The skeleton package <paramref name="packageName"/> imports, or null if none is known.</summary>

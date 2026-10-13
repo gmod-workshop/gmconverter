@@ -25,13 +25,10 @@ using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.Engine.Animation;
 using CUE4Parse.UE4.Objects.UObject;
-using CUE4Parse.UE4.Writers;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Animations;
-using CUE4Parse_Conversion.Animations.PSA;
-using CUE4Parse_Conversion.Meshes;
-using CUE4Parse_Conversion.Textures;
-using CUE4Parse_Conversion.UEFormat.Enums;
+using CUE4Parse_Conversion.Options;
+using CUE4Parse_Conversion.Writers.UEFormat.Enums;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
@@ -341,39 +338,30 @@ public sealed class UE4Explorer : IExplorer
         var animRoot = Path.Combine(exportRoot, "__anim");
         Directory.CreateDirectory(animRoot);
 
-        var options = CreateExporterOptions();
         if (animExport is UAnimSequence { } additive && additive.IsValidAdditive())
         {
-            return ExportResolvedAdditiveAnimation(fileEntry, exportRoot, animRoot, additive, options);
+            return ExportResolvedAdditiveAnimation(fileEntry, exportRoot, animRoot, additive);
         }
 
-        AnimExporter animExporter = animExport switch
+        if (animExport is not UAnimationAsset animation)
         {
-            UAnimSequence animSeq => new AnimExporter(animSeq, options),
-            UAnimMontage animMontage => new AnimExporter(animMontage, options),
-            UAnimComposite animComposite => new AnimExporter(animComposite, options),
-            _ => throw new GMConverterException($"Unsupported animation type for PSA export: {animExport.ExportType}")
-        };
-
-        using (PerfTimer.Measure("ue4.export", "AnimExporter.TryWriteToDir", animExport.ExportType))
-        {
-            animExporter.TryWriteToDir(new DirectoryInfo(animRoot), out _, out _);
-        }
-        using (PerfTimer.Measure("ue4.export", "WaitForExportTree", animRoot))
-        {
-            WaitForExportTree(animRoot);
+            throw new GMConverterException($"Unsupported animation type for PSA export: {animExport.ExportType}");
         }
 
-        var psaPath = Directory
-            .EnumerateFiles(animRoot, "*.psa", SearchOption.AllDirectories)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault()
-            ?? throw new GMConverterException(
-                $"CUE4Parse did not export a PSA animation for: {fileEntry.ArchiveEntryPath}");
+        string? psaPath;
+        using (PerfTimer.Measure("ue4.export", "UnrealPsaWriter.Write", animExport.ExportType))
+        {
+            psaPath = UnrealPsaWriter.Write(animation.ConvertAnims(), animRoot, animation.Name);
+        }
+
+        if (psaPath is null)
+        {
+            throw new GMConverterException($"CUE4Parse did not export a PSA animation for: {fileEntry.ArchiveEntryPath}");
+        }
 
         if (animExport is UAnimSequence sequence)
         {
-            WriteLayerSidecar(sequence, psaPath, exportRoot, options);
+            WriteLayerSidecar(sequence, psaPath, exportRoot);
             WriteClipSidecar(sequence, psaPath);
         }
 
@@ -382,15 +370,13 @@ public sealed class UE4Explorer : IExplorer
         return new ExplorerResolvedEntry(psaPath, exportRoot, details, PSKImporterOptions.WithAnimation(psaPath));
     }
 
-    // Additive sequences are converted here rather than through AnimExporter so the baked result
-    // can be corrected for CUE4Parse's doubled-scale decoding (see UnrealAdditiveScaleFix) before
-    // the PSA is written.
+    // Additive sequences get their own path so the baked result can be corrected for CUE4Parse's
+    // doubled-scale decoding (see UnrealAdditiveScaleFix) before the PSA is written.
     private static ExplorerResolvedEntry ExportResolvedAdditiveAnimation(
         ExplorerFileEntry fileEntry,
         string exportRoot,
         string animRoot,
-        UAnimSequence sequence,
-        ExporterOptions options)
+        UAnimSequence sequence)
     {
         var skeleton = sequence.Skeleton.Load<USkeleton>()
             ?? throw new GMConverterException($"Animation has no skeleton: {fileEntry.ArchiveEntryPath}");
@@ -398,14 +384,10 @@ public sealed class UE4Explorer : IExplorer
         var fixedBones = UnrealAdditiveScaleFix.Apply(sequence, skeleton, animSet.Sequences[0]);
         PerfTimer.Log("ue4.export", $"additive {sequence.Name} scale-fixed bones={fixedBones}");
 
-        var psaPath = Path.Join(animRoot, sequence.Name + ".psa");
-        using (var writer = new FArchiveWriter())
-        {
-            new ActorXAnim(animSet, 0, options).Save(writer);
-            File.WriteAllBytes(psaPath, writer.GetBuffer());
-        }
+        var psaPath = UnrealPsaWriter.Write(animSet, animRoot, sequence.Name)
+            ?? throw new GMConverterException($"CUE4Parse did not export a PSA animation for: {fileEntry.ArchiveEntryPath}");
 
-        WriteLayerSidecar(sequence, psaPath, exportRoot, options);
+        WriteLayerSidecar(sequence, psaPath, exportRoot);
         WriteClipSidecar(sequence, psaPath);
         var details = $"Resolved UE animation: {Path.GetFileName(psaPath)}. " +
             "Load a matching SkeletalMesh and use Add Animations to pair them.";
@@ -432,8 +414,7 @@ public sealed class UE4Explorer : IExplorer
     private static void WriteLayerSidecar(
         UAnimSequence sequence,
         string psaPath,
-        string exportRoot,
-        ExporterOptions options)
+        string exportRoot)
     {
         LayerSpace? space = sequence.AdditiveAnimType switch
         {
@@ -455,11 +436,7 @@ public sealed class UE4Explorer : IExplorer
                 when sequence.RefPoseSeq is { } refPoseSeq && refPoseSeq.TryLoad(out var baseExport) && baseExport is UAnimSequence baseSequence:
                 {
                     var baseRoot = Path.Join(exportRoot, "__anim_base");
-                    new AnimExporter(baseSequence, options).TryWriteToDir(new DirectoryInfo(baseRoot), out _, out _);
-                    WaitForExportTree(baseRoot);
-                    var basePsaPath = Directory
-                        .EnumerateFiles(baseRoot, baseSequence.Name + ".psa", SearchOption.AllDirectories)
-                        .FirstOrDefault();
+                    var basePsaPath = UnrealPsaWriter.Write(baseSequence.ConvertAnims(), baseRoot, baseSequence.Name);
                     if (basePsaPath is not null)
                     {
                         var relativeBasePath = Path.GetRelativePath(Path.GetDirectoryName(psaPath)!, basePsaPath);
@@ -487,8 +464,8 @@ public sealed class UE4Explorer : IExplorer
         var sessionCache = new ExportSessionCache();
 
         // Per-UObject lock map: MaterialOverrideScope mutates state on the underlying UStaticMesh
-        // / USkeletalMesh while its using-scope is open, and CUE4Parse's Exporter reads from the
-        // same UObject during TryWriteToDir. Both are unsafe to run concurrently for parts that
+        // / USkeletalMesh while its using-scope is open, and CUE4Parse's export session reads from the
+        // same UObject while it runs. Both are unsafe to run concurrently for parts that
         // share a UObject (e.g. a Fortnite playset prop placed multiple times with different
         // transforms). Locking on a per-UObject sentinel object means parts on distinct UObjects
         // parallelize freely while same-UObject parts serialize. ConditionalWeakTable would let
@@ -688,22 +665,25 @@ public sealed class UE4Explorer : IExplorer
         Directory.CreateDirectory(partRoot);
         using (ApplyMaterialOverrides(resolvedExport.Export, resolvedExport.OverrideMaterials))
         {
-            Exporter exporter;
-            using (PerfTimer.Measure(
-                "ue4.export",
-                "CUE4Parse.Exporter.ctor",
-                $"exportMaterials={exportMaterials} type={resolvedExport.Export.ExportType}"))
-            {
-                exporter = new Exporter(resolvedExport.Export, CreateExporterOptions(exportMaterials));
-            }
             try
             {
                 using (PerfTimer.Measure(
                     "ue4.export",
-                    "CUE4Parse.Exporter.TryWriteToDir",
+                    "CUE4Parse.ExportSession.Run",
                     $"exportMaterials={exportMaterials} type={resolvedExport.Export.ExportType}"))
                 {
-                    exporter.TryWriteToDir(new DirectoryInfo(partRoot), out _, out _);
+                    // The mesh exporter queues its materials and their textures into the same
+                    // session, so one run writes them all. Failures come back as results.
+                    var results = new ExportSession { MaxDegreeOfParallelism = 1 }
+                        .Add(resolvedExport.Export)
+                        .RunAsync(partRoot, CreateExportOptions(exportMaterials))
+                        .GetAwaiter()
+                        .GetResult();
+                    if (results.FirstOrDefault(result => !result.Success && result.Error is not null) is { Error: { } error } &&
+                        !results.Any(result => result.Success && result.DiskFilePaths?.Any(IsMeshFile) == true))
+                    {
+                        throw error;
+                    }
                 }
             }
             catch (Exception ex)
@@ -843,7 +823,7 @@ public sealed class UE4Explorer : IExplorer
                 overrideExport is UMaterialInterface overrideMaterial)
             {
                 var parameters = new CMaterialParams2();
-                overrideMaterial.GetParams(parameters, EMaterialFormat.AllLayers);
+                overrideMaterial.GetParams(parameters, EMaterialDepth.AllLayers);
                 DumpMaterialTextureParameters(
                     parameters,
                     overrideDirectory,
@@ -905,7 +885,7 @@ public sealed class UE4Explorer : IExplorer
                 var parameters = new CMaterialParams2();
                 using (PerfTimer.Measure("ue4.export", "Material.GetParams", material.Name))
                 {
-                    material.GetParams(parameters, EMaterialFormat.AllLayers);
+                    material.GetParams(parameters, EMaterialDepth.AllLayers);
                 }
 
                 Dictionary<string, string> textures = new(StringComparer.OrdinalIgnoreCase);
@@ -982,7 +962,7 @@ public sealed class UE4Explorer : IExplorer
             while (current is not null)
             {
                 parentChain.Add(current.GetPathName());
-                current = (current as UMaterialInstanceConstant)?.Parent as UMaterialInterface;
+                current = (current as UMaterialInstanceConstant)?.Parent?.Load<UMaterialInterface>();
                 if (parentChain.Count >= 16)
                 {
                     break;
@@ -996,8 +976,9 @@ public sealed class UE4Explorer : IExplorer
                 BlendMode: parameters.BlendMode.ToString(),
                 ShadingModel: parameters.ShadingModel.ToString(),
                 TextureParameterNames: parameters.Textures
-                    .Where(pair => pair.Value is UTexture2D)
-                    .ToDictionary(pair => pair.Key, pair => ((UTexture2D)pair.Value).GetPathName(), StringComparer.OrdinalIgnoreCase),
+                    .Select(pair => (pair.Key, Texture: LoadTexture2D(pair.Value)))
+                    .Where(pair => pair.Texture is not null)
+                    .ToDictionary(pair => pair.Key, pair => pair.Texture!.GetPathName(), StringComparer.OrdinalIgnoreCase),
                 ScalarParameters: new Dictionary<string, float>(parameters.Scalars, StringComparer.OrdinalIgnoreCase),
                 SwitchParameters: new Dictionary<string, bool>(parameters.Switches, StringComparer.OrdinalIgnoreCase),
                 ResolvedTextures: new Dictionary<string, string>(resolvedTextures, StringComparer.OrdinalIgnoreCase));
@@ -1025,13 +1006,19 @@ public sealed class UE4Explorer : IExplorer
             USkeletalMesh skeletalMesh => skeletalMesh.Materials is { Length: > 0 }
                 ? [.. skeletalMesh.Materials.Select(material => LoadMaterialInterface(material))]
                 : skeletalMesh.SkeletalMaterials?
-                    .Select(material => LoadMaterialInterface(material.Material))
+                    .Select(material => LoadMaterialInterface(material.MaterialInterface))
                     .ToArray() ?? [],
             _ => []
         };
     }
 
-    private static UMaterialInterface? LoadMaterialInterface(ResolvedObject? material)
+    // Material parameters reference textures lazily; anything that isn't a loadable 2D texture is skipped.
+    private static UTexture2D? LoadTexture2D(ILoadableObject reference)
+    {
+        return reference.TryLoad<UTexture>(out var texture) ? texture as UTexture2D : null;
+    }
+
+    private static UMaterialInterface? LoadMaterialInterface(FPackageIndex? material)
     {
         try
         {
@@ -1062,9 +1049,9 @@ public sealed class UE4Explorer : IExplorer
         Dictionary<string, string> textures,
         ExportSessionCache sessionCache)
     {
-        foreach (var (paramName, unrealMaterial) in parameters.Textures)
+        foreach (var (paramName, reference) in parameters.Textures)
         {
-            if (string.IsNullOrWhiteSpace(paramName) || unrealMaterial is not UTexture2D texture2D)
+            if (string.IsNullOrWhiteSpace(paramName) || LoadTexture2D(reference) is not { } texture2D)
             {
                 continue;
             }
@@ -1142,7 +1129,7 @@ public sealed class UE4Explorer : IExplorer
         var byAssetName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (paramName, value) in parameters.Textures)
         {
-            if (value is UTexture2D texture &&
+            if (LoadTexture2D(value) is { } texture &&
                 !string.IsNullOrWhiteSpace(texture.Name) &&
                 textures.TryGetValue(paramName, out var fileName))
             {
@@ -1463,7 +1450,7 @@ public sealed class UE4Explorer : IExplorer
                 return baseMaterial.OpacityMaskClipValue;
             }
 
-            current = (current as UMaterialInstance)?.Parent as UMaterialInterface;
+            current = (current as UMaterialInstance)?.Parent?.Load<UMaterialInterface>();
         }
 
         return 0.333f;
@@ -1702,23 +1689,25 @@ public sealed class UE4Explorer : IExplorer
             !path.Contains("Editor", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static ExporterOptions CreateExporterOptions(bool exportMaterials = true)
+    private static ExportOptions CreateExportOptions(bool exportMaterials = true)
     {
-        return new ExporterOptions
-        {
-            LodFormat = ELodFormat.FirstLod,
-            MeshFormat = EMeshFormat.ActorX,
-            AnimFormat = EAnimFormat.ActorX,
-            MaterialFormat = EMaterialFormat.AllLayers,
-            TextureFormat = ETextureFormat.Png,
-            CompressionFormat = EFileCompressionFormat.None,
-            Platform = ETexturePlatform.DesktopMobile,
-            // Sockets go to a sidecar instead (WriteSocketSidecar); as bones they would pollute
-            // the skeleton with unweighted extras.
-            SocketFormat = ESocketFormat.None,
-            ExportMorphTargets = true,
-            ExportMaterials = exportMaterials
-        };
+        // Sockets go to a sidecar instead (WriteSocketSidecar); as bones they would pollute the
+        // skeleton with unweighted extras.
+        return new ExportOptions(
+            meshFormat: EMeshFormat.ActorX,
+            meshQuality: EMeshQuality.Highest,
+            texturePlatform: ETexturePlatform.DesktopMobile,
+            textureFormat: ETextureFormat.Png,
+            materialDepth: EMaterialDepth.AllLayers,
+            exportMaterials: exportMaterials,
+            exportMorphTargets: true,
+            socketFormat: ESocketFormat.None,
+            compressionFormat: EFileCompressionFormat.None);
+    }
+
+    private static bool IsMeshFile(string path)
+    {
+        return Path.GetExtension(path) is ".psk" or ".pskx";
     }
 
     private static ResolvedUnrealMesh[] ResolveMeshExports(UObject export, DefaultFileProvider provider)
@@ -2978,8 +2967,8 @@ public sealed class UE4Explorer : IExplorer
         }
     }
 
-    // CUE4Parse's Exporter.TryWriteToDir is synchronous, so the PSK should be on disk and flushed
-    // by the time it returns. The poll-until-stable pattern is defensive against any internal
+    // CUE4Parse's export session has awaited every file write, so the PSK should be on disk and
+    // flushed by the time it returns. The poll-until-stable pattern is defensive against any internal
     // buffering, but a 100 ms cadence dominates a 22-part resolve (≈5 s of pure sleep). 10 ms
     // preserves the two-iteration stability check while reducing the per-part floor by an order
     // of magnitude.
@@ -3301,16 +3290,16 @@ public sealed class UE4Explorer : IExplorer
 
     private sealed class MaterialOverrideScope : IDisposable
     {
-        private readonly ResolvedObject?[] _materials;
-        private readonly ResolvedObject?[] _originalMaterials;
-        private readonly Action<int, ResolvedObject?>? _secondarySetter;
-        private readonly ResolvedObject?[]? _originalSecondaryMaterials;
+        private readonly FPackageIndex?[] _materials;
+        private readonly FPackageIndex?[] _originalMaterials;
+        private readonly Action<int, FPackageIndex?>? _secondarySetter;
+        private readonly FPackageIndex?[]? _originalSecondaryMaterials;
 
         private MaterialOverrideScope(
-            ResolvedObject?[] materials,
-            ResolvedObject?[] originalMaterials,
-            Action<int, ResolvedObject?>? secondarySetter,
-            ResolvedObject?[]? originalSecondaryMaterials)
+            FPackageIndex?[] materials,
+            FPackageIndex?[] originalMaterials,
+            Action<int, FPackageIndex?>? secondarySetter,
+            FPackageIndex?[]? originalSecondaryMaterials)
         {
             _materials = materials;
             _originalMaterials = originalMaterials;
@@ -3334,16 +3323,16 @@ public sealed class UE4Explorer : IExplorer
                 skeletalMesh.Materials,
                 skeletalMesh.SkeletalMaterials,
                 overrideMaterials,
-                skeletalMesh.SkeletalMaterials is null ? null : (index, material) => skeletalMesh.SkeletalMaterials[index].Material = material,
-                skeletalMesh.SkeletalMaterials?.Select(material => material.Material).ToArray());
+                skeletalMesh.SkeletalMaterials is null ? null : (index, material) => skeletalMesh.SkeletalMaterials[index].MaterialInterface = material,
+                skeletalMesh.SkeletalMaterials?.Select(material => material.MaterialInterface).ToArray());
         }
 
         private static MaterialOverrideScope? TryApply<TMaterial>(
-            ResolvedObject?[]? materials,
+            FPackageIndex?[]? materials,
             TMaterial[]? secondaryMaterials,
             FPackageIndex[] overrideMaterials,
-            Action<int, ResolvedObject?>? secondarySetter,
-            ResolvedObject?[]? originalSecondaryMaterials)
+            Action<int, FPackageIndex?>? secondarySetter,
+            FPackageIndex?[]? originalSecondaryMaterials)
         {
             if (materials is null || materials.Length == 0)
             {
@@ -3372,31 +3361,31 @@ public sealed class UE4Explorer : IExplorer
             }
         }
 
-        private static void Apply(ResolvedObject?[] materials, FPackageIndex[] overrideMaterials)
+        private static void Apply(FPackageIndex?[] materials, FPackageIndex[] overrideMaterials)
         {
             var count = Math.Min(materials.Length, overrideMaterials.Length);
             for (var i = 0; i < count; i++)
             {
                 if (overrideMaterials[i] is { IsNull: false } overrideMaterial)
                 {
-                    materials[i] = overrideMaterial.ResolvedObject;
+                    materials[i] = overrideMaterial;
                 }
             }
         }
 
-        private static void Apply(int materialCount, FPackageIndex[] overrideMaterials, Action<int, ResolvedObject?> setter)
+        private static void Apply(int materialCount, FPackageIndex[] overrideMaterials, Action<int, FPackageIndex?> setter)
         {
             var count = Math.Min(materialCount, overrideMaterials.Length);
             for (var i = 0; i < count; i++)
             {
                 if (overrideMaterials[i] is { IsNull: false } overrideMaterial)
                 {
-                    setter(i, overrideMaterial.ResolvedObject);
+                    setter(i, overrideMaterial);
                 }
             }
         }
 
-        private static void Restore(ResolvedObject?[] target, ResolvedObject?[] source)
+        private static void Restore(FPackageIndex?[] target, FPackageIndex?[] source)
         {
             var count = Math.Min(target.Length, source.Length);
             for (var i = 0; i < count; i++)

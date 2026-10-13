@@ -236,8 +236,11 @@ public sealed class UE4Explorer : IExplorer
         ExplorerResolvedEntry resolvedEntry;
         if (sourceExport is UBlendSpaceBase blendSpace)
         {
+            // Not cached: the cache keeps one animation path inside this entry's export root, but a
+            // blend space's samples live in their own entries' roots and it also carries its
+            // sidecar. The samples are cached themselves, so only the sidecar is rewritten.
             using var blendScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedBlendSpace");
-            resolvedEntry = ExportResolvedBlendSpace(fileEntry, exportRoot, blendSpace);
+            return ExportResolvedBlendSpace(fileEntry, exportRoot, blendSpace);
         }
         else if (IsExportableAnimationObject(sourceExport))
         {

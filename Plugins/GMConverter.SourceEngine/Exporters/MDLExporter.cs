@@ -663,6 +663,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         writer.WriteLine("$surfaceprop \"metal\"");
         WriteTextureGroup(writer, model);
         WriteAttachments(writer, model);
+        WriteEyePosition(writer, model);
         WriteHitboxes(writer, model);
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
@@ -1211,6 +1212,24 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant(
                 $"$attachment \"{EscapeQcString(attachment.Name)}\" \"{EscapeQcString(boneName)}\" {Clean(position.X, 4)} {Clean(position.Y, 4)} {Clean(position.Z, 4)} rotate {Clean(angles.Y, 3)} {Clean(angles.Z, 3)} {Clean(angles.X, 3)}"));
         }
+    }
+
+    // Game code places an NPC's view at $eyeposition, so it follows the model's eyes attachment
+    // (in the bind pose) when the model has one.
+    private static void WriteEyePosition(StreamWriter writer, Model model)
+    {
+        if (model.Attachments?.FirstOrDefault(attachment => string.Equals(attachment.Name, "eyes", StringComparison.OrdinalIgnoreCase)) is not { } eyes)
+        {
+            return;
+        }
+
+        var local = ToTransformMatrix(eyes.LocalTransform, includeScale: false);
+        var world = eyes.BoneIndex is { } boneIndex && model.Skeleton is { } skeleton
+            ? local * BuildSourceWorldTransforms(skeleton).Original[boneIndex]
+            : local;
+        var position = world.Translation * _metersToSourceUnits;
+        static float Clean(float value) => MathF.Round(value, 4) + 0f;
+        writer.WriteLine(FormattableString.Invariant($"$eyeposition {Clean(position.X)} {Clean(position.Y)} {Clean(position.Z)}"));
     }
 
     private static (Dictionary<int, Matrix4x4> Original, Dictionary<int, Matrix4x4> Source) BuildSourceWorldTransforms(Skeleton skeleton)

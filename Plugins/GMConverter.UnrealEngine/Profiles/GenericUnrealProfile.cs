@@ -74,7 +74,8 @@ internal class GenericUnrealProfile : IUnrealProfile
             string.Equals(registryClass, "AnimStreamable", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(registryClass, "BlendSpace", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(registryClass, "BlendSpace1D", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(registryClass, "PoseAsset", StringComparison.OrdinalIgnoreCase);
+            string.Equals(registryClass, "PoseAsset", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(registryClass, "AkAudioEvent", StringComparison.OrdinalIgnoreCase);
     }
 
     public string? GetUnavailableEncryptedArchiveMessage(DefaultFileProvider provider)

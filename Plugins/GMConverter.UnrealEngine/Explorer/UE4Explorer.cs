@@ -1540,15 +1540,17 @@ public sealed class UE4Explorer : IExplorer
             foreach (var asset in registry.PreallocatedAssetDataBuffers)
             {
                 var registryClass = asset.AssetClass.Text;
-                if (!providerContext.Profile.TryGetExplorerAssetClass(registryClass, out var assetClass) &&
-                    !IsAnimationRegistryAsset(asset))
+                var isListedClass = providerContext.Profile.TryGetExplorerAssetClass(registryClass, out var assetClass);
+                if (!isListedClass && !IsAnimationRegistryAsset(asset))
                 {
                     continue;
                 }
 
                 var objectPath = asset.ObjectPath;
                 var displayPath = $"{asset.PackageName.Text}/{assetClass}/{SanitizeObjectPath(asset.AssetName.Text)}";
-                var isAnimation = IsAnimationAssetClass(assetClass);
+                // Assets listed only because they live with animations (choosers, pose search
+                // databases, level sequences) are animation data to browse, not models.
+                var isAnimation = IsAnimationAssetClass(assetClass) || !isListedClass;
                 var isExportableAnimation = isAnimation && IsExportableAnimationClass(assetClass);
                 var details = isAnimation && !isExportableAnimation
                     ? $"Class {assetClass} | Object {objectPath} | Registry {providerPath} | Browse only"
@@ -1557,6 +1559,10 @@ public sealed class UE4Explorer : IExplorer
                 var skeletonId = isExportableAnimation || assetClass.Equals("SkeletalMesh", StringComparison.OrdinalIgnoreCase)
                     ? skeletonIndex.FindSkeleton(asset.PackageName.Text)
                     : null;
+
+                // Montages and composites mostly re-wrap plain sequences, so bundling them too would
+                // duplicate animations; they can still be added by hand.
+                var bundlesWithModel = assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase);
 
                 entries.Add(new ExplorerFileEntry(
                     displayPath,
@@ -1570,7 +1576,10 @@ public sealed class UE4Explorer : IExplorer
                     details,
                     IsConvertible: !isAnimation,
                     AssetClass: assetClass,
-                    SkeletonId: skeletonId));
+                    SkeletonId: skeletonId,
+                    Kind: isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
+                    CanAddToModel: isExportableAnimation,
+                    BundlesWithModel: bundlesWithModel));
             }
         }
 
@@ -1580,8 +1589,7 @@ public sealed class UE4Explorer : IExplorer
     private static bool IsAnimationAssetClass(string assetClass)
     {
         return assetClass.Contains("Anim", StringComparison.OrdinalIgnoreCase) ||
-            assetClass.Equals("BlendSpace", StringComparison.OrdinalIgnoreCase) ||
-            assetClass.Equals("BlendSpace1D", StringComparison.OrdinalIgnoreCase) ||
+            assetClass.Contains("BlendSpace", StringComparison.OrdinalIgnoreCase) ||
             assetClass.Equals("PoseAsset", StringComparison.OrdinalIgnoreCase);
     }
 

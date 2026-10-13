@@ -21,7 +21,8 @@ internal sealed record UiSettings(
     bool PreviewPhysicsOverlay,
     Dictionary<string, Dictionary<string, object?>>? ExporterOptions = null,
     Dictionary<string, Dictionary<string, object?>>? ImporterOptions = null,
-    bool ExplorerIncludeCompatibleAnimations = false)
+    bool ExplorerIncludeCompatibleAnimations = false,
+    string? ExplorerGame = null)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

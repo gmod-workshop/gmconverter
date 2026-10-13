@@ -95,8 +95,7 @@ public sealed class UE4Explorer : IExplorer
 
     public bool Supports(ExplorerTarget target)
     {
-        return target.IsDirectory && Cue4ParseProviderFactory.LooksLikeArchiveRoot(target.FullPath) ||
-            target.IsFile && _archiveExtensions.Contains(Path.GetExtension(target.FullPath));
+        return Cue4ParseProviderFactory.IsArchiveTarget(target);
     }
 
     public IReadOnlyList<ExplorerFileEntry> Scan(ExplorerTarget target)
@@ -114,7 +113,7 @@ public sealed class UE4Explorer : IExplorer
             return cachedEntries;
         }
 
-        var providerContext = GetProvider(root);
+        var providerContext = GetProvider(root, target.GameId);
         var provider = providerContext.Provider;
 
         ExplorerFileEntry[] assetRegistryEntries;
@@ -214,7 +213,7 @@ public sealed class UE4Explorer : IExplorer
             return cached;
         }
 
-        var provider = GetProvider(fileEntry.ArchivePath).Provider;
+        var provider = GetProvider(fileEntry.ArchivePath, fileEntry.GameId).Provider;
         using (PerfTimer.Measure("ue4.resolve", "ResetExportRoot", exportRoot))
         {
             ResetExportRoot(fileEntry, exportRoot);
@@ -1599,11 +1598,14 @@ public sealed class UE4Explorer : IExplorer
             asset.AssetName.Text.Contains("Anim", StringComparison.OrdinalIgnoreCase);
     }
 
-    private Cue4ParseProviderContext GetProvider(string root)
+    private Cue4ParseProviderContext GetProvider(string root, string? gameId)
     {
         using var scope = PerfTimer.Measure("ue4.provider", "GetProvider", root);
 
-        var cacheKey = ProviderCacheKey(root);
+        // The game decides keys, engine version and mappings, so one archive folder opened as two
+        // different games needs two providers.
+        var profile = UnrealGameProfiles.Select(Cue4ParseProviderFactory.ResolveArchiveDirectory(root), gameId);
+        var cacheKey = $"{ProviderCacheKey(root)}|{profile.Id}";
         lock (_cacheLock)
         {
             if (_providerCache.TryGetValue(cacheKey, out var provider))
@@ -1614,7 +1616,7 @@ public sealed class UE4Explorer : IExplorer
         }
 
         PerfTimer.Log("ue4.provider", "GetProvider cache MISS — building");
-        var loadedProvider = Cue4ParseProviderFactory.Create(root);
+        var loadedProvider = Cue4ParseProviderFactory.Create(root, profile.Id);
         lock (_cacheLock)
         {
             _providerCache[cacheKey] = loadedProvider;

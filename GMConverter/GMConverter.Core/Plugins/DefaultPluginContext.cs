@@ -1,5 +1,6 @@
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Games;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,7 @@ internal sealed class DefaultPluginContext : IPluginContext
     private readonly List<IImporter> _importers = [];
     private readonly List<IExporter> _exporters = [];
     private readonly List<IExplorer> _explorers = [];
+    private readonly List<IGameProfile> _gameProfiles = [];
 
     public DefaultPluginContext(IServiceProvider services)
     {
@@ -24,6 +26,8 @@ internal sealed class DefaultPluginContext : IPluginContext
     public IReadOnlyList<IExporter> RegisteredExporters => _exporters;
 
     public IReadOnlyList<IExplorer> RegisteredExplorers => _explorers;
+
+    public IReadOnlyList<IGameProfile> RegisteredGameProfiles => _gameProfiles;
 
     public void RegisterImporter(IImporter importer)
     {
@@ -56,5 +60,11 @@ internal sealed class DefaultPluginContext : IPluginContext
     public void RegisterExplorer<T>() where T : class, IExplorer
     {
         _explorers.Add(ActivatorUtilities.CreateInstance<T>(Services));
+    }
+
+    public void RegisterGameProfile(IGameProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        _gameProfiles.Add(profile);
     }
 }

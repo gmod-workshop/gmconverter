@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Core.Explorer;
+using GMConverter.Core.Games;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;
@@ -73,10 +74,18 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     private IReadOnlyList<ExplorerFileEntry> _selectedExplorerEntries = [];
     private CancellationTokenSource? _explorerFilterCts;
     private string _explorerProfileName = "Explorer";
+    private string? _scannedGameName;
     private bool _disposed;
 
     [ObservableProperty]
     private DisplayOption _selectedExplorerProfile;
+
+    [ObservableProperty]
+    private DisplayOption _selectedGame;
+
+    /// <summary>"Detected: …" after a scan that detected its game, otherwise null.</summary>
+    [ObservableProperty]
+    private string? _detectedGame;
 
     [ObservableProperty]
     private ExplorerNode? _selectedExplorerNode;
@@ -119,7 +128,20 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         }
 
         _selectedExplorerProfile = ExplorerProfiles[0];
+
+        foreach (var game in GameCatalog.Profiles)
+        {
+            Games.Add(new DisplayOption(game.Id, game.DisplayName, game.Engine));
+        }
+
+        _selectedGame = Games[0];
     }
+
+    /// <summary>Auto-detect, then every registered game grouped by engine.</summary>
+    public ObservableCollection<DisplayOption> Games { get; } =
+    [
+        new(GameCatalog.AutoId, "Auto-detect", string.Empty)
+    ];
 
     public ObservableCollection<DisplayOption> ExplorerProfiles { get; } =
     [
@@ -375,6 +397,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     internal void ApplySettings(UiSettings settings)
     {
         ConvertViewModel.SetSelected(ExplorerProfiles, settings.ExplorerProfile, value => SelectedExplorerProfile = value);
+        ConvertViewModel.SetSelected(Games, settings.ExplorerGame, value => SelectedGame = value);
         ExplorerRootDirectory = settings.ExplorerRootDirectory ?? ExplorerRootDirectory;
         ExplorerFilter = settings.ExplorerFilter ?? ExplorerFilter;
         IncludeCompatibleAnimations = settings.ExplorerIncludeCompatibleAnimations;
@@ -415,11 +438,13 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
                     _explorerService.ClearCaches();
                 }
 
-                return _explorerService.Scan(ExplorerRootDirectory, SelectedExplorerProfile.Value);
+                return _explorerService.Scan(ExplorerRootDirectory, SelectedExplorerProfile.Value, SelectedGame.Value);
             });
             _explorerEntries.Clear();
             _explorerEntries.AddRange(result.Entries);
             _explorerProfileName = result.Profile.DisplayName;
+            _scannedGameName = result.Game?.Profile.DisplayName;
+            DetectedGame = FormatDetectedGame(result.Game);
             OnPropertyChanged(nameof(HasExplorerEntries));
             OnPropertyChanged(nameof(CanFindRelatedExplorerAnimations));
             ShowExplorerAnimationsCommand.NotifyCanExecuteChanged();
@@ -427,6 +452,12 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             RebuildExplorerNodes();
             _setStatusMessage(clearCaches ? "Explorer refresh complete." : "Explorer scan complete.");
             _logSink.Append($"Explorer found {result.Entries.Count} supported asset(s) using {result.Profile.DisplayName}.");
+            if (result.Game is { } game)
+            {
+                _logSink.Append(game.IsDetected
+                    ? $"Detected game: {game.Profile.DisplayName} ({game.Match.ToString().ToLowerInvariant()} match)."
+                    : $"Scanned as {game.Profile.DisplayName}.");
+            }
         }
         catch (Exception ex)
         {
@@ -640,6 +671,14 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             : $"{modelCount} supported model file(s), {animationCount} animation asset(s)";
     }
 
+    // Only a detected game needs pointing out; a chosen one is already shown in the Game box.
+    private static string? FormatDetectedGame(GameDetection? game)
+    {
+        return game is { IsDetected: true }
+            ? $"Detected: {game.Profile.DisplayName}"
+            : null;
+    }
+
     private static string FormatFilteredExplorerStatus(FilteredExplorerEntries filteredEntries)
     {
         return filteredEntries.IsTruncated
@@ -649,7 +688,8 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private string FormatUnfilteredExplorerStatus(FilteredExplorerEntries filteredEntries)
     {
-        var countDetails = $"{_explorerProfileName}: {FormatExplorerEntryCount(_explorerEntries)}.";
+        var source = _scannedGameName is null ? _explorerProfileName : $"{_explorerProfileName}, {_scannedGameName}";
+        var countDetails = $"{source}: {FormatExplorerEntryCount(_explorerEntries)}.";
         return filteredEntries.IsTruncated
             ? $"{countDetails} Showing first {filteredEntries.Entries.Count:N0}; use the filter to narrow results."
             : countDetails;

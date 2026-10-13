@@ -1,5 +1,6 @@
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Games;
 using GMConverter.SDK.Importers;
 
 namespace GMConverter.SDK.Plugins;
@@ -59,4 +60,9 @@ public interface IPluginContext
     /// <see cref="Services"/> and registers the resulting explorer.
     /// </summary>
     void RegisterExplorer<T>() where T : class, IExplorer;
+
+    /// <summary>
+    /// Registers a game the host can detect and offer in its game list.
+    /// </summary>
+    void RegisterGameProfile(IGameProfile profile);
 }

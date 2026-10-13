@@ -1,6 +1,8 @@
 using System.Numerics;
 using System.Text.Json;
+using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Games;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
@@ -20,6 +22,7 @@ public sealed class SchemaTestPlugin : IPlugin
     {
         context.RegisterImporter(new SchemaTestImporter());
         context.RegisterExporter(new SchemaTestExporter());
+        context.RegisterGameProfile(new SchemaTestGameProfile());
     }
 
     public void OnUnload()
@@ -76,4 +79,17 @@ public sealed class SchemaTestExporter : IModelExporter
             JsonSerializer.Serialize(new Dictionary<string, object?>(context.Options.AsDictionary()) { ["model"] = model.Name }));
         return new ExportResult([path]);
     }
+}
+
+/// <summary>A game claimed by any folder holding a <see cref="MarkerFile"/>.</summary>
+public sealed class SchemaTestGameProfile : IGameProfile
+{
+    public const string MarkerFile = "test-game.marker";
+
+    public string Id => "test.game";
+    public string DisplayName => "Test game";
+    public string Engine => "Test engine";
+
+    public GameMatch Detect(ExplorerTarget target) =>
+        target.IsDirectory && File.Exists(Path.Join(target.FullPath, MarkerFile)) ? GameMatch.Exact : GameMatch.None;
 }

@@ -26,6 +26,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.CurrentExporterOptions),
         nameof(ConvertViewModel.CurrentImporterOptions),
         nameof(ConvertViewModel.SelectedTarget),
+        nameof(ConvertViewModel.SelectedImportGame),
         nameof(ConvertViewModel.CurrentTargetOptions)
     };
 
@@ -267,7 +268,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Explorer.IncludeCompatibleAnimations,
             Explorer.SelectedGame.Value,
             Convert.SnapshotTargets(),
-            Convert.SnapshotTargetOptions());
+            Convert.SnapshotTargetOptions(),
+            EmptyToNull(Convert.SelectedImportGame.Value));
     }
 
     private void QueueSettingsSave()

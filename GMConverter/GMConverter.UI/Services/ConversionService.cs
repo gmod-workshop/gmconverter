@@ -118,6 +118,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             ScaleFactor = settings.ScaleFactor,
             AxisMode = settings.AxisMode,
             MaterialDirectory = settings.MaterialDirectory,
+            SourceGameId = settings.SourceGameId,
             TargetGameId = settings.TargetGameId,
             TargetOptions = settings.TargetOptions,
         };

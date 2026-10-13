@@ -9,6 +9,7 @@ using GMConverter.SDK.Options;
 using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Common;
+using GMConverter.SourceEngine.Games;
 using GMConverter.SourceEngine.Geometry;
 
 namespace GMConverter.SourceEngine.Exporters;
@@ -175,7 +176,9 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             WriteAnimationSmd(model, CreatePoseClip(pose), basePoseSmdPath);
         }
 
-        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths);
+        var target = SourceGameProfiles.Find(context.TargetGameId);
+        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
+            clip => target?.GetActivities(clip, context.TargetOptions) ?? []);
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -634,7 +637,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
         (AnimationClip Clip, string SmdPath)[] animationSmdPaths,
-        Dictionary<AnimationPose, string> basePoseSmdPaths)
+        Dictionary<AnimationPose, string> basePoseSmdPaths,
+        Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
@@ -667,37 +671,19 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         foreach (var (clip, animationSmdPath) in animationSmdPaths)
         {
-            var playbackOptions = GetPlaybackOptions(model, clip);
-            if (clip.Layering is null && playbackOptions.Count == 0)
+            // Game code plays sequences by activity. A clip with several activities is written once
+            // per activity, since a sequence holds only one.
+            var activities = getActivities(clip);
+            if (activities.Count == 0)
             {
-                writer.WriteLine(FormattableString.Invariant(
-                    $"$sequence \"{EscapeQcString(clip.Name)}\" \"{Path.GetFileName(animationSmdPath)}\" fps {clip.FrameRate:0.######}"));
+                WriteSequence(writer, model, clip, animationSmdPath, clip.Name, activity: null, basePoseSmdPaths);
                 continue;
             }
 
-            writer.WriteLine(FormattableString.Invariant($"$sequence \"{EscapeQcString(clip.Name)}\" {{"));
-            writer.WriteLine(FormattableString.Invariant($"    \"{Path.GetFileName(animationSmdPath)}\""));
-            writer.WriteLine(FormattableString.Invariant($"    fps {clip.FrameRate:0.######}"));
-            if (clip.Layering is { } layering)
+            foreach (var activity in activities)
             {
-                // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
-                // space, and `delta` makes the engine add the result on top of the playing animation.
-                // Source has no model-space deltas (`worldspace` is an absolute override that ignores
-                // `delta`), so model-space layers are also written as local ones. They match exactly on
-                // the pose they were authored against and approximate it on others.
-                var baseName = layering.Base is { } basePose
-                    ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
-                    : "idle";
-                writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
-                writer.WriteLine("    delta");
+                WriteSequence(writer, model, clip, animationSmdPath, clip.Name + activity.SequenceSuffix, activity.Name, basePoseSmdPaths);
             }
-
-            foreach (var option in playbackOptions)
-            {
-                writer.WriteLine("    " + option);
-            }
-
-            writer.WriteLine("}");
         }
 
         if (physicsSmdPath is not null && UsesRagdoll(model, physicsOptions))
@@ -717,6 +703,53 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
             writer.WriteLine("}");
         }
+    }
+
+    private static void WriteSequence(
+        StreamWriter writer,
+        Model model,
+        AnimationClip clip,
+        string animationSmdPath,
+        string sequenceName,
+        string? activity,
+        Dictionary<AnimationPose, string> basePoseSmdPaths)
+    {
+        var playbackOptions = GetPlaybackOptions(model, clip);
+        if (activity is not null)
+        {
+            playbackOptions.Insert(0, $"activity {activity} 1");
+        }
+
+        if (clip.Layering is null && playbackOptions.Count == 0)
+        {
+            writer.WriteLine(FormattableString.Invariant(
+                $"$sequence \"{EscapeQcString(sequenceName)}\" \"{Path.GetFileName(animationSmdPath)}\" fps {clip.FrameRate:0.######}"));
+            return;
+        }
+
+        writer.WriteLine(FormattableString.Invariant($"$sequence \"{EscapeQcString(sequenceName)}\" {{"));
+        writer.WriteLine(FormattableString.Invariant($"    \"{Path.GetFileName(animationSmdPath)}\""));
+        writer.WriteLine(FormattableString.Invariant($"    fps {clip.FrameRate:0.######}"));
+        if (clip.Layering is { } layering)
+        {
+            // A layer becomes a delta sequence: studiomdl subtracts the base pose in parent-local
+            // space, and `delta` makes the engine add the result on top of the playing animation.
+            // Source has no model-space deltas (`worldspace` is an absolute override that ignores
+            // `delta`), so model-space layers are also written as local ones. They match exactly on
+            // the pose they were authored against and approximate it on others.
+            var baseName = layering.Base is { } basePose
+                ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
+                : "idle";
+            writer.WriteLine(FormattableString.Invariant($"    subtract \"{EscapeQcString(baseName)}\" 0"));
+            writer.WriteLine("    delta");
+        }
+
+        foreach (var option in playbackOptions)
+        {
+            writer.WriteLine("    " + option);
+        }
+
+        writer.WriteLine("}");
     }
 
     private static List<string> GetPlaybackOptions(Model model, AnimationClip clip)

@@ -52,6 +52,7 @@ These apply to every input and output format.
 | `--scale <factor>` | Scale exported geometry. | `--scale 0.5` | `1` |
 | `--no-scale` | Compatibility alias for scale `1`. | `--no-scale` | Off |
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
+| `--game <game>` | Game the input comes from. Its naming conventions fill in what each animation is for, which the Garry's Mod and Source targets turn into activities. Unreal games: `swzc`, `fortnite`, or `unreal` for any other. The Explorer sets this automatically in the GUI. | `--game swzc` | None |
 | `--target <game>` | Game to export for, for output formats that have several. MDL: `garrysmod` or `source` (any other Source game). | `--target source` | `garrysmod` for MDL |
 
 </details>
@@ -103,6 +104,7 @@ These apply when MDL output targets Garry's Mod (the default).
 
 | Option | Description | Default |
 |---|---|---|
+| `--garrysmod-characterUse <use>` | Which activities animations get: `npc` (`ACT_IDLE`, `ACT_RUN`, …), `player` (`ACT_HL2MP_*` for player models), or `both`, which writes a `<name>_player` copy of each sequence for the player set. | `npc` |
 | `--garrysmod-handAttachments <true\|false>` | Add `anim_attachment_RH` and `anim_attachment_LH` on the hands, copied from the model's hand sockets (or placed on the hand bones), which Garry's Mod uses to place held items. | `true` |
 
 </details>
@@ -247,7 +249,9 @@ MDL write support generates SMD, QC, material files, optional animation SMDs, an
   --model-path "gmconverter/buoyc.mdl"
 ```
 
-MDL output targets Garry's Mod by default, which adds the attachments Garry's Mod looks up by name (see the Garry's Mod target options). Use `--target source`, or choose **Other Source game** as the **Target game** in the GUI, for plain output for other Source games.
+MDL output targets Garry's Mod by default, which adds the attachments Garry's Mod looks up by name (see the Garry's Mod target options).
+
+Garry's Mod and other Source games choose animations by *activity*. When the game an animation comes from is known (`--game`, or set from the Explorer in the GUI), GMConverter works out what each animation is for from its name and gives its sequence the matching activity: idles, walks, runs, turns, attacks, flinches and deaths. Unreal names such as `A_B1_2HRifle_Run_F` (a rifle run, forward) are recognised; starts, stops, transitions, aim poses and additive layers get no activity. NPC activities are used by default; set the Garry's Mod character use to `player` or `both` for player models. Use `--target source`, or choose **Other Source game** as the **Target game** in the GUI, for plain output for other Source games.
 
 Copy the generated `models` and `materials` folders from the output directory into your Garry's Mod add-on or game content folder.
 

@@ -16,6 +16,10 @@ namespace GMConverter.SDK.Animation;
 /// clip as before; the others can take the root's motion out and apply it as movement.
 /// </param>
 /// <param name="Loops">True when the clip is meant to repeat, such as an idle or a walk cycle.</param>
+/// <param name="Role">
+/// What the clip is for (a rifle run, a death), when the importer or the source game's profile can
+/// tell; null otherwise. Exporters use it to pick the clips game code plays for each action.
+/// </param>
 public sealed record AnimationClip(
     string Name,
     float FrameRate,
@@ -23,4 +27,5 @@ public sealed record AnimationClip(
     IReadOnlyList<IAnimationTrack> Tracks,
     AnimationLayering? Layering = null,
     bool RootMotion = false,
-    bool Loops = false);
+    bool Loops = false,
+    AnimationRole? Role = null);

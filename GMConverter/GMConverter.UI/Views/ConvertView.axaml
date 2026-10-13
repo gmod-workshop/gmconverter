@@ -125,6 +125,10 @@
                             </StackPanel>
                         </shad:Card.Header>
                         <StackPanel Spacing="16">
+                            <ComboBox ItemsSource="{Binding ImportGames}"
+                                      SelectedItem="{Binding SelectedImportGame}"
+                                      ToolTip.Tip="The game the input comes from. Its naming conventions fill in what each animation is for, which exporters use (for example, for Source activities). Set automatically from the Explorer."
+                                      shad:ControlAssist.Label="Source game"/>
                             <settings:OptionsPanel DataContext="{Binding CurrentImporterOptions}"/>
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                 <TextBox x:Name="MaterialDirectoryBox"

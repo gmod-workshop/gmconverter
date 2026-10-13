@@ -88,7 +88,7 @@ public sealed class SchemaTestExporter : IModelExporter
     }
 }
 
-/// <summary>A game claimed by any folder holding a <see cref="MarkerFile"/>.</summary>
+/// <summary>A game claimed by any folder holding a <see cref="MarkerFile"/>; it marks the models it prepares.</summary>
 public sealed class SchemaTestGameProfile : IImportGameProfile
 {
     public const string MarkerFile = "test-game.marker";
@@ -99,6 +99,8 @@ public sealed class SchemaTestGameProfile : IImportGameProfile
 
     public GameMatch Detect(ExplorerTarget target) =>
         target.IsDirectory && File.Exists(Path.Join(target.FullPath, MarkerFile)) ? GameMatch.Exact : GameMatch.None;
+
+    public Model Prepare(Model model) => model with { Name = model.Name + "-from-test-game" };
 }
 
 /// <summary>A target of the sample exporter that appends its <c>suffix</c> option (empty by default) to the model's name.</summary>

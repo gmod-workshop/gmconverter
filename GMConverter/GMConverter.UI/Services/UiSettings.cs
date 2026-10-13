@@ -24,7 +24,8 @@ internal sealed record UiSettings(
     bool ExplorerIncludeCompatibleAnimations = false,
     string? ExplorerGame = null,
     Dictionary<string, string>? ExportTargets = null,
-    Dictionary<string, Dictionary<string, object?>>? TargetOptions = null)
+    Dictionary<string, Dictionary<string, object?>>? TargetOptions = null,
+    string? ImportGame = null)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {

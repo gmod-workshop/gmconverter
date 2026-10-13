@@ -15,6 +15,9 @@ internal sealed record ConversionSettings(
     OptionValues ImporterOptions,
     OptionValues ExporterOptions)
 {
+    /// <summary>The game the input comes from, or null when unknown.</summary>
+    public string? SourceGameId { get; init; }
+
     /// <summary>The game to export for, or null for the exporter's default target.</summary>
     public string? TargetGameId { get; init; }
 

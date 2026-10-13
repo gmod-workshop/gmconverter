@@ -1,7 +1,9 @@
 using GMConverter.Core.Formats;
+using GMConverter.Core.Games;
 using GMConverter.SDK.Assets;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Games;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
@@ -18,8 +20,9 @@ internal sealed class ModelPipeline : AssetPipeline<Model>
         var importer = FormatCatalog.GetImporter(request.InputFormat) as IModelImporter
             ?? throw new GMConverterException($"{request.InputFormat} input is not a model.");
         var inputPath = FormatCatalog.RequireInputFile(request.InputPath, importer);
+        var sourceGame = ResolveSourceGame(request.SourceGameId);
         using var scope = PerfTimer.Measure("pipeline", $"{importer.Format}.Import", inputPath);
-        return importer.Import(new ModelImportContext(
+        var model = importer.Import(new ModelImportContext(
             inputPath,
             request.ScaleFactor,
             request.AxisMode,
@@ -27,6 +30,18 @@ internal sealed class ModelPipeline : AssetPipeline<Model>
         {
             Options = WithDefaults(importer.OptionSchema, request.ImporterOptions),
         });
+        return sourceGame?.Prepare(model) ?? model;
+    }
+
+    private static IImportGameProfile? ResolveSourceGame(string? gameId)
+    {
+        if (string.IsNullOrWhiteSpace(gameId))
+        {
+            return null;
+        }
+
+        return GameCatalog.Find(gameId) as IImportGameProfile
+            ?? throw new GMConverterException($"Unknown source game: {gameId}. Games: {string.Join(", ", GameCatalog.ImportProfiles.Select(profile => profile.Id))}.");
     }
 
     protected override ExportResult Export(Model asset, AssetRequest request, AssetDestination destination)

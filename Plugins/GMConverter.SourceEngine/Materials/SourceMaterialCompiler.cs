@@ -66,11 +66,17 @@ internal sealed class SourceMaterialCompiler
 
                 var specForMask = UseSourcePhong(material) ? GetSourcePhongExponent(material) : null;
 
+                // Metal-aware materials get a mask shaped for metal and paint; others keep using
+                // the exponent texture's red channel.
+                var phongMask = specForMask is not null && HasMetalness(material)
+                    ? material.SpecularTexture!.ToSourcePhongMask(_textureFactory)
+                    : specForMask;
+
                 string? normalBasename = null;
                 if (material.NormalTexture is not null)
                 {
-                    var normalTextureForWrite = specForMask is not null
-                        ? material.NormalTexture.WithMaskInAlpha(specForMask, _textureFactory)
+                    var normalTextureForWrite = phongMask is not null
+                        ? material.NormalTexture.WithMaskInAlpha(phongMask, _textureFactory)
                         : material.NormalTexture;
                     normalBasename = WriteOrReuse(
                         normalTextureForWrite,
@@ -253,6 +259,12 @@ internal sealed class SourceMaterialCompiler
     private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
     {
         var settings = SourcePhongSettings.For(material);
+        if (HasMetalness(material))
+        {
+            var (metalness, gloss) = material.SpecularTexture!.AverageMetalAndGloss();
+            settings = SourcePhongSettings.For(metalness, gloss);
+        }
+
 
         writer.WriteLine("    \"$phong\" \"1\"");
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));

@@ -35,4 +35,32 @@ public sealed class SourceMetalTests
 
         Assert.Equal([200, 255, 200, 128], masks.ToSourcePhongExponent(factory).GetRgbaPixels());
     }
+
+    [Fact]
+    public void PhongMaskKeepsHalfForPaintAndAllForSmoothMetal()
+    {
+        var factory = new DefaultTextureFactory();
+        // Smooth metal, rough metal, smooth paint, rough paint.
+        var masks = factory.FromRgba("masks", 4, 1, [128, 255, 0, 255, 128, 255, 255, 255, 128, 0, 0, 255, 128, 0, 255, 255]);
+
+        var mask = masks.ToSourcePhongMask(factory).GetRgbaPixels();
+
+        Assert.Equal([255, 128, 128, 64], new[] { mask[0], mask[4], mask[8], mask[12] });
+    }
+
+    [Fact]
+    public void MetalFlattensTheFresnelAndRaisesTheBoost()
+    {
+        Assert.Equal(new SourcePhongSettings("1", "35", "[0.2 0.6 1]"), SourcePhongSettings.For(metalness: 0f, gloss: 0.5f));
+        Assert.Equal(new SourcePhongSettings("3", "60", "[1 1 1]"), SourcePhongSettings.For(metalness: 1f, gloss: 1f));
+    }
+
+    [Fact]
+    public void AveragesComeFromMetalAndRoughness()
+    {
+        var factory = new DefaultTextureFactory();
+        var masks = factory.FromRgba("masks", 1, 1, [128, 255, 51, 255]);
+
+        Assert.Equal((1f, 0.8f), masks.AverageMetalAndGloss());
+    }
 }

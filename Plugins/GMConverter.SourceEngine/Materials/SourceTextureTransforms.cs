@@ -111,6 +111,44 @@ internal static class SourceTextureTransforms
 
     private const float _metalDarkening = 0.5f;
 
+    /// <summary>
+    /// The phong and envmap mask for a SpecularMasks texture (G = metallic, B = roughness), in R
+    /// for <see cref="WithMaskInAlpha"/>: paint keeps half its highlight and metal all of it, and
+    /// roughness dims a highlight only partly, since it also spreads it.
+    /// </summary>
+    public static Texture ToSourcePhongMask(this Texture specularMasks, ITextureFactory factory)
+    {
+        var src = specularMasks.GetRgbaPixels();
+        var output = new byte[src.Length];
+        for (var i = 0; i + 4 <= src.Length; i += 4)
+        {
+            var metal = src[i + 1] / 255f;
+            var gloss = 1f - src[i + 2] / 255f;
+            var mask = (byte)MathF.Round(255f * (0.5f + 0.5f * metal) * (0.5f + 0.5f * gloss));
+            output[i] = output[i + 1] = output[i + 2] = mask;
+            output[i + 3] = byte.MaxValue;
+        }
+
+        return factory.FromRgba($"{specularMasks.Name}_phong_mask", specularMasks.Width, specularMasks.Height, output);
+    }
+
+    /// <summary>The average metalness and gloss (1 - roughness) of a SpecularMasks texture, from 0 to 1.</summary>
+    public static (float Metalness, float Gloss) AverageMetalAndGloss(this Texture specularMasks)
+    {
+        var src = specularMasks.GetRgbaPixels();
+        double metal = 0, gloss = 0;
+        var count = 0;
+        // Every 16th texel is plenty for an average and keeps 4K masks quick.
+        for (var i = 0; i + 4 <= src.Length; i += 4 * 16)
+        {
+            metal += src[i + 1];
+            gloss += 255 - src[i + 2];
+            count++;
+        }
+
+        return count == 0 ? (0f, 0f) : ((float)(metal / count / 255), (float)(gloss / count / 255));
+    }
+
     private static byte[] ResizeRgba(byte[] sourceRgba, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
     {
         // The plugin has SixLabors.ImageSharp available for its own internal use — we use it here

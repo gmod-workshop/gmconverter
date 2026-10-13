@@ -5,6 +5,7 @@ using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Games;
+using GMConverter.SDK.Geometry;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
 
@@ -26,6 +27,9 @@ internal class GenericUnrealGameProfile : IUnrealGameProfile
     {
         return Cue4ParseProviderFactory.IsArchiveTarget(target) ? GameMatch.Fallback : GameMatch.None;
     }
+
+    /// <summary>Gives animations roles from their names; see <see cref="AnimationRoleGuesser"/>.</summary>
+    public virtual Model Prepare(Model model) => AnimationRoleGuesser.Apply(model);
 
     public VersionContainer CreateVersionContainer()
     {

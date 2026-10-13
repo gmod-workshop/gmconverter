@@ -260,6 +260,50 @@ public sealed class MdlExporterTests
         Assert.Equal(-1m, schema.Find("physics:maxConvexPieces")!.Minimum);
     }
 
+    [Fact]
+    public void SequencesGetTheTargetGamesActivities()
+    {
+        AnimationClip Clip(string name, AnimationRole? role, AnimationLayering? layering = null) => new(
+            name,
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            layering,
+            Role: role);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            Animations =
+            [
+                Clip("run", new AnimationRole(AnimationAction.Run, WeaponStance.Rifle, MoveDirection.Forward)),
+                Clip("strafe", new AnimationRole(AnimationAction.Run, WeaponStance.Rifle, MoveDirection.Left)),
+                Clip("die", new AnimationRole(AnimationAction.Death)),
+                Clip("flinch", new AnimationRole(AnimationAction.Flinch), new AnimationLayering(LayerSpace.Local)),
+                Clip("wave", null),
+            ],
+        };
+        string Qc(string? target, string? use = null) => File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model, targetGameId: target, targetOptions: use is null ? null : new Dictionary<string, object?> { ["characterUse"] = use }),
+            "*.qc", SearchOption.AllDirectories).Single()).ReplaceLineEndings("\n");
+
+        var npc = Qc("garrysmod");
+        Assert.Contains("$sequence \"run\" {\n    \"triangle_0_run.smd\"\n    fps 30\n    activity ACT_RUN 1\n}", npc);
+        Assert.Contains("activity ACT_DIESIMPLE 1", npc);
+        // Strafes, layers and clips without a role are written without an activity.
+        Assert.Equal(2, npc.Split("activity ").Length - 1);
+        Assert.DoesNotContain("_player", npc);
+
+        var both = Qc("garrysmod", "both");
+        Assert.Contains("$sequence \"run_player\" {\n    \"triangle_0_run.smd\"\n    fps 30\n    activity ACT_HL2MP_RUN_AR2 1\n}", both);
+        Assert.Contains("activity ACT_RUN 1", both);
+
+        var player = Qc("garrysmod", "player");
+        Assert.Contains("$sequence \"run\" {\n    \"triangle_0_run.smd\"\n    fps 30\n    activity ACT_HL2MP_RUN_AR2 1\n}", player);
+        Assert.DoesNotContain("ACT_RUN ", player);
+
+        Assert.Equal(2, Qc("source").Split("activity ").Length - 1);
+        Assert.DoesNotContain("activity", Qc(null));
+    }
+
     // One triangle 1 m across, fully weighted to a single root bone with the given rotation.
     private static Model CreateSkinnedTriangle(Quaternion rootRotation)
     {
@@ -303,7 +347,11 @@ public sealed class MdlExporterTests
 
     // buildMaterials=false makes the exporter write the SMD/QC workspace itself before studiomdl
     // runs; the empty stub compiler then fails, which is irrelevant to the files under test.
-    private static string ExportWithStubCompiler(Model model, IReadOnlyDictionary<string, object?>? extraOptions = null)
+    private static string ExportWithStubCompiler(
+        Model model,
+        IReadOnlyDictionary<string, object?>? extraOptions = null,
+        string? targetGameId = null,
+        IReadOnlyDictionary<string, object?>? targetOptions = null)
     {
         var directory = Path.Join(Path.GetTempPath(), "GMConverter.SourceEngine.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -315,7 +363,11 @@ public sealed class MdlExporterTests
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false,
-            }))));
+            }))
+        {
+            TargetGameId = targetGameId,
+            TargetOptions = new OptionValues(targetOptions ?? new Dictionary<string, object?>()),
+        }));
         return output;
     }
 }

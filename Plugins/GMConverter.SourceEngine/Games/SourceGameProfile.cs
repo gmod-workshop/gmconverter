@@ -1,3 +1,4 @@
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Games;
 using GMConverter.SDK.Options;
@@ -5,10 +6,10 @@ using GMConverter.SDK.Options;
 namespace GMConverter.SourceEngine.Games;
 
 /// <summary>
-/// Any other Source game: plain MDL output with nothing game-specific added, as the exporter
-/// wrote before targets existed.
+/// Any other Source game: plain MDL output with nothing game-specific added beyond the NPC
+/// activities every Source game's NPC code shares.
 /// </summary>
-internal sealed class SourceGameProfile : IExportGameProfile
+internal sealed class SourceGameProfile : ISourceGameProfile
 {
     public string Id => "source";
 
@@ -19,6 +20,13 @@ internal sealed class SourceGameProfile : IExportGameProfile
     public string ExporterFormat => "mdl";
 
     public OptionSchema OptionSchema => OptionSchema.Empty;
+
+    public IReadOnlyList<SourceActivity> GetActivities(AnimationClip clip, OptionValues options)
+    {
+        return clip.Role is { } role && clip.Layering is null && SourceActivities.Npc(role) is { } activity
+            ? [new SourceActivity(activity)]
+            : [];
+    }
 
     /// <summary>A fallback for any folder holding a Source <c>gameinfo.txt</c>.</summary>
     public GameMatch Detect(ExplorerTarget target)

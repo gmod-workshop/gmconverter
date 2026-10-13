@@ -133,6 +133,25 @@ public sealed class AssetPipelineTests
     }
 
     [Fact]
+    public void SourceGamePreparesTheImportedModel()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("sample", CreateInput(output))
+        {
+            OutputFormat = "sample",
+            OutputDirectory = output,
+            BaseName = "result",
+            SourceGameId = "test.game",
+        };
+
+        new AssetJobRunner().Run(new AssetJob(request));
+
+        using var written = JsonDocument.Parse(File.ReadAllText(Path.Join(output, "result.json")));
+        Assert.Equal("triangle-from-test-game", written.RootElement.GetProperty("model").GetString());
+        Assert.Throws<GMConverterException>(() => new AssetJobRunner().Run(new AssetJob(request with { SourceGameId = "test.target" })));
+    }
+
+    [Fact]
     public void BaseNameDefaultsToTheInputFileName()
     {
         var output = CreateOutputDirectory();

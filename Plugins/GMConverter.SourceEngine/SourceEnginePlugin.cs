@@ -24,8 +24,10 @@ public sealed class SourceEnginePlugin : IPlugin
         context.RegisterImporter<MDLImporter>();
         context.RegisterExporter<MDLExporter>();
         // The first target registered for the MDL exporter is its default.
-        context.RegisterGameProfile(new GarrysModGameProfile());
-        context.RegisterGameProfile(new SourceGameProfile());
+        foreach (var profile in SourceGameProfiles.All)
+        {
+            context.RegisterGameProfile(profile);
+        }
     }
 
     public void OnUnload()

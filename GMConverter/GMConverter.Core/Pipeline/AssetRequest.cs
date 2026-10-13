@@ -33,6 +33,12 @@ internal sealed record AssetRequest(string InputFormat, string InputPath)
     /// <summary>Optional directory searched for sidecar materials and textures.</summary>
     public string? MaterialDirectory { get; init; }
 
+    /// <summary>
+    /// The game the input comes from, or null when unknown. Its profile fills in what the
+    /// game's conventions reveal (such as animation roles) after import.
+    /// </summary>
+    public string? SourceGameId { get; init; }
+
     /// <summary>The game to export for, or null for the exporter's default target.</summary>
     public string? TargetGameId { get; init; }
 

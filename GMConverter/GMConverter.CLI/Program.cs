@@ -76,6 +76,10 @@ internal static class Program
         {
             Description = "Equivalent to --scale 1; kept for command compatibility."
         };
+        var gameOption = new Option<string>("--game")
+        {
+            Description = "Game the input comes from, so its naming conventions can fill in animation roles. Supported: " + string.Join(", ", GameCatalog.ImportProfiles.Select(profile => profile.Id)) + "."
+        };
         var targetOption = new Option<string>("--target")
         {
             Description = "Game to export for, when the output format has several. " + DescribeTargets()
@@ -97,6 +101,7 @@ internal static class Program
             scaleOption,
             noScaleOption,
             axisModeOption,
+            gameOption,
             targetOption
         };
 
@@ -137,6 +142,7 @@ internal static class Program
                 axisModeText: parseResult.GetValue(axisModeOption),
                 importerOptions: ReadSchemaOptions(NormalizeInputFormat(parseResult.GetRequiredValue(inputFormatOption)), "input", importerArguments, parseResult),
                 exporterOptions: ReadSchemaOptions(NormalizeOutputFormat(parseResult.GetRequiredValue(outputFormatOption)), "output", exporterArguments, parseResult),
+                sourceGameId: parseResult.GetValue(gameOption),
                 targetGameId: targetGameId,
                 targetOptions: ReadSchemaOptions(targetGameId ?? "no", "target game", targetArguments, parseResult));
         });
@@ -275,6 +281,7 @@ internal static class Program
         string? axisModeText,
         OptionValues importerOptions,
         OptionValues exporterOptions,
+        string? sourceGameId,
         string? targetGameId,
         OptionValues targetOptions)
     {
@@ -300,6 +307,7 @@ internal static class Program
             ScaleFactor = GetScaleFactor(scaleFactor, noScale),
             AxisMode = NormalizeAxisMode(axisModeText),
             MaterialDirectory = materialDirectory,
+            SourceGameId = sourceGameId,
             TargetGameId = targetGameId,
             TargetOptions = targetOptions,
         };

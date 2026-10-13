@@ -6,6 +6,7 @@ using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Versions;
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Games;
+using GMConverter.SDK.Geometry;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
 
@@ -60,6 +61,8 @@ internal sealed class FortniteUnrealGameProfile : IUnrealGameProfile
                 ? GameMatch.Exact
                 : GameMatch.None;
     }
+
+    public Model Prepare(Model model) => AnimationRoleGuesser.Apply(model);
 
     public VersionContainer CreateVersionContainer()
     {

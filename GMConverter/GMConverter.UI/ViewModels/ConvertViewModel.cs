@@ -65,6 +65,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _selectedOutputFormat = OutputFormats.FirstOrDefault(format => format.Value == "mdl")
             ?? OutputFormats.First(format => format.Value == "glb");
         _selectedAxisMode = AxisModes[0];
+        _selectedImportGame = ImportGames[0];
         RefreshCurrentExporterOptions();
         RefreshCurrentImporterOptions();
         RefreshTargets();
@@ -193,6 +194,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
             CurrentImporterOptions.BuildOptionValues(),
             CurrentExporterOptions.BuildOptionValues())
         {
+            SourceGameId = string.IsNullOrEmpty(SelectedImportGame.Value) ? null : SelectedImportGame.Value,
             TargetGameId = SelectedTarget?.Value,
             TargetOptions = CurrentTargetOptions.BuildOptionValues(),
         };
@@ -226,6 +228,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
         LoadExporterOptions(settings.ExporterOptions);
         LoadImporterOptions(settings.ImporterOptions);
         LoadTargets(settings.ExportTargets, settings.TargetOptions);
+        SetSelected(ImportGames, settings.ImportGame ?? string.Empty, value => SelectedImportGame = value);
     }
 
     internal void ApplyExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)
@@ -234,6 +237,9 @@ public sealed partial class ConvertViewModel : ViewModelBase
         var materialDirectory = resolvedEntry?.MaterialDirectory ?? fileEntry.MaterialDirectory;
 
         SelectedInputFormat = InputFormats.First(format => format.Value == fileEntry.InputFormat);
+        // The game the Explorer scanned the entry as is the game the input comes from.
+        SelectedImportGame = ImportGames.FirstOrDefault(game => string.Equals(game.Value, fileEntry.GameId, StringComparison.OrdinalIgnoreCase))
+            ?? ImportGames[0];
         InputPath = inputPath;
         MaterialDirectory = materialDirectory;
         // Importer options describe the previous selection (e.g. its animation); start this one

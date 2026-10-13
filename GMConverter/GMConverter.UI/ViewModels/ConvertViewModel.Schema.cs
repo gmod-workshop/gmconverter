@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using GMConverter.Core.Pipeline;
+using GMConverter.Core.Formats;
 using GMConverter.SDK.Options;
 using GMConverter.UI.ViewModels.Options;
 
@@ -27,7 +27,7 @@ public sealed partial class ConvertViewModel
         var selected = SelectedOutputFormat?.Value;
         var format = string.IsNullOrEmpty(selected)
             ? selected
-            : AssetFormats.FindExport(selected)?.OptionsKey ?? selected;
+            : FormatCatalog.FindExport(selected)?.OptionsKey ?? selected;
         if (string.IsNullOrEmpty(format))
         {
             CurrentExporterOptions = new OptionSetViewModel("", OptionSchema.Empty);
@@ -58,7 +58,7 @@ public sealed partial class ConvertViewModel
             return OptionSchema.Empty;
         }
         // Options the format sets itself (glTF's binary/text choice) get no control.
-        return AssetFormats.GetExport(format).OptionSchema;
+        return FormatCatalog.GetExport(format).OptionSchema;
     }
 
     internal Dictionary<string, Dictionary<string, object?>> SnapshotExporterOptions()

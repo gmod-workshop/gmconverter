@@ -8,22 +8,22 @@ using GMConverter.SDK.Options;
 
 namespace GMConverter.Core.Exporters;
 
-internal sealed class OBJExporter : IExporter
+internal sealed class OBJExporter : IModelExporter
 {
     private static readonly UTF8Encoding _utf8NoBom = new(false);
 
-    public string OutputFormat => "obj";
+    public string Format => "obj";
 
-    public string OutputName => "Wavefront OBJ";
+    public string DisplayName => "Wavefront OBJ";
 
     // OBJ has no user-configurable options today — the exporter writes a .obj + .mtl + texture
     // PNGs from the Model with no knobs. Empty schema is the right shape.
     public OptionSchema OptionSchema => OptionSchema.Empty;
 
-    public void Export(Model model, string outputDirectory, string baseName, OptionValues options)
+    public ExportResult Export(Model model, ExportContext context)
     {
-        _ = options;
-        var safeBaseName = NameHelpers.SanitizeFileName(baseName);
+        var outputDirectory = context.OutputDirectory;
+        var safeBaseName = NameHelpers.SanitizeFileName(context.BaseName);
         var materialPath = Path.Combine(outputDirectory, $"{safeBaseName}.mtl");
         var objPath = Path.Combine(outputDirectory, $"{safeBaseName}.obj");
 
@@ -31,7 +31,7 @@ internal sealed class OBJExporter : IExporter
         ExportTextures(model, outputDirectory);
         WriteMaterials(model, materialPath);
         WriteObj(model, objPath, safeBaseName);
-
+        return new ExportResult([objPath, materialPath]);
     }
 
     private static void ExportTextures(Model model, string outputDirectory)

@@ -12,11 +12,11 @@ using Mesh = GMConverter.SDK.Geometry.Mesh;
 
 namespace GMConverter.SourceEngine.Importers;
 
-internal sealed class MDLImporter : IImporter
+internal sealed class MDLImporter : IModelImporter
 {
-    public string InputFormat => "mdl";
+    public string Format => "mdl";
 
-    public string InputName => "Source Engine";
+    public string DisplayName => "Source Engine";
 
     public IReadOnlyList<string> FileExtensions { get; } = [".mdl"];
 
@@ -28,7 +28,9 @@ internal sealed class MDLImporter : IImporter
         return MdlSummary.From(inputPath, sourceModel);
     }
 
-    public Model Parse(string inputPath, ModelParseOptions options)
+    public Model Import(ModelImportContext context) => Parse(context.InputPath, context);
+
+    private static Model Parse(string inputPath, ModelImportContext options)
     {
         var sourceModel = LoadModel(inputPath);
         var tempDirectory = Path.Combine(

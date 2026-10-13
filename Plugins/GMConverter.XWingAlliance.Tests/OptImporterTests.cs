@@ -14,7 +14,7 @@ public sealed class OptImporterTests
     {
         var path = WriteSingleQuadOpt(blue: 10, green: 20, red: 30);
 
-        var model = new OPTImporter(new DefaultTextureFactory()).Parse(path, new ModelParseOptions(1f));
+        var model = new OPTImporter(new DefaultTextureFactory()).Import(new ModelImportContext(path));
 
         var material = Assert.Single(model.Materials);
         Assert.Equal("colortexture", material.Name);

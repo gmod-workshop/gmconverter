@@ -25,7 +25,7 @@ public sealed class PskImporterTests
     public void StandaloneMeshSkeletonAndAnimationUseMeters(float userScale)
     {
         var (psk, psa) = PskFixtures.WriteFixture();
-        var model = _importer.Parse(psk, new ModelParseOptions(userScale) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) });
+        var model = _importer.Import(new ModelImportContext(psk, userScale) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) });
         var bounds = model.Bounds();
         Assert.Equal(userScale, bounds.Max.X - bounds.Min.X, 5);
         Assert.Equal(0.1f * userScale, bounds.Min.X, 5);
@@ -39,7 +39,7 @@ public sealed class PskImporterTests
     public void ClipSidecarMarksRootMotionAndLooping()
     {
         var (psk, psa) = PskFixtures.WriteFixture();
-        AnimationClip Import() => Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) }).Animations!);
+        AnimationClip Import() => Assert.Single(_importer.Import(new ModelImportContext(psk) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) }).Animations!);
 
         Assert.Equal((false, false), (Import().RootMotion, Import().Loops));
 
@@ -55,7 +55,7 @@ public sealed class PskImporterTests
         var (_, otherPsa) = PskFixtures.WriteFixture();
         var paths = $"{psa}{OptionDescriptor.MultipleValueSeparator} {otherPsa}";
 
-        var model = _importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
+        var model = _importer.Import(new ModelImportContext(psk) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
 
         Assert.Equal(["move", "move_2"], model.Animations!.Select(clip => clip.Name));
     }
@@ -72,7 +72,7 @@ public sealed class PskImporterTests
         new PSALayerSidecar(LayerSpace.Model, Path.GetRelativePath(Path.GetDirectoryName(second)!, baseCopy), 0, "/Game/A_Idle").Write(second);
         var paths = $"{first}{OptionDescriptor.MultipleValueSeparator}{second}";
 
-        var model = _importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
+        var model = _importer.Import(new ModelImportContext(psk) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = paths }) });
 
         var layers = model.Animations!.Select(clip => clip.Layering!).ToArray();
         Assert.All(layers, layer => Assert.Equal(LayerSpace.Model, layer.Space));
@@ -88,7 +88,7 @@ public sealed class PskImporterTests
         new PSALayerSidecar(LayerSpace.Local, null, 0).Write(restLayer);
         new PSALayerSidecar(LayerSpace.Local, "missing.psa", 0).Write(orphanLayer);
 
-        AnimationClip Import(string psa) => Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) }).Animations!);
+        AnimationClip Import(string psa) => Assert.Single(_importer.Import(new ModelImportContext(psk) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) }).Animations!);
 
         var restLayering = Import(restLayer).Layering!;
         Assert.Equal(LayerSpace.Local, restLayering.Space);
@@ -103,13 +103,13 @@ public sealed class PskImporterTests
         var notPsa = Path.ChangeExtension(psa, ".txt");
         File.Copy(psa, notPsa);
 
-        ModelParseOptions WithAnimation(string path) => new(1f)
+        ModelImportContext WithAnimation(string path) => new(psk)
         {
             Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = path }),
         };
 
-        Assert.Contains(".psa", Assert.Throws<GMConverterException>(() => _importer.Parse(psk, WithAnimation(notPsa))).Message);
-        Assert.Throws<GMConverterException>(() => _importer.Parse(psk, WithAnimation(psa + ".missing")));
+        Assert.Contains(".psa", Assert.Throws<GMConverterException>(() => _importer.Import(WithAnimation(notPsa))).Message);
+        Assert.Throws<GMConverterException>(() => _importer.Import(WithAnimation(psa + ".missing")));
         Assert.Contains("animation-path", Assert.Single(_importer.OptionSchema.AllOptions).Aliases);
     }
 
@@ -138,7 +138,7 @@ public sealed class PskImporterTests
                 }
             }
         }));
-        var model = _importer.Parse(scene, new ModelParseOptions(userScale));
+        var model = _importer.Import(new ModelImportContext(scene, userScale));
         var bounds = model.Bounds();
         Assert.Equal(2.1f * userScale, bounds.Min.X, 5);
         Assert.Equal(userScale, bounds.Max.X - bounds.Min.X, 5);
@@ -150,7 +150,7 @@ public sealed class PskImporterTests
         var (psk, psa) = PskFixtures.WriteFixture();
         var scene = WriteScene(Path.GetDirectoryName(psk)!, Path.GetFileName(psk));
 
-        var model = _importer.Parse(scene, new ModelParseOptions(1f) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) });
+        var model = _importer.Import(new ModelImportContext(scene) { Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }) });
 
         Assert.Equal("root", Assert.Single(model.Skeleton!.Bones).Name);
         Assert.All(Assert.Single(model.Meshes).Vertices, vertex => Assert.Equal(0, Assert.Single(vertex.BoneWeights!).BoneIndex));
@@ -169,7 +169,7 @@ public sealed class PskImporterTests
         PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "prop.pskx"), [], weightedBone: 0, offsetX: 400);
         var scene = WriteScene(directory, "body.psk", "head.psk", "prop.pskx");
 
-        var model = _importer.Parse(scene, new ModelParseOptions(1f));
+        var model = _importer.Import(new ModelImportContext(scene));
 
         Assert.Equal(["root", "spine", "head"], model.Skeleton!.Bones.Select(bone => bone.Name));
         Assert.Equal([-1, 0, 0], model.Skeleton.Bones.Select(bone => bone.ParentIndex));
@@ -199,7 +199,7 @@ public sealed class PskImporterTests
                 new PSKPhysicsJoint("tail", "root", Quaternion.Identity, 10, 10, 10),
             ]).Write(Path.Join(directory, "head.psk"));
 
-        var model = _importer.Parse(WriteScene(directory, "body.psk", "head.psk"), new ModelParseOptions(1f));
+        var model = _importer.Import(new ModelImportContext(WriteScene(directory, "body.psk", "head.psk")));
 
         var physics = model.Physics!;
         Assert.Equal([1, 2, 0], physics.Bodies.Select(body => body.BoneIndex));
@@ -231,7 +231,7 @@ public sealed class PskImporterTests
         new PSKSocketSidecar([new PSKSocket("muzzle", null, new Vector3(50, 0, 0), Quaternion.Identity)])
             .Write(Path.Join(directory, "prop.pskx"));
 
-        var model = _importer.Parse(WriteScene(directory, "body.psk", "head.psk", "prop.pskx"), new ModelParseOptions(1f));
+        var model = _importer.Import(new ModelImportContext(WriteScene(directory, "body.psk", "head.psk", "prop.pskx")));
 
         var attachments = model.Attachments!;
         Assert.Equal(["hat", "muzzle"], attachments.Select(attachment => attachment.Name));
@@ -248,7 +248,7 @@ public sealed class PskImporterTests
         PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "hull.pskx"), [("fx_engine_l", -1), ("fx_engine_r", -1)], weightedBone: -1);
         var scene = WriteScene(directory, "hull.pskx");
 
-        Assert.Null(_importer.Parse(scene, new ModelParseOptions(1f)).Skeleton);
+        Assert.Null(_importer.Import(new ModelImportContext(scene)).Skeleton);
     }
 
     private static string WriteScene(string directory, params string[] parts)
@@ -280,7 +280,7 @@ public sealed class PskImporterTests
         File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=fluid\nOpacity=fluid\n");
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "fluid.tga"), alpha: 128);
 
-        var model = _importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = _importer.Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
 
         var material = Assert.Single(model.Materials);
         Assert.True(material.HasAlpha);
@@ -337,7 +337,7 @@ public sealed class PskImporterTests
         using var diffuse = new DefaultTextureFactory().FromRgba("panel", size, size, pixels, hasAlpha: true);
         diffuse.WritePng(Path.Join(directory, "panel.png"));
 
-        return Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+        return Assert.Single(_importer.Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory))).Materials);
     }
 
     [Fact]
@@ -349,7 +349,7 @@ public sealed class PskImporterTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 255);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel_bump.tga"), alpha: 255);
 
-        var material = Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+        var material = Assert.Single(_importer.Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory))).Materials);
 
         Assert.Equal("panel_bump", material.NormalTexture?.Name);
         Assert.Null(material.SpecularTexture);
@@ -364,7 +364,7 @@ public sealed class PskImporterTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51, size: 4);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "flash.tga"), alpha: 255, size: 2, blue: 0, green: 200, red: 100);
 
-        var material = Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+        var material = Assert.Single(_importer.Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory))).Materials);
 
         // Glow = the 2x2 flash colour (R100 G200 B0) sampled up to the 4x4 mask, x alpha 51/255.
         var glow = material.EmissiveTexture!;
@@ -380,7 +380,7 @@ public sealed class PskImporterTests
         File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nSelfIlluminationMask=panel\n");
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
 
-        var material = Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+        var material = Assert.Single(_importer.Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory))).Materials);
 
         Assert.Null(material.EmissiveTexture);
     }
@@ -392,7 +392,7 @@ public sealed class PskImporterTests
         var psk = Path.Join(directory, "shells.psk");
         PskFixtures.WriteTetrahedraFixture(psk, invertedShell: 2);
 
-        var model = _importer.Parse(psk, new ModelParseOptions(1f));
+        var model = _importer.Import(new ModelImportContext(psk));
         var mesh = Assert.Single(model.Meshes);
         var triangles = mesh.Triangles.ToArray();
         Assert.Equal(16, triangles.Length);
@@ -418,7 +418,7 @@ public sealed class PskImporterTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 255);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "scorch.tga"), alpha: 51, blue: 0, green: 0, red: 200);
 
-        var material = Assert.Single(_importer.Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory))).Materials);
+        var material = Assert.Single(_importer.Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory))).Materials);
 
         // lerp(panel R80 G220 B240, scorch R200 G0 B0, 51/255 = 0.2).
         Assert.Equal([104, 176, 192], material.DiffuseTexture!.GetRgbaPixels()[..3]);

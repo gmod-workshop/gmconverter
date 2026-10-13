@@ -1,5 +1,6 @@
 using System.Numerics;
 using GMConverter.Core.Plugins;
+using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
@@ -22,8 +23,8 @@ public sealed class UnrealToSourcePipelineTests
         File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=fluid\nUvScroll=0,-0.2\n");
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "fluid.tga"), alpha: 255);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var material = Assert.Single(model.Materials);
         Assert.Equal(new Vector2(0, -0.2f), material.UvScrollRate);
         Assert.NotNull(material.DiffuseTexture);
@@ -33,12 +34,12 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
 
         var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
         Assert.Contains("\"TextureScroll\"", vmt);
@@ -58,8 +59,8 @@ public sealed class UnrealToSourcePipelineTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "fluid.tga"), alpha: 255);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "bubbles.tga"), alpha: 128);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var material = Assert.Single(model.Materials);
         Assert.Equal(new Vector2(0.2f, 0), material.EmissiveUvScrollRate);
 
@@ -70,12 +71,12 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
 
         var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
         Assert.DoesNotContain("$selfillum", vmt);
@@ -96,8 +97,8 @@ public sealed class UnrealToSourcePipelineTests
             "Diffuse=panel\nSelfIllumination=panel\nSelfIlluminationMask=panel\n");
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var material = Assert.Single(model.Materials);
         Assert.Null(material.EmissiveUvScrollRate);
 
@@ -107,12 +108,12 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
 
         // Garry's Mod reads self-illumination from alpha, so opaque glow lives in the base alpha
         // (coverage = glow / albedo = 48 / 240 -> the original mask alpha 51) with no extra mask.
@@ -140,17 +141,17 @@ public sealed class UnrealToSourcePipelineTests
         File.WriteAllText(Path.Join(directory, "test.mat"), "Diffuse=panel\nOpacity=panel\n" + blendLines);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 200);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
 
         var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
         Assert.Contains(expected, vmt);
@@ -175,8 +176,8 @@ public sealed class UnrealToSourcePipelineTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51, size: 4);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "flash.tga"), alpha: 255, size: 2, blue: 0, green: 200, red: 100);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var material = Assert.Single(model.Materials);
 
         // Colour = flash (R100 G200 B0) + constant (R100 G50 B0), clamped; it scrolls under the
@@ -190,12 +191,12 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
 
         var vmt = File.ReadAllText(Directory.GetFiles(output, "test.vmt", SearchOption.AllDirectories).Single());
         Assert.Contains("\"$selfillumtint\" \"[0 0 0]\"", vmt);
@@ -229,8 +230,8 @@ public sealed class UnrealToSourcePipelineTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "scorch.tga"), alpha: 255, blue: 0, green: 0, red: 200);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
 
         Assert.Equal("test", Assert.Single(model.Materials).Name);
         Assert.Equal(["test_on", "test_dest"], model.Skins!.Select(skin => skin.Replacements["test"].Name));
@@ -238,12 +239,12 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
 
         var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
         Assert.Contains("$texturegroup \"skinfamilies\"\n{\n    { \"test\" }\n    { \"test_on\" }\n    { \"test_dest\" }\n}", qc.ReplaceLineEndings("\n"));
@@ -261,8 +262,8 @@ public sealed class UnrealToSourcePipelineTests
             "Diffuse=panel\nUvScroll=0,0.2\nUvTransform=u=stretch,0.1,0.2,0;center=0.5,0.5;v=jitter,1,80,0;u=pan,9,9,9\n");
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 255);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var transform = Assert.Single(model.Materials).UvTransform!;
         Assert.Equal(new Vector2(0.5f, 0.5f), transform.Center);
         Assert.Equal(new GMConverter.SDK.Materials.MaterialOscillation(GMConverter.SDK.Materials.MaterialOscillationKind.Stretch, 0.1f, 0.2f, 0f), transform.U);
@@ -292,8 +293,8 @@ public sealed class UnrealToSourcePipelineTests
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "lightmap.tga"), alpha: 255);
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "burlap.tga"), alpha: 255, blue: 200, green: 100, red: 50);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var layer = Assert.Single(model.Materials).DetailLayer!;
         Assert.Equal(GMConverter.SDK.Materials.MaterialLayerBlend.Multiply, layer.Blend);
         Assert.Equal(new Vector2(0.25f, 0.25f), layer.UvTransform!.Scale);
@@ -321,8 +322,8 @@ public sealed class UnrealToSourcePipelineTests
             "SelfIlluminationColorOperation=Replace\nSelfIlluminationFade=0,255,0,0.5,0.25\n");
         PskFixtures.WriteUnlabeledAlphaTga(Path.Join(directory, "panel.tga"), alpha: 51);
 
-        var model = PluginHost.Registry.GetImporter("psk")!
-            .Parse(psk, new ModelParseOptions(1f, Materials: new MaterialResolveOptions(directory)));
+        var model = ((IModelImporter)PluginHost.Registry.GetImporter("psk")!)
+            .Import(new ModelImportContext(psk, Materials: new MaterialResolveOptions(directory)));
         var material = Assert.Single(model.Materials);
 
         // A FadePeriod of 0.5 s is one way, so a full red -> green -> red cycle takes 1 s. The
@@ -343,12 +344,12 @@ public sealed class UnrealToSourcePipelineTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => PluginHost.Registry.GetExporter("mdl")!.Export(model, output, "triangle", new OptionValues(
+        _ = Record.Exception(() => ((IModelExporter)PluginHost.Registry.GetExporter("mdl")!).Export(model, new ExportContext(output, "triangle", new OptionValues(
             new Dictionary<string, object?>
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false
-            })));
+            }))));
         return File.ReadAllText(Directory.GetFiles(output, vmtName, SearchOption.AllDirectories).Single());
     }
 }

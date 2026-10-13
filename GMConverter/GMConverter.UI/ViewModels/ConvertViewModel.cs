@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GMConverter.Core.Pipeline;
+using GMConverter.Core.Formats;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;
@@ -70,13 +70,13 @@ public sealed partial class ConvertViewModel : ViewModelBase
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
-        [.. AssetFormats.Importers
-            .Select(importer => new DisplayOption(importer.InputFormat, importer.InputFormat.ToUpperInvariant(), importer.InputName))];
+        [.. FormatCatalog.Importers
+            .Select(importer => new DisplayOption(importer.Format, importer.Format.ToUpperInvariant(), importer.DisplayName))];
 
     public ObservableCollection<DisplayOption> OutputFormats { get; } =
     [
         new("info", "Info", "Summary"),
-        .. AssetFormats.Exports.Select(format => new DisplayOption(format.Format, format.Label, format.Exporter.OutputName))
+        .. FormatCatalog.Exports.Select(format => new DisplayOption(format.Format, format.Label, format.Exporter.DisplayName))
     ];
 
     public ObservableCollection<DisplayOption> AxisModes { get; } =

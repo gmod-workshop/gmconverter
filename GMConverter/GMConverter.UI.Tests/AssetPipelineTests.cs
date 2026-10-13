@@ -1,5 +1,7 @@
 using System.Text.Json;
+using GMConverter.Core.Formats;
 using GMConverter.Core.Pipeline;
+using GMConverter.SDK.Assets;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Options;
 
@@ -33,6 +35,29 @@ public sealed class AssetPipelineTests
         Assert.Equal("default", written.RootElement.GetProperty("name").GetString());
         Assert.Equal("a", written.RootElement.GetProperty("mode").GetString());
         Assert.Equal("named", written.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public void ResultCarriesTheFilesTheExporterReported()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("sample", CreateInput(output))
+        {
+            OutputFormat = "sample",
+            OutputDirectory = output,
+            BaseName = "result",
+        };
+
+        var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
+
+        Assert.Equal([Path.Join(Path.GetFullPath(output), "result.json")], result.Export.Files);
+    }
+
+    [Fact]
+    public void ModelImportersAndExportersReportTheModelKind()
+    {
+        Assert.Equal(AssetKind.Model, FormatCatalog.GetImporter("sample").Kind);
+        Assert.All(FormatCatalog.Exports, format => Assert.Equal(AssetKind.Model, format.Exporter.Kind));
     }
 
     [Fact]
@@ -74,20 +99,20 @@ public sealed class AssetPipelineTests
     [Fact]
     public void SourceIsTheMdlExporterUnderAnotherName()
     {
-        var source = AssetFormats.GetExport("source");
-        var mdl = AssetFormats.GetExport("mdl");
+        var source = FormatCatalog.GetExport("source");
+        var mdl = FormatCatalog.GetExport("mdl");
 
         Assert.Same(mdl.Exporter, source.Exporter);
         Assert.Equal("mdl", source.OptionsKey);
-        Assert.Single(AssetFormats.DistinctExporters, format => format.Exporter == mdl.Exporter);
+        Assert.Single(FormatCatalog.DistinctExporters, format => format.Exporter == mdl.Exporter);
     }
 
     [Fact]
     public void GltfFormatsHideTheOptionTheyForce()
     {
-        Assert.DoesNotContain(AssetFormats.GetExport("glb").OptionSchema.AllOptions, option => option.Key == "binary");
-        Assert.Contains(AssetFormats.GetExport("glb").Exporter.OptionSchema.AllOptions, option => option.Key == "binary");
-        Assert.Equal("gltf", AssetFormats.GetExport("gltf").OptionsKey);
+        Assert.DoesNotContain(FormatCatalog.GetExport("glb").OptionSchema.AllOptions, option => option.Key == "binary");
+        Assert.Contains(FormatCatalog.GetExport("glb").Exporter.OptionSchema.AllOptions, option => option.Key == "binary");
+        Assert.Equal("gltf", FormatCatalog.GetExport("gltf").OptionsKey);
     }
 
     [Fact]

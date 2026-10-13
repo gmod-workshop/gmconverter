@@ -27,10 +27,10 @@ public sealed class SchemaTestPlugin : IPlugin
     }
 }
 
-public sealed class SchemaTestImporter : IImporter
+public sealed class SchemaTestImporter : IModelImporter
 {
-    public string InputFormat => "sample";
-    public string InputName => "Test model";
+    public string Format => "sample";
+    public string DisplayName => "Test model";
     public IReadOnlyList<string> FileExtensions { get; } = [".sample"];
     public OptionSchema OptionSchema { get; } = new([
         new OptionGroup("naming", "Naming", [
@@ -43,7 +43,7 @@ public sealed class SchemaTestImporter : IImporter
     ]);
     public object Summarize(string inputPath) => "Test model";
 
-    public Model Parse(string inputPath, ModelParseOptions options) => new(options.Options.GetString("modelName") ?? "triangle",
+    public Model Import(ModelImportContext context) => new(context.Options.GetString("modelName") ?? "triangle",
     [
         new Mesh([
             new Vertex(Vector3.Zero, Vector3.UnitZ, Vector2.Zero),
@@ -53,10 +53,10 @@ public sealed class SchemaTestImporter : IImporter
     ], [new Material("test")]);
 }
 
-public sealed class SchemaTestExporter : IExporter
+public sealed class SchemaTestExporter : IModelExporter
 {
-    public string OutputFormat => "sample";
-    public string OutputName => "Test export";
+    public string Format => "sample";
+    public string DisplayName => "Test export";
     public OptionSchema OptionSchema { get; } = new([
         new OptionGroup("custom", "Custom", [
             new OptionDescriptor("name", OptionType.String, "Name") { DefaultValue = "default" },
@@ -68,10 +68,12 @@ public sealed class SchemaTestExporter : IExporter
         ])
     ]);
 
-    public void Export(Model model, string outputDirectory, string baseName, OptionValues options)
+    public ExportResult Export(Model model, ExportContext context)
     {
         // The model name echoes the importer's "modelName" option, so tests can see both sides.
-        File.WriteAllText(Path.Join(outputDirectory, baseName + ".json"),
-            JsonSerializer.Serialize(new Dictionary<string, object?>(options.AsDictionary()) { ["model"] = model.Name }));
+        var path = Path.Join(context.OutputDirectory, context.BaseName + ".json");
+        File.WriteAllText(path,
+            JsonSerializer.Serialize(new Dictionary<string, object?>(context.Options.AsDictionary()) { ["model"] = model.Name }));
+        return new ExportResult([path]);
     }
 }

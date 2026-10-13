@@ -26,7 +26,6 @@ using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.Engine.Animation;
 using CUE4Parse.UE4.Objects.UObject;
-using CUE4Parse.UE4.Wwise;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Animations;
 using CUE4Parse_Conversion.Options;
@@ -35,7 +34,6 @@ using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UnrealEngine.Archives;
-using GMConverter.UnrealEngine.Audio;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Formats.Wwise;
@@ -212,7 +210,11 @@ public sealed class UE4Explorer : IExplorer
         // A matching sentinel means the previous resolve wrote a complete tree for this exact
         // asset under this exact archive set; we can return the existing manifest directly and
         // skip the minutes-long CUE4Parse export + multi-layer bake.
-        if (UE4ExportCache.TryRead(exportRoot, archiveFingerprint, out var cached))
+        // A sound exported by an older build is redone on its own, so improving how sounds are
+        // read does not throw away every cached model.
+        if (UE4ExportCache.TryRead(exportRoot, archiveFingerprint, out var cached) &&
+            (!cached.InputPath.EndsWith(WwiseEventSidecar.Extension, StringComparison.OrdinalIgnoreCase) ||
+                WwiseEventSidecar.TryReadVersion(cached.InputPath) == WwiseEventSidecar.CurrentVersion))
         {
             return cached;
         }
@@ -250,7 +252,7 @@ public sealed class UE4Explorer : IExplorer
         else if (sourceExport is UAkAudioEvent audioEvent)
         {
             using var soundScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedSoundEvent");
-            resolvedEntry = ExportResolvedSoundEvent(exportRoot, audioEvent, providerContext);
+            resolvedEntry = UnrealSoundEventExporter.Export(exportRoot, audioEvent, providerContext);
         }
         else if (IsExportableAnimationObject(sourceExport))
         {
@@ -336,59 +338,6 @@ public sealed class UE4Explorer : IExplorer
         var details = $"Resolved UE blend space: {blendSpace.Name} with {samples.Count} sample(s). " +
             "Load a matching SkeletalMesh and use Add Animations to add it.";
         return new ExplorerResolvedEntry(sidecarPath, exportRoot, details, PSKImporterOptions.WithBlendSpace(samplePaths, sidecarPath));
-    }
-
-    // Writes the media a Wwise event plays as .wem files and a sidecar naming them. Decoding is
-    // left to the importer, so resolving needs no external tool and the export stays the game's
-    // own data.
-    private static ExplorerResolvedEntry ExportResolvedSoundEvent(string exportRoot, UAkAudioEvent audioEvent, Cue4ParseProviderContext providerContext)
-    {
-        List<WwiseExtractedSound> sounds;
-        using (PerfTimer.Measure("ue4.resolve", "ExtractAudioEventSounds", audioEvent.Name))
-        {
-            sounds = providerContext.Wwise.ExtractAudioEventSounds(audioEvent);
-        }
-
-        // Localised events carry a recording per language; keep one, plus any shared media.
-        var language = UnrealSoundNames.PreferredLanguage(sounds.Select(sound => UnrealSoundNames.Language(Path.GetFileName(sound.OutputPath))));
-        Directory.CreateDirectory(exportRoot);
-        List<string> media = [];
-        HashSet<string> fileNames = new(StringComparer.OrdinalIgnoreCase);
-        foreach (var sound in sounds)
-        {
-            if (UnrealSoundNames.Language(Path.GetFileName(sound.OutputPath)) is { } soundLanguage &&
-                !soundLanguage.Equals(language, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var data = sound.GetData();
-            if (data.Length == 0)
-            {
-                continue;
-            }
-
-            var stem = UnrealSoundNames.ClipName(Path.GetFileName(sound.OutputPath));
-            var fileName = $"{stem}.{sound.Extension.ToLowerInvariant()}";
-            for (var index = 2; !fileNames.Add(fileName); index++)
-            {
-                fileName = $"{stem}_{index}.{sound.Extension.ToLowerInvariant()}";
-            }
-
-            File.WriteAllBytes(Path.Join(exportRoot, fileName), data);
-            media.Add(fileName);
-        }
-
-        if (media.Count == 0)
-        {
-            throw new GMConverterException($"Wwise event {audioEvent.Name} plays no media this game's files contain.");
-        }
-
-        var category = UnrealSoundNames.Category(audioEvent.Name, audioEvent.GetPathName());
-        var sidecarPath = Path.Join(exportRoot, audioEvent.Name + WwiseEventSidecar.Extension);
-        new WwiseEventSidecar(audioEvent.Name, category, UnrealSoundNames.DefaultAttenuationMeters(category), media).Write(sidecarPath);
-        var details = $"Resolved Wwise event: {audioEvent.Name} with {media.Count} media file(s).";
-        return new ExplorerResolvedEntry(sidecarPath, exportRoot, details);
     }
 
     private static bool IsExportableAnimationObject(UObject export)

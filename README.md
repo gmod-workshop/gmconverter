@@ -265,9 +265,16 @@ Animations that use Unreal's root motion (the character travels or turns with it
 
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 
-Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it, and picks between its media at random. Localised voice lines keep their English recording.
+Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it. Localised voice lines keep their English recording.
 
-This first version reads which media an event can play, but not how Wwise mixes it. Volume, pitch variation and switches (such as the floor surface a footstep is on) are not read yet: an event picks between all of its media, and how far it carries is guessed from its name (`FS_` footsteps, `FLY_` foley, `brk_` and `VO` voice, `WPN_` weapons, and so on).
+The event is mixed as the game mixes it, read from its soundbank:
+
+* **Volume** adds up through the event's containers and actor mixers and becomes the sound's volume, so quiet foley stays quiet next to gunfire. Volume and pitch randomizers become volume and pitch ranges.
+* **How far it carries** comes from its attenuation and becomes the Source sound level.
+* **Random containers** keep their weights. Media quieter than the loudest in the event are made quieter in their WAV.
+* **Switches** (such as the floor surface a footstep is on) play their default branch.
+
+Source plays one sound per name, so an event that plays several things at once (several play actions, or a layer container) keeps only the first, and sequences play at random. Events whose mixing can't be read fall back to playing all of their media alike, with how far they carry guessed from their name (`FS_` footsteps, `FLY_` foley, `brk_` and `VO` voice, `WPN_` weapons, and so on).
 
 </details>
 

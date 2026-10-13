@@ -35,5 +35,7 @@ internal sealed class GenericSourceProfile : ISourceProfile
         return target.IsDirectory && File.Exists(Path.Join(target.FullPath, "gameinfo.txt")) ? GameMatch.Fallback : GameMatch.None;
     }
 
+    public IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip) => SourceAnimationEvents.For(clip);
+
     public SourcePoseParameter? GetPoseParameter(BlendAxis axis) => SourcePoseParameters.For(axis);
 }

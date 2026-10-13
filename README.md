@@ -112,6 +112,8 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | `--mdl-physics-coacdThreshold <value>` | `--coacd-threshold` | CoACD termination threshold. | `0.05` |
 | `--mdl-physics-maxConvexPieces <count>` | `--max-convex-pieces` | Maximum CoACD convex hull count. Use `-1` for no limit. | `16` |
 | `--mdl-physics-maxHullVertices <count>` | `--coacd-max-hull-vertices`, `--max-hull-vertices` | Maximum vertices per CoACD hull. | `16` |
+| `--mdl-gibs-enabled [true\|false]` | `--gibs` | Cut the model into gibs, one per collision body. See [Gibs](#gibs). | `false` |
+| `--mdl-gibs-minSize <cm>` | `--gib-min-size` | Pieces smaller than a cube this size join their parent piece. | `10` |
 
 </details>
 
@@ -367,6 +369,23 @@ Unreal limits rotation about a constraint's own axes, while Source limits it abo
 ```
 
 Use `--physics-mode bounds` or `--physics-mode coacd` to replace the ragdoll with a single rigid collision model.
+
+</details>
+
+<details>
+<summary>Gibs</summary>
+
+`--gibs` cuts a model that has collision bodies (such as an Unreal ragdoll) into pieces it can break into: one small physics prop per body, written to `models/<model>_gibs/<bone>.mdl` next to the model. Each triangle goes with the body of the bone that moves it most. Pieces smaller than `--gib-min-size` centimetres join their parent's piece, so a droid's fingers stay on its hand. Cuts are left open.
+
+With `--physics` as well, the model lists its gibs in its collision data (`$collisiontext`), each placed on its bone. In Garry's Mod, `ent:GibBreakClient(force)` or `ent:GibBreakServer(force)` then spawns every piece where that part was on the model at that moment, and a breakable prop with the model breaks into them. Without `--physics`, the gib models are still written, for Lua to spawn.
+
+```powershell
+./GMConverter.CLI --input-format psk --output-format mdl `
+  --input-path "SK_B1_Battledroid.ue4scene" `
+  --output-path "out1-source" `
+  --physics `
+  --gibs
+```
 
 </details>
 

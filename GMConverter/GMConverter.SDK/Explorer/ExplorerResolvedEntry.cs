@@ -10,4 +10,12 @@ public sealed record ExplorerResolvedEntry(
     string InputPath,
     string MaterialDirectory,
     string? Details = null,
-    IReadOnlyDictionary<string, object?>? ImporterOptions = null);
+    IReadOnlyDictionary<string, object?>? ImporterOptions = null)
+{
+    /// <summary>
+    /// Importer option values that add this entry to another model as a variant of it (such as a
+    /// mesh made for the same skeleton becoming a body group option), or null when it cannot be
+    /// one. Hosts append them to the loaded model's importer options.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?>? VariantImporterOptions { get; init; }
+}

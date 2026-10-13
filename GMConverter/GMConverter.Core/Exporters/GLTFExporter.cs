@@ -56,6 +56,8 @@ internal sealed class GLTFExporter : IModelExporter
 
     public ExportResult Export(Model model, ExportContext context)
     {
+        // glTF has no body groups, so it gets the look the model shows by default.
+        model = model with { Meshes = model.DefaultMeshes, BodyGroups = null };
         var outputDirectory = context.OutputDirectory;
         var options = context.Options;
         using var exportScope = PerfTimer.Measure(

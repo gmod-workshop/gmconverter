@@ -18,4 +18,7 @@ internal interface ISourceProfile : IExportGameProfile
     /// whose role this game has no activity for.
     /// </summary>
     IReadOnlyList<SourceActivity> GetActivities(AnimationClip clip, OptionValues options);
+
+    /// <summary>The pose parameter a blend space axis drives in this game, or null when it has none.</summary>
+    SourcePoseParameter? GetPoseParameter(BlendAxis axis);
 }

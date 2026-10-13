@@ -42,6 +42,12 @@ internal sealed class PSKImporter : IModelImporter
                 Aliases = ["animation-path"],
                 AllowsMultiple = true,
             },
+            new OptionDescriptor(PSKImporterOptions.BlendSpacePath, OptionType.Path, "Blend spaces")
+            {
+                Description = "Optional blend space files (.blendspace.json, written by the Explorer) describing how the imported animations blend. Separate several files with ';'.",
+                Aliases = ["blend-space-path"],
+                AllowsMultiple = true,
+            },
         ]),
     ]);
 
@@ -56,7 +62,7 @@ internal sealed class PSKImporter : IModelImporter
         return PSKSummary.From(inputPath, PSKFile.Read(inputPath));
     }
 
-    public Model Import(ModelImportContext context) => Parse(context.InputPath, context);
+    public Model Import(ModelImportContext context) => PSKBlendSpaces.Attach(Parse(context.InputPath, context), context);
 
     private Model Parse(string inputPath, ModelImportContext options)
     {

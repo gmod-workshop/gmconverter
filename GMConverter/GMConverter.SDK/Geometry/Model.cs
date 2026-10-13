@@ -15,7 +15,8 @@ public sealed record Model(
     IReadOnlyList<AnimationClip>? Animations = null,
     IReadOnlyList<MaterialSkin>? Skins = null,
     IReadOnlyList<Attachment>? Attachments = null,
-    ModelPhysics? Physics = null)
+    ModelPhysics? Physics = null,
+    IReadOnlyList<AnimationBlendSpace>? BlendSpaces = null)
     : IAsset
 {
     AssetKind IAsset.Kind => AssetKind.Model;

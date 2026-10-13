@@ -75,6 +75,7 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | Option | Alias | Description | Default |
 | --- | --- | --- | --- |
 | `--psk-import-animationPath <path.psa>` | `--animation-path` | PSA animation files to import alongside the mesh. Separate several files with `;`. | None |
+| `--psk-import-blendSpacePath <path.blendspace.json>` | `--blend-space-path` | Blend space files the Explorer writes when it resolves a blend space or aim offset, describing how the imported animations blend. Separate several files with `;`. | None |
 
 </details>
 
@@ -226,7 +227,9 @@ The **Game** box chooses which game's settings are used. On **Auto-detect**, the
 
 Most cooked UE5 games (for example Star Wars Zero Company) store "unversioned" properties. The Explorer can still list their assets, but meshes, materials and textures can't be read without a `.usmap` mappings file that matches the game's current build. Dump one from the running game with a tool such as Dumper-7 or UE4SS, then place it in the game's `Paks` folder or anywhere up to the game's install folder. GMConverter picks up the newest `.usmap` it finds there when it opens the archives, so restart GMConverter after adding one, and dump a new file after each game update.
 
-Skeletal meshes and animations are matched by the skeleton they were made for. To add animations to a model, double-click the skeletal mesh to load it, select it again and click **Related** to list the animations made for its skeleton, then select one or more (Ctrl- or Shift-click) and click **Add Animations**. Each one becomes a separate sequence in the exported model. To bundle every animation for the skeleton automatically, turn on **Include all compatible animations** before previewing or exporting the mesh. This includes animation sequences only; add montages by hand. The preview always shows the model in its rest pose.
+Skeletal meshes and animations are matched by the skeleton they were made for. To add animations to a model, double-click the skeletal mesh to load it, select it again and click **Related** to list the animations made for its skeleton, then select one or more (Ctrl- or Shift-click) and click **Add Animations**. Each one becomes a separate sequence in the exported model. To bundle every animation for the skeleton automatically, turn on **Include all compatible animations** before previewing or exporting the mesh. This includes animation sequences and blend spaces; add montages by hand.
+
+Blend spaces and aim offsets can be added the same way. Their sample animations come along, and MDL output turns aim offsets into an aim layer driven by the `aim_yaw` and `aim_pitch` pose parameters that Source NPC code sets, so a character points its weapon where it aims. Blend spaces whose axes have no Source pose parameter (such as hit-reaction pose blends) are left out, since Source models only have room for a few pose parameters. The preview always shows the model in its rest pose.
 
 Additive animations (layers such as aim poses, flinches and hit reactions that the game adds on top of another animation) keep that role in MDL output: each becomes a `delta` sequence measured against the pose it was authored for, so it can be played as a layer or gesture in Garry's Mod. Played on its own, a delta sequence does not show a normal pose. Formats without layers, such as glTF, receive the layer already applied to its base pose. Layers that Unreal applies in model space are applied in each bone's local space by Source, so they match exactly on their own base pose and approximately on others.
 

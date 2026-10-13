@@ -180,7 +180,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var target = SourceProfiles.Find(context.TargetGameId);
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
-            clip => target?.GetActivities(clip, context.TargetOptions) ?? []);
+            clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
+            axis => target?.GetPoseParameter(axis));
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -640,7 +641,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         PhysicsOptions? physicsOptions,
         (AnimationClip Clip, string SmdPath)[] animationSmdPaths,
         Dictionary<AnimationPose, string> basePoseSmdPaths,
-        Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities)
+        Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities,
+        Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
@@ -685,6 +687,19 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             foreach (var activity in activities)
             {
                 WriteSequence(writer, model, clip, animationSmdPath, clip.Name + activity.SequenceSuffix, activity.Name, basePoseSmdPaths);
+            }
+        }
+
+        // Blend spaces become blended sequences on the pose parameters game code sets.
+        var blendSequences = SourceBlendSequences.Plan(model, animationSmdPaths, getPoseParameter);
+        if (blendSequences.Count > 0)
+        {
+            SourceBlendSequences.WritePoseParameters(writer, blendSequences);
+            foreach (var blendSequence in blendSequences)
+            {
+                SourceBlendSequences.Write(writer, blendSequence, pose => pose is { } basePose
+                    ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
+                    : "idle");
             }
         }
 

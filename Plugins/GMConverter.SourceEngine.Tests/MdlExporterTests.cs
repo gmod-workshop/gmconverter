@@ -304,6 +304,49 @@ public sealed class MdlExporterTests
         Assert.DoesNotContain("activity", Qc(null));
     }
 
+    [Fact]
+    public void AimOffsetsBecomeDeltaBlendSequencesOnSourcePoseParameters()
+    {
+        var basePose = new AnimationPose("aim_ref", new Dictionary<int, Transform> { [0] = Transform.Identity });
+        var layering = new AnimationLayering(LayerSpace.Local, basePose);
+        AnimationClip Pose(string name) => new(
+            name,
+            30f,
+            0f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity)])],
+            layering);
+        BlendSpaceTestSample[] grid = [new("lu", -90, 90), new("ru", 90, 90), new("ld", -90, -90), new("rd", 90, -90)];
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            Animations = [.. grid.Select(sample => Pose(sample.Name))],
+            BlendSpaces =
+            [
+                new AnimationBlendSpace(
+                    "aim",
+                    [new BlendParameter("Yaw", BlendAxis.AimYaw, -90, 90), new BlendParameter("Pitch", BlendAxis.AimPitch, -90, 90)],
+                    [.. grid.Select(sample => new BlendSample(sample.Name, [sample.Yaw, sample.Pitch]))]),
+                new AnimationBlendSpace("flinch", [new BlendParameter("Left/Right", BlendAxis.Generic, -1, 1)], [new BlendSample("lu", [-1f]), new BlendSample("ru", [1f])]),
+                new AnimationBlendSpace("gappy", [new BlendParameter("Yaw", BlendAxis.AimYaw, -90, 90), new BlendParameter("Pitch", BlendAxis.AimPitch, -90, 90)], [new BlendSample("lu", [-90f, 90f]), new BlendSample("rd", [90f, -90f])]),
+            ],
+        };
+        string Qc(string? target) => File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model, targetGameId: target), "*.qc", SearchOption.AllDirectories).Single()).ReplaceLineEndings("\n");
+
+        var qc = Qc("garrysmod");
+        Assert.Contains("$poseparameter \"aim_yaw\" -90 90\n$poseparameter \"aim_pitch\" -90 90", qc);
+        // Grid order: yaw changes fastest, rows run from the lowest pitch up.
+        Assert.Contains("$animation \"aim_blend_0\" \"triangle_2_ld.smd\" fps 30 subtract", qc);
+        Assert.Contains("$animation \"aim_blend_3\" \"triangle_1_ru.smd\" fps 30 subtract", qc);
+        // Source angles grow left and down, so both ranges run reversed, as in HL2's aim layers.
+        Assert.Contains("    blendwidth 2\n    blend \"aim_yaw\" 90 -90\n    blend \"aim_pitch\" 90 -90\n    delta\n    autoplay\n}", qc);
+        // Axes no pose parameter drives, and samples that don't fill a grid, aren't written.
+        Assert.DoesNotContain("\"flinch\"", qc);
+        Assert.DoesNotContain("\"gappy\"", qc);
+        Assert.DoesNotContain("$poseparameter", Qc(null));
+    }
+
+    private sealed record BlendSpaceTestSample(string Name, float Yaw, float Pitch);
+
     // One triangle 1 m across, fully weighted to a single root bone with the given rotation.
     private static Model CreateSkinnedTriangle(Quaternion rootRotation)
     {

@@ -92,4 +92,6 @@ internal sealed class GarrysModProfile : ISourceProfile
 
         return activities;
     }
+
+    public SourcePoseParameter? GetPoseParameter(BlendAxis axis) => SourcePoseParameters.For(axis);
 }

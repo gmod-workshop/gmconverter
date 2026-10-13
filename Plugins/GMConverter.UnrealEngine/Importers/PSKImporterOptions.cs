@@ -1,4 +1,5 @@
 using GMConverter.SDK.Explorer;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.UnrealEngine.Importers;
 
@@ -9,6 +10,7 @@ namespace GMConverter.UnrealEngine.Importers;
 internal static class PSKImporterOptions
 {
     public const string AnimationPath = "animationPath";
+    public const string BlendSpacePath = "blendSpacePath";
 
     /// <summary>Importer option values carrying <paramref name="animationPath"/>, or null without one.</summary>
     public static IReadOnlyDictionary<string, object?>? WithAnimation(string? animationPath)
@@ -16,6 +18,16 @@ internal static class PSKImporterOptions
         return string.IsNullOrEmpty(animationPath)
             ? null
             : new Dictionary<string, object?> { [AnimationPath] = animationPath };
+    }
+
+    /// <summary>Importer option values carrying a blend space's sidecar and the PSAs of its samples.</summary>
+    public static IReadOnlyDictionary<string, object?> WithBlendSpace(IEnumerable<string> samplePaths, string sidecarPath)
+    {
+        return new Dictionary<string, object?>
+        {
+            [AnimationPath] = string.Join(OptionDescriptor.MultipleValueSeparator, samplePaths.Distinct(StringComparer.OrdinalIgnoreCase)),
+            [BlendSpacePath] = sidecarPath,
+        };
     }
 
     /// <summary>The animation path a resolved entry carries for the importer, if any.</summary>

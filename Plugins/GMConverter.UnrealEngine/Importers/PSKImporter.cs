@@ -172,7 +172,36 @@ internal sealed class PSKImporter : IModelImporter
             Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))],
             Attachments: attachments.Count == 0 ? null : attachments,
             Physics: bodies.Count == 0 ? null : new ModelPhysics(bodies, joints),
-            Forward: skeleton is null ? null : CharacterForward(options));
+            Forward: skeleton is null ? null : CharacterForward(options),
+            Lods: CombineLods(parts));
+    }
+
+    // Level N of a scene is every part at its own level N, or at its last level when it has fewer;
+    // it takes over at the largest screen size any part gives that level.
+    private static List<ModelLod>? CombineLods(IReadOnlyList<Model> parts)
+    {
+        var levelCount = parts.Max(part => part.Lods?.Count ?? 0);
+        if (levelCount == 0)
+        {
+            return null;
+        }
+
+        List<ModelLod> lods = [];
+        for (var level = 0; level < levelCount; level++)
+        {
+            var screenSize = parts
+                .Where(part => part.Lods?.Count > level)
+                .Max(part => part.Lods![level].ScreenSize);
+            List<Mesh> meshes = [];
+            foreach (var part in parts)
+            {
+                meshes.AddRange(part.Lods is { Count: > 0 } partLods ? partLods[Math.Min(level, partLods.Count - 1)].Meshes : part.Meshes);
+            }
+
+            lods.Add(new ModelLod(screenSize, meshes));
+        }
+
+        return lods;
     }
 
     // UE4/5 skeletal meshes face +Y, and ActorX files mirror Y, so characters from scene manifests
@@ -217,6 +246,91 @@ internal sealed class PSKImporter : IModelImporter
             aliasMap[distinctMaterials[i].Name] = resolvedMaterials[i].Name;
         }
 
+        var mesh = BuildMesh(psk, modelName, aliasMap, weightLookup, options, sceneTransform);
+        var materials = resolvedMaterials.Length > 0
+            ? resolvedMaterials
+            : [new Material("default")];
+
+        var skeleton = BuildSkeleton(psk, options);
+
+        return new Model(
+            modelName,
+            [mesh],
+            materials,
+            skeleton,
+            buildAnimations ? BuildAnimations(skeleton, options) : null,
+            BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath),
+            BuildAttachments(inputPath, skeleton, options, sceneTransform),
+            BuildPhysics(inputPath, skeleton, options),
+            Lods: BuildLods(inputPath, aliasMap, skeleton, options, sceneTransform));
+    }
+
+    // A mesh's lower levels of detail, from the PSKs the explorer lists next to it. Each level is
+    // the same asset with fewer triangles, so its materials take the names the first level's got,
+    // and its bones are matched to the first level's by name.
+    private static List<ModelLod>? BuildLods(
+        string inputPath,
+        Dictionary<string, string> aliasMap,
+        Skeleton? skeleton,
+        ModelImportContext options,
+        PSKSceneTransform? sceneTransform)
+    {
+        if (PSKLodSidecar.TryRead(inputPath) is not { Lods.Count: > 0 } sidecar)
+        {
+            return null;
+        }
+
+        var directory = Path.GetDirectoryName(inputPath) ?? string.Empty;
+        List<ModelLod> lods = [];
+        foreach (var entry in sidecar.Lods)
+        {
+            if (!PathHelpers.TryResolveUnderRoot(directory, entry.Path, out var lodPath) || !File.Exists(lodPath))
+            {
+                continue;
+            }
+
+            var psk = PSKFile.Read(lodPath);
+            var mesh = BuildMesh(psk, Path.GetFileNameWithoutExtension(lodPath), aliasMap, BuildWeightLookup(psk), options, sceneTransform);
+            lods.Add(new ModelLod(entry.ScreenSize, [RemapBones(mesh, BuildSkeleton(psk, options), skeleton)]));
+        }
+
+        return lods.Count == 0 ? null : lods;
+    }
+
+    private static Mesh RemapBones(Mesh mesh, Skeleton? from, Skeleton? to)
+    {
+        if (from is null || to is null)
+        {
+            return mesh;
+        }
+
+        var indexByName = to.Bones
+            .GroupBy(bone => bone.Name.TrimEnd(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Index, StringComparer.OrdinalIgnoreCase);
+        var boneMap = from.Bones.ToDictionary(
+            bone => bone.Index,
+            bone => indexByName.TryGetValue(bone.Name.TrimEnd(), out var index) ? index : -1);
+        return mesh with
+        {
+            Vertices = [.. mesh.Vertices.Select(vertex => vertex.BoneWeights is null
+                ? vertex
+                : vertex with
+                {
+                    BoneWeights = [.. vertex.BoneWeights
+                        .Select(weight => weight with { BoneIndex = boneMap.GetValueOrDefault(weight.BoneIndex, -1) })
+                        .Where(weight => weight.BoneIndex >= 0)],
+                })],
+        };
+    }
+
+    private static Mesh BuildMesh(
+        PSKFile psk,
+        string modelName,
+        Dictionary<string, string> aliasMap,
+        Dictionary<int, IReadOnlyList<VertexBoneWeight>> weightLookup,
+        ModelImportContext options,
+        PSKSceneTransform? sceneTransform)
+    {
         List<Vertex> vertices = [];
         Dictionary<string, List<Triangle>> trianglesByMaterial = new(StringComparer.OrdinalIgnoreCase);
         var skippedFaces = 0;
@@ -280,21 +394,7 @@ internal sealed class PSKImporter : IModelImporter
             vertices,
             trianglesByMaterial.Select(pair => new Submesh(pair.Key, pair.Value)).ToArray(),
             Name: modelName);
-        var materials = resolvedMaterials.Length > 0
-            ? resolvedMaterials
-            : [new Material("default")];
-
-        var skeleton = BuildSkeleton(psk, options);
-
-        return new Model(
-            modelName,
-            [mesh],
-            materials,
-            skeleton,
-            buildAnimations ? BuildAnimations(skeleton, options) : null,
-            BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath),
-            BuildAttachments(inputPath, skeleton, options, sceneTransform),
-            BuildPhysics(inputPath, skeleton, options));
+        return mesh;
     }
 
     // Bodies and joints are relative to their bones, so like bone sockets they need no scene

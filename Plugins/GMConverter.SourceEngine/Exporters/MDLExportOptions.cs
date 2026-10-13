@@ -8,5 +8,6 @@ internal sealed record MDLExportOptions(
     string? StudioMdlPath,
     string? VtfCmdPath,
     bool BuildMaterials,
+    bool Lods,
     PhysicsOptions? Physics,
     MaterialOptimizationOptions? MaterialOptimization = null);

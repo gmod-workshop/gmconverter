@@ -55,6 +55,9 @@ internal static class PSKSceneSkeleton
                 : part with
                 {
                     Meshes = [.. part.Meshes.Select(mesh => RemapWeights(mesh, boneMap))],
+                    Lods = part.Lods?
+                        .Select(lod => lod with { Meshes = [.. lod.Meshes.Select(mesh => RemapWeights(mesh, boneMap))] })
+                        .ToArray(),
                     Attachments = part.Attachments?
                         .Select(attachment => attachment.BoneIndex is { } boneIndex ? attachment with { BoneIndex = boneMap[boneIndex] } : attachment)
                         .ToArray(),

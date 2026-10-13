@@ -576,6 +576,7 @@ public sealed class UE4Explorer : IExplorer
 
                     WriteSocketSidecar(resolvedExport.Export, exportedPart.MeshPath);
                     WritePhysicsSidecar(resolvedExport.Export, exportedPart.MeshPath);
+                    WriteLodSidecar(resolvedExport.Export, exportedPart.MeshPath);
 
                     try
                     {
@@ -702,6 +703,42 @@ public sealed class UE4Explorer : IExplorer
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             PerfTimer.Log("ue4.export", $"physics asset skipped for {skeletalMesh.Name}: {ex.Message}");
+        }
+    }
+
+    // CUE4Parse writes each lower level of detail as a PSK of its own next to the first
+    // (Name_LOD1.psk, numbered by the mesh's own LOD index). The sidecar lists them in order with
+    // the screen size each takes over at; levels the mesh has no screen size for are left out.
+    private static void WriteLodSidecar(UObject export, string meshPath)
+    {
+        var directory = Path.GetDirectoryName(meshPath)!;
+        var stem = Path.GetFileNameWithoutExtension(meshPath);
+        var screenSizes = export switch
+        {
+            USkeletalMesh skeletalMesh => skeletalMesh.LODInfo?.Select(info => info.ScreenSize?.Default ?? 0f).ToArray(),
+            UStaticMesh staticMesh => staticMesh.RenderData?.ScreenSize,
+            _ => null,
+        };
+        if (screenSizes is not { Length: > 1 })
+        {
+            return;
+        }
+
+        List<PSKLodEntry> lods = [];
+        for (var lodIndex = 1; lodIndex < screenSizes.Length; lodIndex++)
+        {
+            var lodPath = Directory
+                .EnumerateFiles(directory, FormattableString.Invariant($"{stem}_LOD{lodIndex}.*"))
+                .FirstOrDefault(IsMeshFile);
+            if (lodPath is not null && screenSizes[lodIndex] > 0f)
+            {
+                lods.Add(new PSKLodEntry(Path.GetFileName(lodPath), screenSizes[lodIndex]));
+            }
+        }
+
+        if (lods.Count > 0)
+        {
+            new PSKLodSidecar(lods).Write(meshPath);
         }
     }
 
@@ -1767,7 +1804,7 @@ public sealed class UE4Explorer : IExplorer
         // skeleton with unweighted extras.
         return new ExportOptions(
             meshFormat: EMeshFormat.ActorX,
-            meshQuality: EMeshQuality.Highest,
+            meshQuality: EMeshQuality.All,
             texturePlatform: ETexturePlatform.DesktopMobile,
             textureFormat: ETextureFormat.Png,
             materialDepth: EMaterialDepth.AllLayers,

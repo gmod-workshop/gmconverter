@@ -179,6 +179,29 @@ public sealed class PskImporterTests
     }
 
     [Fact]
+    public void SceneLodsComeFromTheSidecarAndFollowTheMergedSkeleton()
+    {
+        // The body has a second level whose PSK lists its bones in another order; the head has none,
+        // so the scene's level keeps the head's full mesh.
+        var directory = PskFixtures.CreateDirectory();
+        var body = Path.Join(directory, "body.psk");
+        PskFixtures.WriteSkinnedTriangle(body, [("root", -1), ("spine", 0)], weightedBone: 1);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "body_LOD1.psk"), [("root", -1), ("pelvis", 0), ("spine", 0)], weightedBone: 2);
+        new PSKLodSidecar([new PSKLodEntry("body_LOD1.psk", 0.4f), new PSKLodEntry("missing_LOD2.psk", 0.2f)]).Write(body);
+        PskFixtures.WriteSkinnedTriangle(Path.Join(directory, "head.psk"), [("root", -1), ("head", 0)], weightedBone: 1, offsetX: 200);
+
+        var model = _importer.Import(new ModelImportContext(WriteScene(directory, "body.psk", "head.psk")));
+
+        var lod = Assert.Single(model.Lods!);
+        Assert.Equal(0.4f, lod.ScreenSize);
+        Assert.Equal(2, lod.Meshes.Count);
+        // Body weights land on "spine" and head weights on "head" in the merged skeleton.
+        Assert.Equal(["root", "spine", "head"], model.Skeleton!.Bones.Select(bone => bone.Name));
+        Assert.Equal([1, 2], lod.Meshes.Select(mesh => mesh.Vertices.Select(vertex => Assert.Single(vertex.BoneWeights!).BoneIndex).Distinct().Single()));
+        Assert.Equal(model.Meshes[0].Submeshes.Select(submesh => submesh.MaterialName), lod.Meshes[0].Submeshes.Select(submesh => submesh.MaterialName));
+    }
+
+    [Fact]
     public void ScenePhysicsBodiesAndJointsFollowTheMergedSkeleton()
     {
         // Merged bones: root 0, spine 1, head 2. The body on a bone the mesh doesn't have is

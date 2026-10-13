@@ -214,9 +214,11 @@ internal sealed class SourceMaterialCompiler
 
         if (specTexturePath is not null && UseSourcePhong(material))
         {
-            WritePhongParameters(writer, specTexturePath, material);
+            var settings = PhongSettings(material);
+            WritePhongParameters(writer, specTexturePath, material, settings);
             WriteEnvmapParameters(
                 writer,
+                settings.EnvmapTint,
                 standaloneMaskPath: normalTexturePath is null ? specTexturePath : null,
                 normalMapAlphaMask: normalTexturePath is not null);
         }
@@ -256,14 +258,19 @@ internal sealed class SourceMaterialCompiler
             : material.SpecularTexture;
     }
 
-    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
+    private static SourcePhongSettings PhongSettings(Material material)
     {
-        var settings = SourcePhongSettings.For(material);
-        if (HasMetalness(material))
+        if (!HasMetalness(material))
         {
-            var (metalness, gloss) = material.SpecularTexture!.AverageMetalAndGloss();
-            settings = SourcePhongSettings.For(metalness, gloss);
+            return SourcePhongSettings.For(material);
         }
+
+        var (metalness, gloss) = material.SpecularTexture!.AverageMetalAndGloss();
+        return SourcePhongSettings.For(metalness, gloss);
+    }
+
+    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material, SourcePhongSettings settings)
+    {
 
 
         writer.WriteLine("    \"$phong\" \"1\"");
@@ -282,12 +289,13 @@ internal sealed class SourceMaterialCompiler
     // See MDLExporter.WriteEnvmapParameters for rationale.
     private static void WriteEnvmapParameters(
         StreamWriter writer,
+        string envmapTint,
         string? standaloneMaskPath = null,
         bool normalMapAlphaMask = false)
     {
         writer.WriteLine("    \"$envmap\" \"env_cubemap\"");
         writer.WriteLine("    \"$envmapfresnel\" \"1\"");
-        writer.WriteLine("    \"$envmaptint\" \"[0.5 0.5 0.5]\"");
+        writer.WriteLine(FormattableString.Invariant($"    \"$envmaptint\" \"{envmapTint}\""));
         if (normalMapAlphaMask)
         {
             writer.WriteLine("    \"$normalmapalphaenvmapmask\" \"1\"");

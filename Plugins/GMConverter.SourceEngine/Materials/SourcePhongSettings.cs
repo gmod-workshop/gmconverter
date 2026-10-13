@@ -6,7 +6,8 @@ namespace GMConverter.SourceEngine.Materials;
 internal readonly record struct SourcePhongSettings(
     string Boost,
     string Exponent,
-    string FresnelRanges)
+    string FresnelRanges,
+    string EnvmapTint = "[0.5 0.5 0.5]")
 {
     public static SourcePhongSettings For(Material material)
     {
@@ -19,18 +20,21 @@ internal readonly record struct SourcePhongSettings(
 
     /// <summary>
     /// Settings for a material whose mask says how metallic and how glossy it is, on average.
-    /// Paint reflects mostly at grazing angles, metal about as strongly head-on, so the fresnel
-    /// ranges flatten and the boost rises with metalness; glossier surfaces get sharper highlights.
+    /// Paint is mostly matte, catching light at grazing angles; metal reflects head-on as well. So
+    /// the fresnel ranges flatten, and the boost and cubemap reflection rise, with metalness, and
+    /// glossier surfaces get sharper highlights.
     /// </summary>
     public static SourcePhongSettings For(float metalness, float gloss)
     {
-        var boost = 1f + 2f * metalness;
-        var exponent = 10f + 50f * gloss;
-        var facing = 0.2f + 0.8f * metalness;
-        var middle = 0.6f + 0.4f * metalness;
+        var boost = 1f + metalness;
+        var exponent = 10f + 40f * gloss;
+        var facing = 0.1f + 0.5f * metalness;
+        var middle = 0.4f + 0.4f * metalness;
+        var envmap = 0.05f + 0.35f * metalness;
         return new SourcePhongSettings(
             boost.ToString("0.##", CultureInfo.InvariantCulture),
             exponent.ToString("0", CultureInfo.InvariantCulture),
-            FormattableString.Invariant($"[{facing:0.##} {middle:0.##} 1]"));
+            FormattableString.Invariant($"[{facing:0.##} {middle:0.##} 1]"),
+            FormattableString.Invariant($"[{envmap:0.##} {envmap:0.##} {envmap:0.##}]"));
     }
 }

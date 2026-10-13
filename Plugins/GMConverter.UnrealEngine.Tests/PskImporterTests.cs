@@ -202,6 +202,8 @@ public sealed class PskImporterTests
 
         var model = _importer.Import(new ModelImportContext(WriteScene(directory, "body.psk", "head.psk")));
 
+        // UE4/5 characters face +Y, which ActorX's Y mirror makes -Y.
+        Assert.Equal(-Vector3.UnitY, model.Forward);
         var physics = model.Physics!;
         Assert.Equal([1, 2, 0], physics.Bodies.Select(body => body.BoneIndex));
         var capsule = Assert.IsType<CapsuleShape>(Assert.Single(physics.Bodies[0].Shapes));
@@ -423,5 +425,14 @@ public sealed class PskImporterTests
 
         // lerp(panel R80 G220 B240, scorch R200 G0 B0, 51/255 = 0.2).
         Assert.Equal([104, 176, 192], material.DiffuseTexture!.GetRgbaPixels()[..3]);
+    }
+
+    [Fact]
+    public void PlainPskFilesLeaveTheFacingUnknown()
+    {
+        // A bare PSK may come from UE2, whose characters face +X rather than UE4/5's +Y.
+        var (psk, _) = PskFixtures.WriteFixture();
+
+        Assert.Null(_importer.Import(new ModelImportContext(psk)).Forward);
     }
 }

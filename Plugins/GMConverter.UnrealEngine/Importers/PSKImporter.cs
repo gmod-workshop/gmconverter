@@ -171,7 +171,16 @@ internal sealed class PSKImporter : IModelImporter
             BuildAnimations(skeleton, options),
             Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))],
             Attachments: attachments.Count == 0 ? null : attachments,
-            Physics: bodies.Count == 0 ? null : new ModelPhysics(bodies, joints));
+            Physics: bodies.Count == 0 ? null : new ModelPhysics(bodies, joints),
+            Forward: skeleton is null ? null : CharacterForward(options));
+    }
+
+    // UE4/5 skeletal meshes face +Y, and ActorX files mirror Y, so characters from scene manifests
+    // (which only the UE4/5 explorer writes) face -Y. Plain PSK files may come from UE2, whose
+    // characters face +X, so they leave the facing unknown.
+    private static Vector3 CharacterForward(ModelImportContext options)
+    {
+        return ModelAxisTransforms.TransformNormal(-Vector3.UnitY, options.AxisMode, "psk");
     }
 
     private Model ParseSingle(string inputPath, ModelImportContext options, PSKSceneTransform? sceneTransform)

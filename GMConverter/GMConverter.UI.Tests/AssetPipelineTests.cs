@@ -54,10 +54,45 @@ public sealed class AssetPipelineTests
     }
 
     [Fact]
-    public void ModelImportersAndExportersReportTheModelKind()
+    public void ImportersAndExportersReportTheirKind()
     {
         Assert.Equal(AssetKind.Model, FormatCatalog.GetImporter("sample").Kind);
-        Assert.All(FormatCatalog.Exports, format => Assert.Equal(AssetKind.Model, format.Exporter.Kind));
+        Assert.Equal(AssetKind.Sound, FormatCatalog.GetImporter("wav").Kind);
+        Assert.Equal(AssetKind.Sound, FormatCatalog.GetExport("wav").Exporter.Kind);
+        Assert.All(FormatCatalog.ExportsFor(AssetKind.Model), format => Assert.Equal(AssetKind.Model, format.Exporter.Kind));
+        Assert.DoesNotContain(FormatCatalog.ExportsFor(AssetKind.Model), format => format.Format == "wav");
+    }
+
+    [Fact]
+    public void SoundsRunThroughTheSoundPipeline()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("wav", CreateWave(output))
+        {
+            OutputFormat = "wav",
+            OutputDirectory = output,
+            BaseName = "beep",
+        };
+
+        var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
+
+        Assert.Equal("garrysmod", result.Destination.Target?.Id);
+        Assert.Equal([Path.Join(Path.GetFullPath(output), "sound", "gmconverter", "beep", "beep.wav")], result.Export.Files);
+    }
+
+    [Fact]
+    public void ASoundCannotBeWrittenByAModelExporter()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("wav", CreateWave(output))
+        {
+            OutputFormat = "sample",
+            OutputDirectory = output,
+        };
+
+        var error = Assert.Throws<GMConverterException>(() => new AssetJobRunner().Run(new AssetJob(request)));
+
+        Assert.Contains("not a Sound", error.Message);
     }
 
     [Fact]
@@ -241,6 +276,28 @@ public sealed class AssetPipelineTests
         var output = Path.Join(Path.GetTempPath(), "GMConverter.PipelineTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
         return output;
+    }
+
+    // A tenth of a second of silence, 16-bit mono at 22050 Hz.
+    private static string CreateWave(string directory)
+    {
+        var input = Path.Join(directory, "beep.wav");
+        const int dataSize = 2205 * sizeof(short);
+        using var writer = new BinaryWriter(File.Create(input));
+        writer.Write("RIFF"u8);
+        writer.Write(4 + 24 + 8 + dataSize);
+        writer.Write("WAVEfmt "u8);
+        writer.Write(16);
+        writer.Write((ushort)1);
+        writer.Write((ushort)1);
+        writer.Write(22050);
+        writer.Write(22050 * sizeof(short));
+        writer.Write((ushort)sizeof(short));
+        writer.Write((ushort)16);
+        writer.Write("data"u8);
+        writer.Write(dataSize);
+        writer.Write(new byte[dataSize]);
+        return input;
     }
 
     private static string CreateInput(string directory)

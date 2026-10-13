@@ -1,5 +1,6 @@
 using GMConverter.Core.Formats;
 using GMConverter.Core.Pipeline.Models;
+using GMConverter.Core.Pipeline.Sounds;
 using GMConverter.SDK.Common;
 
 namespace GMConverter.Core.Pipeline;
@@ -11,7 +12,7 @@ namespace GMConverter.Core.Pipeline;
 /// </summary>
 internal sealed class AssetJobRunner
 {
-    private readonly IReadOnlyList<IAssetPipeline> _pipelines = [new ModelPipeline()];
+    private readonly IReadOnlyList<IAssetPipeline> _pipelines = [new ModelPipeline(), new SoundPipeline()];
 
     public AssetJobResult Run(AssetJob job)
     {

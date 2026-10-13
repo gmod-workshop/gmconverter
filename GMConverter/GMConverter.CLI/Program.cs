@@ -54,9 +54,9 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", FormatCatalog.Importers.Select(importer => importer.Format)) + ".");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input format. Supported: " + string.Join(", ", FormatCatalog.Importers.Select(importer => importer.Format)) + ".");
         var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", FormatCatalog.Exports.Select(format => format.Format).Prepend("info")) + ". Source is an alias for mdl.");
-        var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
+        var inputPathOption = RequiredOption<string>("--input-path", "Path to the input file.");
         var outputPathOption = new Option<string>("--output-path")
         {
             Description = "Directory for generated output files. Required except when --output-format is info."
@@ -97,7 +97,7 @@ internal static class Program
             DefaultValueFactory = _ => "auto"
         };
 
-        var rootCommand = new RootCommand("Convert model assets into Source Engine compile inputs for Garry's Mod.")
+        var rootCommand = new RootCommand("Convert model and sound assets into Source Engine compile inputs for Garry's Mod.")
         {
             inputFormatOption,
             outputFormatOption,

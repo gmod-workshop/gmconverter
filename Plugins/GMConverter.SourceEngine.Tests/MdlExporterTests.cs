@@ -224,6 +224,36 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void IkChainsBecomeSourceChainsWithFootLocksAndFootstepRules()
+    {
+        // A leg (thigh, calf, foot) under the root, and a one-second idle where the foot never moves.
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        model = model with
+        {
+            Skeleton = new Skeleton(
+            [
+                model.Skeleton!.Bones[0],
+                new Bone(1, "thigh", 0, new Transform(new Vector3(0, 0.1f, 0.9f), Quaternion.Identity, Vector3.One)),
+                new Bone(2, "calf", 1, new Transform(new Vector3(0, 0, -0.4f), Quaternion.Identity, Vector3.One)),
+                new Bone(3, "foot", 2, new Transform(new Vector3(0, 0, -0.4f), Quaternion.Identity, Vector3.One)),
+            ]),
+            IkChains = [new IkChain(IkChainKind.LeftFoot, 3)],
+            Animations =
+            [
+                new AnimationClip("stand", 10f, 1f, [new BoneTransformTrack(0, [new TransformKeyframe(0f, model.Skeleton.Bones[0].LocalBindPose)])], Loops: true),
+            ],
+        };
+
+        var qc = File.ReadAllLines(Directory.GetFiles(ExportWithStubCompiler(model), "triangle.qc", SearchOption.AllDirectories).Single());
+
+        Assert.Contains("$ikchain \"lfoot\" \"foot\"", qc);
+        Assert.Contains("$ikautoplaylock \"lfoot\" 1 0.1", qc);
+        Assert.Contains("    ikrule \"lfoot\" footstep range 0 0 10 10 contact 0", qc);
+        // Chains come before the sequences whose rules name them.
+        Assert.True(Array.IndexOf(qc, "$ikchain \"lfoot\" \"foot\"") < Array.FindIndex(qc, line => line.StartsWith("$sequence", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public void BoundsPhysicsModeIgnoresTheModelsBodies()
     {
         var output = ExportWithStubCompiler(CreateRagdoll(), new Dictionary<string, object?>

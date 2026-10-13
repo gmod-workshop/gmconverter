@@ -172,7 +172,8 @@ internal sealed class PSKImporter : IModelImporter
             Skins: skins.Count == 0 ? null : [.. skins.Select(skin => new MaterialSkin(skin.Key, skin.Value))],
             Attachments: attachments.Count == 0 ? null : attachments,
             Physics: bodies.Count == 0 ? null : new ModelPhysics(bodies, joints),
-            Forward: skeleton is null ? null : CharacterForward(options));
+            Forward: skeleton is null ? null : CharacterForward(options),
+            IkChains: UnrealIkChains.Find(skeleton));
     }
 
     // UE4/5 skeletal meshes face +Y, and ActorX files mirror Y, so characters from scene manifests
@@ -294,7 +295,8 @@ internal sealed class PSKImporter : IModelImporter
             buildAnimations ? BuildAnimations(skeleton, options) : null,
             BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath),
             BuildAttachments(inputPath, skeleton, options, sceneTransform),
-            BuildPhysics(inputPath, skeleton, options));
+            BuildPhysics(inputPath, skeleton, options),
+            IkChains: UnrealIkChains.Find(skeleton));
     }
 
     // Bodies and joints are relative to their bones, so like bone sockets they need no scene

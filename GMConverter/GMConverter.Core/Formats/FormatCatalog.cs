@@ -1,5 +1,6 @@
 using GMConverter.Core.Exporters;
 using GMConverter.Core.Plugins;
+using GMConverter.SDK.Assets;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Importers;
 
@@ -40,6 +41,9 @@ internal static class FormatCatalog
             return formats;
         }
     }
+
+    /// <summary>The output formats that write <paramref name="kind"/> assets, in display order.</summary>
+    public static IReadOnlyList<ExportFormat> ExportsFor(AssetKind kind) => [.. Exports.Where(format => format.Exporter.Kind == kind)];
 
     /// <summary>Each exporter once, as the first format that uses it.</summary>
     public static IReadOnlyList<ExportFormat> DistinctExporters => [.. Exports.DistinctBy(format => format.Exporter)];

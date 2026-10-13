@@ -8,4 +8,7 @@ public enum AssetKind
 {
     /// <summary>A <see cref="Geometry.Model"/>: meshes, materials, and optionally a skeleton, animations and physics.</summary>
     Model,
+
+    /// <summary>A <see cref="Audio.Sound"/>: audio clips and the events that play them.</summary>
+    Sound,
 }

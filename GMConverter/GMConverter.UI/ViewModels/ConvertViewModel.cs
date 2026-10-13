@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Core.Formats;
+using GMConverter.SDK.Assets;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;
@@ -62,8 +63,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
         // Every importer comes from a plugin, so the list is empty when no plugins loaded.
         _selectedInputFormat = InputFormats.FirstOrDefault() ?? new DisplayOption("", "None", "No importer plugins loaded");
-        _selectedOutputFormat = OutputFormats.FirstOrDefault(format => format.Value == "mdl")
-            ?? OutputFormats.First(format => format.Value == "glb");
+        OutputFormats = [.. CreateOutputFormats(InputKind(_selectedInputFormat))];
+        _selectedOutputFormat = DefaultOutputFormat(OutputFormats);
         _selectedAxisMode = AxisModes[0];
         _selectedImportGame = ImportGames[0];
         RefreshCurrentExporterOptions();
@@ -75,11 +76,8 @@ public sealed partial class ConvertViewModel : ViewModelBase
         [.. FormatCatalog.Importers
             .Select(importer => new DisplayOption(importer.Format, importer.Format.ToUpperInvariant(), importer.DisplayName))];
 
-    public ObservableCollection<DisplayOption> OutputFormats { get; } =
-    [
-        new("info", "Info", "Summary"),
-        .. FormatCatalog.Exports.Select(format => new DisplayOption(format.Format, format.Label, format.Exporter.DisplayName))
-    ];
+    /// <summary>The output formats that write what the selected input format reads, plus Info.</summary>
+    public ObservableCollection<DisplayOption> OutputFormats { get; }
 
     public ObservableCollection<DisplayOption> AxisModes { get; } =
     [
@@ -99,6 +97,49 @@ public sealed partial class ConvertViewModel : ViewModelBase
     partial void OnSelectedInputFormatChanged(DisplayOption value)
     {
         RefreshCurrentImporterOptions();
+        RefreshOutputFormats();
+    }
+
+    // A sound importer's output can only go to a sound exporter, and a model's to a model
+    // exporter, so switching between them swaps the output list and keeps the choice if it fits.
+    private void RefreshOutputFormats()
+    {
+        var formats = CreateOutputFormats(InputKind(SelectedInputFormat));
+        if (formats.Select(format => format.Value).SequenceEqual(OutputFormats.Select(format => format.Value)))
+        {
+            return;
+        }
+
+        var selected = SelectedOutputFormat?.Value;
+        OutputFormats.Clear();
+        foreach (var format in formats)
+        {
+            OutputFormats.Add(format);
+        }
+
+        SelectedOutputFormat = OutputFormats.FirstOrDefault(format => format.Value == selected) ?? DefaultOutputFormat(OutputFormats);
+    }
+
+    private static AssetKind InputKind(DisplayOption? inputFormat)
+    {
+        return inputFormat is null ? AssetKind.Model : FormatCatalog.FindImporter(inputFormat.Value)?.Kind ?? AssetKind.Model;
+    }
+
+    private static List<DisplayOption> CreateOutputFormats(AssetKind kind)
+    {
+        return
+        [
+            new("info", "Info", "Summary"),
+            .. FormatCatalog.ExportsFor(kind).Select(format => new DisplayOption(format.Format, format.Label, format.Exporter.DisplayName))
+        ];
+    }
+
+    // Source output when it is offered, otherwise the first real format.
+    private static DisplayOption DefaultOutputFormat(IReadOnlyList<DisplayOption> formats)
+    {
+        return formats.FirstOrDefault(format => format.Value is "mdl" or "wav")
+            ?? formats.FirstOrDefault(format => format.Value == "glb")
+            ?? formats[^1];
     }
 
     internal void NotifyBusyChanged()

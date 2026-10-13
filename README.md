@@ -25,6 +25,10 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 
 `-` Unsupported by format.
 
+| Sound format | Read | Write | Notes |
+|---|---|---|---|
+| `WAV` | Yes | Yes* | Writes Source-ready WAVs plus sound definitions for the target game. |
+
 ## CLI
 
 ```powershell
@@ -43,9 +47,9 @@ These apply to every input and output format.
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
-| `--input-format <format>` | Input format: `opt`, `mdl`, `psk`, or `mow`. | `--input-format psk` | Required |
-| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`). | `--output-format mdl` | Required |
-| `--input-path <path>` | Input model path. | `--input-path "SkeletalMesh\model.psk"` | Required |
+| `--input-format <format>` | Input format: `opt`, `mdl`, `psk`, `mow`, or `wav`. | `--input-format psk` | Required |
+| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds. | `--output-format mdl` | Required |
+| `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
 | `--name <base-name>` | Override generated file names. | `--name bacta_dispenser` | Input file name |
 | `--material-dir <path>` | Recursive search directory for sidecar materials and textures. | `--material-dir "E:\Tools\umodel\UmodelExport"` | None |
@@ -54,7 +58,7 @@ These apply to every input and output format.
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
 | `--game <game>` | Game the input comes from. Its naming conventions fill in what each animation is for, which the Garry's Mod and Source targets turn into activities. Unreal games: `swzc`, `fortnite`, or `unreal` for any other. The Explorer sets this automatically in the GUI. | `--game swzc` | None |
 | `--role <clip=role>` | Set what an animation is for, replacing the guess from its name. A role is an action (`idle`, `combat-idle`, `walk`, `jog`, `run`, `crouch-idle`, `crouch-walk`, `turn`, `jump`, `fall`, `land`, `attack`, `melee-attack`, `reload`, `flinch`, `stagger`, `death`), optionally followed by a stance and direction (`run,rifle,forward`), or `none` for no role. Repeat for several animations. | `--role A_B1_2HRifle_Jog_F=run` | Guessed |
-| `--target <game>` | Game to export for, for output formats that have several. MDL: `garrysmod` or `source` (any other Source game). | `--target source` | `garrysmod` for MDL |
+| `--target <game>` | Game to export for, for output formats that have several. MDL and WAV: `garrysmod` or `source` (any other Source game). | `--target source` | `garrysmod` |
 
 </details>
 
@@ -123,7 +127,18 @@ These use the `--glb-` prefix for both `glb` and `gltf` output. Binary or text o
 
 </details>
 
-OPT, MOW and MDL import, and OBJ export, have no format options.
+<details>
+<summary>WAV Export Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--wav-soundPath <path>` | Folder for the WAVs under the game's `sound` directory. | `gmconverter/<name>` |
+| `--wav-sampleRate <rate>` | `auto`, `44100`, `22050` or `11025`. `auto` keeps a rate Source plays and otherwise resamples to the nearest one above it, up to 44100 Hz. | `auto` |
+| `--wav-channels <mode>` | `auto`, `mono` or `keep`. `auto` makes sounds heard from a place in the world mono, because Source only positions mono sounds, and keeps the rest as recorded. | `auto` |
+
+</details>
+
+OPT, MOW, MDL and WAV import, and OBJ export, have no format options.
 
 ## GUI
 
@@ -292,6 +307,26 @@ OBJ export is intended for diagnostics and static interchange. It writes OBJ, MT
 <summary>glTF / GLB</summary>
 
 glTF/GLB export writes portable mesh assets with materials, normal maps, skeletons, skin weights, and animations. `glb` writes a single binary file with embedded buffers and images. `gltf` writes a JSON glTF file with satellite resources.
+
+</details>
+
+<details>
+<summary>WAV</summary>
+
+WAV import reads PCM (8, 16, 24 or 32-bit) and float WAV files as one sound with no events. A `smpl` loop or a Source-style cue point is read as the sound's loop.
+
+WAV export writes each clip as a 16-bit PCM WAV under `sound/<sound path>/`. Clips are resampled to a rate Source plays, and a looping clip gets a cue point at its loop start. Sounds that come with events, such as game sound events, also get sound definitions named after the events, so animation sound events play them:
+
+- **Garry's Mod** (the default target): `sound.Add` calls in `lua/autorun/<name>_sounds.lua`, because Garry's Mod does not load sound scripts from add-ons.
+- **Other Source games** (`--target source`): a sound script in `scripts/<name>_sounds.txt`. List it in the game's `scripts/game_sounds_manifest.txt` to load it.
+
+Source picks each play's sound uniformly at random, so weighted choices are written as repeated entries, and sequences play at random. How far a sound carries becomes its sound level.
+
+```powershell
+./GMConverter.CLI --input-format wav --output-format wav `
+  --input-path "beep.wav" `
+  --output-path "out\beep"
+```
 
 </details>
 

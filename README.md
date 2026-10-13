@@ -52,6 +52,7 @@ These apply to every input and output format.
 | `--scale <factor>` | Scale exported geometry. | `--scale 0.5` | `1` |
 | `--no-scale` | Compatibility alias for scale `1`. | `--no-scale` | Off |
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
+| `--target <game>` | Game to export for, for output formats that have several. MDL: `garrysmod` or `source` (any other Source game). | `--target source` | `garrysmod` for MDL |
 
 </details>
 
@@ -92,6 +93,17 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | `--mdl-physics-coacdThreshold <value>` | `--coacd-threshold` | CoACD termination threshold. | `0.05` |
 | `--mdl-physics-maxConvexPieces <count>` | `--max-convex-pieces` | Maximum CoACD convex hull count. Use `-1` for no limit. | `16` |
 | `--mdl-physics-maxHullVertices <count>` | `--coacd-max-hull-vertices`, `--max-hull-vertices` | Maximum vertices per CoACD hull. | `16` |
+
+</details>
+
+<details>
+<summary>Garry's Mod Target Options</summary>
+
+These apply when MDL output targets Garry's Mod (the default).
+
+| Option | Description | Default |
+|---|---|---|
+| `--garrysmod-handAttachments <true\|false>` | Add `anim_attachment_RH` and `anim_attachment_LH` on the hands, copied from the model's hand sockets (or placed on the hand bones), which Garry's Mod uses to place held items. | `true` |
 
 </details>
 
@@ -234,6 +246,8 @@ MDL write support generates SMD, QC, material files, optional animation SMDs, an
   --output-path "out\buoyc-source" `
   --model-path "gmconverter/buoyc.mdl"
 ```
+
+MDL output targets Garry's Mod by default, which adds the attachments Garry's Mod looks up by name (see the Garry's Mod target options). Use `--target source`, or choose **Other Source game** as the **Target game** in the GUI, for plain output for other Source games.
 
 Copy the generated `models` and `materials` folders from the output directory into your Garry's Mod add-on or game content folder.
 

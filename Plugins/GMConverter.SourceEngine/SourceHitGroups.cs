@@ -22,10 +22,10 @@ internal static class SourceHitGroups
 
     public static int FromBoneName(string boneName)
     {
-        var words = SplitWords(boneName);
+        var words = NameWords.Split(boneName);
         bool Has(string[] candidates) => words.Any(word => candidates.Any(candidate => word.StartsWith(candidate, StringComparison.Ordinal)));
-        var isLeft = words.Contains("l") || words.Contains("left");
-        var isRight = words.Contains("r") || words.Contains("right");
+        var isLeft = NameWords.IsLeft(words);
+        var isRight = NameWords.IsRight(words);
 
         if (Has(_headWords))
         {
@@ -48,40 +48,5 @@ internal static class SourceHitGroups
         }
 
         return Has(_stomachWords) ? _stomach : _generic;
-    }
-
-    // "LeftUpLeg" -> left, up, leg; "upperarm_l" -> upperarm, l; "Bip01 R Calf" -> bip01, r, calf.
-    private static List<string> SplitWords(string name)
-    {
-        List<string> words = [];
-        var current = new System.Text.StringBuilder();
-        void Flush()
-        {
-            if (current.Length > 0)
-            {
-                words.Add(current.ToString().ToLowerInvariant());
-                current.Clear();
-            }
-        }
-
-        for (var i = 0; i < name.Length; i++)
-        {
-            var character = name[i];
-            if (!char.IsLetterOrDigit(character))
-            {
-                Flush();
-                continue;
-            }
-
-            if (char.IsUpper(character) && i > 0 && char.IsLower(name[i - 1]))
-            {
-                Flush();
-            }
-
-            current.Append(character);
-        }
-
-        Flush();
-        return words;
     }
 }

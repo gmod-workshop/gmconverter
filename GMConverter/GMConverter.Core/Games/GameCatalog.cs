@@ -5,16 +5,49 @@ using GMConverter.SDK.Games;
 
 namespace GMConverter.Core.Games;
 
-/// <summary>The games plugins registered, and detection of which one a folder holds.</summary>
+/// <summary>
+/// The games plugins registered: games to convert from, which can be detected from a folder, and
+/// games to convert for, which are targets of one exporter.
+/// </summary>
 internal static class GameCatalog
 {
     /// <summary>The id that asks the host to detect the game instead of using a chosen one.</summary>
     public const string AutoId = "auto";
 
-    /// <summary>Registered games, grouped by engine and then sorted by name.</summary>
-    public static IReadOnlyList<IGameProfile> Profiles => [.. PluginHost.Registry.GameProfiles
+    /// <summary>Games to convert from, grouped by engine and then sorted by name.</summary>
+    public static IReadOnlyList<IImportGameProfile> ImportProfiles => [.. PluginHost.Registry.GameProfiles
+        .OfType<IImportGameProfile>()
         .OrderBy(profile => profile.Engine, StringComparer.OrdinalIgnoreCase)
         .ThenBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)];
+
+    /// <summary>
+    /// The games <paramref name="exporterFormat"/> can export for, in registration order; the first
+    /// is the default target.
+    /// </summary>
+    public static IReadOnlyList<IExportGameProfile> TargetsFor(string exporterFormat)
+    {
+        return [.. PluginHost.Registry.GameProfiles
+            .OfType<IExportGameProfile>()
+            .Where(profile => string.Equals(profile.ExporterFormat, exporterFormat, StringComparison.OrdinalIgnoreCase))];
+    }
+
+    /// <summary>
+    /// The target <paramref name="targetId"/> of <paramref name="exporterFormat"/>, or its default
+    /// target when <paramref name="targetId"/> is empty. Null when the exporter has no targets.
+    /// </summary>
+    public static IExportGameProfile? ResolveTarget(string exporterFormat, string? targetId)
+    {
+        var targets = TargetsFor(exporterFormat);
+        if (string.IsNullOrWhiteSpace(targetId))
+        {
+            return targets.Count > 0 ? targets[0] : null;
+        }
+
+        return targets.FirstOrDefault(target => string.Equals(target.Id, targetId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new GMConverterException(targets.Count == 0
+                ? $"{exporterFormat} output has no target games."
+                : $"Unknown target game for {exporterFormat} output: {targetId}. Targets: {string.Join(", ", targets.Select(target => target.Id))}.");
+    }
 
     public static IGameProfile? Find(string id)
     {
@@ -22,14 +55,14 @@ internal static class GameCatalog
     }
 
     /// <summary>
-    /// The strongest claim any registered game makes on <paramref name="target"/>, or null when
-    /// none claims it. Ties go to the profile registered first. A profile that throws while
+    /// The strongest claim any game to convert from makes on <paramref name="target"/>, or null
+    /// when none claims it. Ties go to the profile registered first. A profile that throws while
     /// detecting is skipped, so one broken plugin cannot stop a scan.
     /// </summary>
     public static GameDetection? Detect(ExplorerTarget target)
     {
         GameDetection? best = null;
-        foreach (var profile in PluginHost.Registry.GameProfiles)
+        foreach (var profile in PluginHost.Registry.GameProfiles.OfType<IImportGameProfile>())
         {
             var match = TryDetect(profile, target);
             if (match > (best?.Match ?? GameMatch.None))
@@ -51,7 +84,7 @@ internal static class GameCatalog
             return Detect(target);
         }
 
-        var profile = Find(gameId) ?? throw new GMConverterException($"Unknown game: {gameId}");
+        var profile = Find(gameId) as IImportGameProfile ?? throw new GMConverterException($"Unknown game: {gameId}");
         return new GameDetection(profile, GameMatch.Exact, IsDetected: false);
     }
 

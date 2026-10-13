@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Globalization;
 using System.Text;
 using GMConverter.Core.Formats;
+using GMConverter.Core.Games;
 using GMConverter.Core.Pipeline;
 using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
@@ -75,6 +76,10 @@ internal static class Program
         {
             Description = "Equivalent to --scale 1; kept for command compatibility."
         };
+        var targetOption = new Option<string>("--target")
+        {
+            Description = "Game to export for, when the output format has several. " + DescribeTargets()
+        };
         var axisModeOption = new Option<string>("--axis-mode")
         {
             Description = "Input model axis convention. Supported: auto, z-up, y-up.",
@@ -91,7 +96,8 @@ internal static class Program
             materialDirectoryOption,
             scaleOption,
             noScaleOption,
-            axisModeOption
+            axisModeOption,
+            targetOption
         };
 
         // Importer flags carry an extra "import" segment because a format can have both an importer
@@ -109,19 +115,31 @@ internal static class Program
         {
             AddSchemaArguments(rootCommand, format.Exporter.Format, format.Exporter.Format, format.OptionSchema, usedNames, exporterArguments);
         }
+        // Target game options are named after the game, e.g. --garrysmod-handAttachments.
+        var targetArguments = new List<SchemaArgument>();
+        foreach (var target in FormatCatalog.DistinctExporters.SelectMany(format => GameCatalog.TargetsFor(format.Exporter.Format)))
+        {
+            AddSchemaArguments(rootCommand, target.Id, target.Id, target.OptionSchema, usedNames, targetArguments);
+        }
 
-        rootCommand.SetAction(parseResult => Run(
-            inputFormat: parseResult.GetRequiredValue(inputFormatOption),
-            outputFormat: parseResult.GetRequiredValue(outputFormatOption),
-            inputPath: parseResult.GetRequiredValue(inputPathOption),
-            outputPath: parseResult.GetValue(outputPathOption),
-            baseName: parseResult.GetValue(nameOption),
-            materialDirectory: parseResult.GetValue(materialDirectoryOption),
-            scaleFactor: parseResult.GetValue(scaleOption),
-            noScale: parseResult.GetValue(noScaleOption),
-            axisModeText: parseResult.GetValue(axisModeOption),
-            importerOptions: ReadSchemaOptions(NormalizeInputFormat(parseResult.GetRequiredValue(inputFormatOption)), "input", importerArguments, parseResult),
-            exporterOptions: ReadSchemaOptions(NormalizeOutputFormat(parseResult.GetRequiredValue(outputFormatOption)), "output", exporterArguments, parseResult)));
+        rootCommand.SetAction(parseResult =>
+        {
+            var targetGameId = ResolveTargetId(parseResult.GetRequiredValue(outputFormatOption), parseResult.GetValue(targetOption));
+            return Run(
+                inputFormat: parseResult.GetRequiredValue(inputFormatOption),
+                outputFormat: parseResult.GetRequiredValue(outputFormatOption),
+                inputPath: parseResult.GetRequiredValue(inputPathOption),
+                outputPath: parseResult.GetValue(outputPathOption),
+                baseName: parseResult.GetValue(nameOption),
+                materialDirectory: parseResult.GetValue(materialDirectoryOption),
+                scaleFactor: parseResult.GetValue(scaleOption),
+                noScale: parseResult.GetValue(noScaleOption),
+                axisModeText: parseResult.GetValue(axisModeOption),
+                importerOptions: ReadSchemaOptions(NormalizeInputFormat(parseResult.GetRequiredValue(inputFormatOption)), "input", importerArguments, parseResult),
+                exporterOptions: ReadSchemaOptions(NormalizeOutputFormat(parseResult.GetRequiredValue(outputFormatOption)), "output", exporterArguments, parseResult),
+                targetGameId: targetGameId,
+                targetOptions: ReadSchemaOptions(targetGameId ?? "no", "target game", targetArguments, parseResult));
+        });
 
         return rootCommand;
     }
@@ -172,6 +190,24 @@ internal static class Program
     private static string NormalizeInputFormat(string inputFormat)
     {
         return inputFormat.Trim().ToLowerInvariant();
+    }
+
+    // The chosen target, or the output format's default one; null for formats without targets.
+    private static string? ResolveTargetId(string outputFormat, string? target)
+    {
+        var exporter = NormalizeOutputFormat(outputFormat);
+        return string.IsNullOrWhiteSpace(target) && GameCatalog.TargetsFor(exporter).Count == 0
+            ? null
+            : GameCatalog.ResolveTarget(exporter, target)?.Id;
+    }
+
+    private static string DescribeTargets()
+    {
+        var described = FormatCatalog.DistinctExporters
+            .Select(format => (format.Exporter.Format, Targets: GameCatalog.TargetsFor(format.Exporter.Format)))
+            .Where(entry => entry.Targets.Count > 0)
+            .Select(entry => $"{entry.Format}: {string.Join(", ", entry.Targets.Select((target, index) => index == 0 ? $"{target.Id} (default)" : target.Id))}");
+        return string.Join("; ", described) + ".";
     }
 
     // Exporter flags are named after the exporter, so map a format name to its exporter's.
@@ -238,7 +274,9 @@ internal static class Program
         bool noScale,
         string? axisModeText,
         OptionValues importerOptions,
-        OptionValues exporterOptions)
+        OptionValues exporterOptions,
+        string? targetGameId,
+        OptionValues targetOptions)
     {
         inputFormat = NormalizeFormat(inputFormat, "input-format");
         outputFormat = NormalizeFormat(outputFormat, "output-format");
@@ -262,6 +300,8 @@ internal static class Program
             ScaleFactor = GetScaleFactor(scaleFactor, noScale),
             AxisMode = NormalizeAxisMode(axisModeText),
             MaterialDirectory = materialDirectory,
+            TargetGameId = targetGameId,
+            TargetOptions = targetOptions,
         };
         var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
         Console.WriteLine($"Wrote {outputFormat} output to {result.Destination.Directory}");

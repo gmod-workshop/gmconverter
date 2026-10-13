@@ -32,4 +32,10 @@ internal sealed record AssetRequest(string InputFormat, string InputPath)
 
     /// <summary>Optional directory searched for sidecar materials and textures.</summary>
     public string? MaterialDirectory { get; init; }
+
+    /// <summary>The game to export for, or null for the exporter's default target.</summary>
+    public string? TargetGameId { get; init; }
+
+    /// <summary>Values for the target game's own options.</summary>
+    public OptionValues TargetOptions { get; init; } = OptionValues.Empty;
 }

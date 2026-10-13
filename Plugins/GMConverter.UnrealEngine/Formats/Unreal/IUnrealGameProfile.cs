@@ -6,11 +6,11 @@ namespace GMConverter.UnrealEngine.Formats.Unreal;
 
 /// <summary>
 /// A game's Unreal-specific settings: how to open and mount its archives and which asset classes
-/// the explorer lists. Identity and detection come from <see cref="IGameProfile"/>, so the host
+/// the explorer lists. Identity and detection come from <see cref="IImportGameProfile"/>, so the host
 /// can list and detect these games; the rest stays inside the plugin, looked up by id through
 /// <see cref="UnrealGameProfiles"/>.
 /// </summary>
-internal interface IUnrealGameProfile : IGameProfile
+internal interface IUnrealGameProfile : IImportGameProfile
 {
     VersionContainer CreateVersionContainer();
 

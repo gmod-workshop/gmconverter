@@ -1,5 +1,7 @@
 using GMConverter.Core.Formats;
+using GMConverter.Core.Games;
 using GMConverter.SDK.Common;
+using GMConverter.SDK.Games;
 
 namespace GMConverter.Core.Pipeline;
 
@@ -7,7 +9,8 @@ namespace GMConverter.Core.Pipeline;
 /// <param name="Format">The output format.</param>
 /// <param name="Directory">Full path of the output directory.</param>
 /// <param name="BaseName">Base name of the written files.</param>
-internal sealed record AssetDestination(ExportFormat Format, string Directory, string BaseName)
+/// <param name="Target">The game exported for, or null when the exporter has no targets.</param>
+internal sealed record AssetDestination(ExportFormat Format, string Directory, string BaseName, IExportGameProfile? Target)
 {
     public static AssetDestination Resolve(AssetRequest request)
     {
@@ -25,6 +28,7 @@ internal sealed record AssetDestination(ExportFormat Format, string Directory, s
         var baseName = string.IsNullOrWhiteSpace(request.BaseName)
             ? Path.GetFileNameWithoutExtension(request.InputPath)
             : request.BaseName;
-        return new AssetDestination(format, FormatCatalog.FullPath(request.OutputDirectory), baseName);
+        var target = GameCatalog.ResolveTarget(format.Exporter.Format, request.TargetGameId);
+        return new AssetDestination(format, FormatCatalog.FullPath(request.OutputDirectory), baseName, target);
     }
 }

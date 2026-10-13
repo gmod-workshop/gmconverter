@@ -16,8 +16,8 @@ public sealed class GameDetectionTests
     [Fact]
     public void PluginGamesAreListedAndFoundById()
     {
-        Assert.Contains(GameCatalog.Profiles, profile => profile.Id == "test.game");
-        Assert.Contains(GameCatalog.Profiles, profile => profile.Id == "swzc");
+        Assert.Contains(GameCatalog.ImportProfiles, profile => profile.Id == "test.game");
+        Assert.Contains(GameCatalog.ImportProfiles, profile => profile.Id == "swzc");
         Assert.Equal("Test game", GameCatalog.Find("TEST.GAME")?.DisplayName);
         Assert.Null(GameCatalog.Find("missing"));
     }

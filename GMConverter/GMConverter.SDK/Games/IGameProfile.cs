@@ -3,11 +3,13 @@ using GMConverter.SDK.Explorer;
 namespace GMConverter.SDK.Games;
 
 /// <summary>
-/// A game GMConverter knows about. The host lists registered profiles, detects which one a folder
-/// holds, and passes the chosen profile's <see cref="Id"/> to explorers through
-/// <see cref="ExplorerTarget.GameId"/> and <see cref="ExplorerFileEntry.GameId"/>. Only identity
-/// and detection are shared here; what a plugin does differently for a game stays inside the
-/// plugin, looked up by <see cref="Id"/>.
+/// A game GMConverter knows about: one assets are converted from (<see cref="IImportGameProfile"/>),
+/// one they are converted for (<see cref="IExportGameProfile"/>), or both. The host lists
+/// registered profiles, detects which game a folder holds, and passes the chosen game's
+/// <see cref="Id"/> on (<see cref="ExplorerTarget.GameId"/>, <see cref="ExplorerFileEntry.GameId"/>,
+/// <see cref="Exporters.ExportContext.TargetGameId"/>). Only identity, detection and neutral model
+/// changes are shared; what a plugin does differently for a game stays inside the plugin, looked
+/// up by <see cref="Id"/>.
 /// </summary>
 public interface IGameProfile
 {

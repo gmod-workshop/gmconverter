@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Updated CUE4Parse to its current version (October 2026). Unreal animations decode more accurately: rotations are no longer slightly unnormalised between keys, and looping animations end on their first pose again. Montages exported from the Unreal Explorer now name their sequence after the animation instead of `DefaultSlot`. Fortnite installs that mount streamed (on-demand) content scan again instead of failing. Existing UE4/5 exports are rebuilt once.
 - Renamed the core library from `GMConverter` to `GMConverter.Core`. The assembly is now `GMConverter.Core.dll`, the package ID is `GMConverter.Core`, and its namespaces moved from `GMConverter.Plugins`, `GMConverter.Explorer`, `GMConverter.Geometry`, and `GMConverter.Exporters` to `GMConverter.Core.*`. Plugins are unaffected because they reference only `GMConverter.SDK`.
 - The GUI and CLI no longer have Source-specific code; every Source option comes from the Source plugin.
 - Moved the `GMConverter.SDK` project from `Plugins/` to `GMConverter/`, next to `GMConverter.Core`, since the host and every plugin depend on it. The assembly, package ID and namespaces are unchanged; out-of-tree plugins that reference the SDK project by path need the new path.

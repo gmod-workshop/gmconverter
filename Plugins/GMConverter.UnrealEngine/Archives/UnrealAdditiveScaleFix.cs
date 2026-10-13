@@ -1,7 +1,7 @@
 using CUE4Parse.UE4.Assets.Exports.Animation;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse_Conversion.Animations;
-using CUE4Parse_Conversion.Animations.PSA;
+using CUE4Parse_Conversion.Writers.ActorX.Structs.Animations;
 
 namespace GMConverter.UnrealEngine.Archives;
 

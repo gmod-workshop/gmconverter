@@ -5,8 +5,8 @@ using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
-using CUE4Parse_Conversion.Meshes;
-using CUE4Parse_Conversion.Meshes.PSK;
+using CUE4Parse.UE4.Objects.Meshes;
+using CUE4Parse_Conversion.Dto;
 using GMConverter.SDK.Common;
 using GMConverter.UnrealEngine.Archives;
 using SixLabors.ImageSharp;
@@ -29,7 +29,7 @@ namespace GMConverter.UnrealEngine.Materials;
 /// the sidecar and remaps the submesh material key to match.
 ///
 /// The mesh's UV1 channel only exists in CUE4Parse's converted mesh data — the PSK exporter
-/// strips it. We bypass PSK and call <see cref="MeshConverter"/> directly to keep that data.
+/// strips it. We bypass PSK and build <see cref="CUE4Parse_Conversion.Dto.StaticMeshDto"/> / <see cref="CUE4Parse_Conversion.Dto.SkeletalMeshDto"/> directly to keep that data.
 /// </summary>
 internal static class MultiLayerBaker
 {
@@ -55,20 +55,17 @@ internal static class MultiLayerBaker
             return;
         }
 
-        if (!TryGetMeshLod(meshExport, out var lod, out var verts) || verts is null || lod.Indices is null || lod.Sections is null)
+        if (TryGetMeshLod(meshExport) is not { } lod)
         {
             return;
         }
 
-        if (lod.NumTexCoords < 2 || lod.ExtraUV is null)
+        if (lod.Uv1 is null)
         {
             // Mesh has only UV0 — there's no per-vertex layer mask to evaluate.
             return;
         }
 
-        var uv1Channel = lod.ExtraUV.Value[0];
-        var indices = lod.Indices.Value;
-        var sections = lod.Sections.Value;
         var partHash = ComputePartHash(outputDirectory);
 
         for (var slot = 0; slot < materialInterfaces.Length; slot++)
@@ -80,14 +77,14 @@ internal static class MultiLayerBaker
             }
 
             var parameters = new CMaterialParams2();
-            material.GetParams(parameters, EMaterialFormat.AllLayers);
+            material.GetParams(parameters, EMaterialDepth.AllLayers);
             var layerCount = GetActiveLayerCount(parameters);
             if (layerCount < 2)
             {
                 continue;
             }
 
-            var triangles = CollectTrianglesForSlot(sections, indices, verts, uv1Channel, slot);
+            var triangles = CollectTrianglesForSlot(lod, slot);
             if (triangles.Count == 0)
             {
                 continue;
@@ -115,32 +112,37 @@ internal static class MultiLayerBaker
         !flag.Equals("0", StringComparison.Ordinal) &&
         !flag.Equals("false", StringComparison.OrdinalIgnoreCase);
 
-    private static bool TryGetMeshLod(UObject meshExport, out CBaseMeshLod lod, out CMeshVertex[]? verts)
+    // The first LOD's triangles with both UV channels; null when the mesh can't be converted.
+    private static BakeMeshLod? TryGetMeshLod(UObject meshExport)
     {
-        lod = null!;
-        verts = null;
         try
         {
-            switch (meshExport)
+            return meshExport switch
             {
-                case UStaticMesh staticMesh when staticMesh.TryConvert(out var convertedStatic, out _) && convertedStatic.LODs.Count > 0:
-                    lod = convertedStatic.LODs[0];
-                    verts = convertedStatic.LODs[0].Verts;
-                    return true;
-                case USkeletalMesh skeletalMesh when skeletalMesh.TryConvert(out var convertedSkeletal) && convertedSkeletal.LODs.Count > 0:
-                    lod = convertedSkeletal.LODs[0];
-                    verts = convertedSkeletal.LODs[0].Verts is { } skelVerts
-                        ? [.. skelVerts.Cast<CMeshVertex>()]
-                        : null;
-                    return true;
-                default:
-                    return false;
-            }
+                UStaticMesh staticMesh => FromLod(new StaticMeshDto(staticMesh)),
+                USkeletalMesh skeletalMesh => FromLod(new SkeletalMeshDto(skeletalMesh, exportMorphTarget: false)),
+                _ => null
+            };
         }
         catch
         {
-            return false;
+            return null;
         }
+    }
+
+    private static BakeMeshLod? FromLod<TVertex>(MeshDto<TVertex> mesh) where TVertex : struct, IMeshVertex
+    {
+        if (mesh.LODs.Count == 0)
+        {
+            return null;
+        }
+
+        var lod = mesh.LODs[0];
+        return new BakeMeshLod(
+            lod.Indices,
+            lod.Sections,
+            [.. lod.Vertices.Select(vertex => vertex.Uv)],
+            lod.ExtraUvs.Length > 0 ? lod.ExtraUvs[0] : null);
     }
 
     private static int GetActiveLayerCount(CMaterialParams2 parameters)
@@ -168,15 +170,11 @@ internal static class MultiLayerBaker
         return parameters.TryGetSwitch(out var value, names) && value;
     }
 
-    private static List<TriangleUv> CollectTrianglesForSlot(
-        CMeshSection[] sections,
-        uint[] indices,
-        CMeshVertex[] verts,
-        CUE4Parse.UE4.Objects.Meshes.FMeshUVFloat[] uv1Channel,
-        int slot)
+    private static List<TriangleUv> CollectTrianglesForSlot(BakeMeshLod lod, int slot)
     {
+        var (indices, uv0, uv1) = (lod.Indices, lod.Uv0, lod.Uv1!);
         var triangles = new List<TriangleUv>();
-        foreach (var section in sections)
+        foreach (var section in lod.Sections)
         {
             if (section.MaterialIndex != slot)
             {
@@ -194,19 +192,19 @@ internal static class MultiLayerBaker
                 var i0 = (int)indices[baseIndex];
                 var i1 = (int)indices[baseIndex + 1];
                 var i2 = (int)indices[baseIndex + 2];
-                if (i0 >= verts.Length || i1 >= verts.Length || i2 >= verts.Length ||
-                    i0 >= uv1Channel.Length || i1 >= uv1Channel.Length || i2 >= uv1Channel.Length)
+                if (i0 >= uv0.Length || i1 >= uv0.Length || i2 >= uv0.Length ||
+                    i0 >= uv1.Length || i1 >= uv1.Length || i2 >= uv1.Length)
                 {
                     continue;
                 }
 
                 triangles.Add(new TriangleUv(
-                    Uv0A: new Vector2(verts[i0].UV.U, verts[i0].UV.V),
-                    Uv0B: new Vector2(verts[i1].UV.U, verts[i1].UV.V),
-                    Uv0C: new Vector2(verts[i2].UV.U, verts[i2].UV.V),
-                    Uv1A: new Vector2(uv1Channel[i0].U, uv1Channel[i0].V),
-                    Uv1B: new Vector2(uv1Channel[i1].U, uv1Channel[i1].V),
-                    Uv1C: new Vector2(uv1Channel[i2].U, uv1Channel[i2].V)));
+                    Uv0A: new Vector2(uv0[i0].U, uv0[i0].V),
+                    Uv0B: new Vector2(uv0[i1].U, uv0[i1].V),
+                    Uv0C: new Vector2(uv0[i2].U, uv0[i2].V),
+                    Uv1A: new Vector2(uv1[i0].U, uv1[i0].V),
+                    Uv1B: new Vector2(uv1[i1].U, uv1[i1].V),
+                    Uv1C: new Vector2(uv1[i2].U, uv1[i2].V)));
             }
         }
 
@@ -816,6 +814,8 @@ internal static class MultiLayerBaker
             image.Dispose();
         }
     }
+
+    private sealed record BakeMeshLod(uint[] Indices, MeshSectionDto[] Sections, FMeshUVFloat[] Uv0, FMeshUVFloat[]? Uv1);
 
     private readonly record struct TriangleUv(
         Vector2 Uv0A,

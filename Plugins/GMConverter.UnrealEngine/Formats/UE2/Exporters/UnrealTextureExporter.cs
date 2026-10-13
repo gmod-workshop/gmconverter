@@ -1,5 +1,5 @@
 using System.Text;
-using CUE4Parse_Conversion.Textures.DXT;
+using CUE4Parse_Conversion.Textures.BC;
 using GMConverter.SDK.Common;
 using GMConverter.UnrealEngine.Formats.UE2.Packages;
 using GMConverter.UnrealEngine.Materials;
@@ -121,9 +121,9 @@ internal static class UnrealTextureExporter
 
         return textureFormat switch
         {
-            _texfDxt1 => DXTDecoder.DXT1(data, width, height, 1),
+            _texfDxt1 => BCDecoder.BC1(data, width, height, 1),
             _texfDxt3 => DecodeDxt3(data, width, height),
-            _ => DXTDecoder.DXT5(data, width, height, 1)
+            _ => BCDecoder.BC3(data, width, height, 1)
         };
     }
 
@@ -224,7 +224,7 @@ internal static class UnrealTextureExporter
             Array.Copy(data, offset + 8, asDxt5, offset + 8, 8);
         }
 
-        var rgba = DXTDecoder.DXT5(asDxt5, width, height, 1);
+        var rgba = BCDecoder.BC3(asDxt5, width, height, 1);
         for (var blockY = 0; blockY < blocksHigh; blockY++)
         {
             for (var blockX = 0; blockX < blocksWide; blockX++)

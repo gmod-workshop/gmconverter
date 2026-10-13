@@ -5,6 +5,7 @@ using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
+using GMConverter.XWingAlliance.Formats;
 using JeremyAnsel.Xwa.Opt;
 using Mesh = GMConverter.SDK.Geometry.Mesh;
 using OptTexture = JeremyAnsel.Xwa.Opt.Texture;

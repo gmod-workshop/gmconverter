@@ -1,6 +1,6 @@
 using System.Numerics;
 using System.Text.Json;
-using GMConverter.Core.Plugins;
+using GMConverter.Core.Textures;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
@@ -10,6 +10,7 @@ using GMConverter.SDK.Options;
 using GMConverter.SDK.Physics;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
+using GMConverter.UnrealEngine.Formats.PSK.Physics;
 using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Tests;

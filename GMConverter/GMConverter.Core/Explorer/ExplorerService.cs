@@ -1,5 +1,5 @@
-using GMConverter.Core.Games;
 using GMConverter.Core.Plugins;
+using GMConverter.Core.Profiles;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 
@@ -7,11 +7,11 @@ namespace GMConverter.Core.Explorer;
 
 internal sealed class ExplorerService
 {
-    public const string AutoProfileId = "auto";
+    public const string AutoExplorerId = "auto";
 
     private readonly IReadOnlyList<IExplorer> _explorers;
 
-    public IReadOnlyList<ExplorerProfile> Profiles { get; }
+    public IReadOnlyList<ExplorerInfo> Explorers { get; }
 
     public ExplorerService()
     {
@@ -22,7 +22,7 @@ internal sealed class ExplorerService
         explorers.Add(new GenericExplorer());
         _explorers = explorers;
 
-        Profiles = [.. _explorers.Select(explorer => new ExplorerProfile(explorer.Id, explorer.DisplayName))];
+        Explorers = [.. _explorers.Select(explorer => new ExplorerInfo(explorer.Id, explorer.DisplayName))];
     }
 
     public ExplorerResolvedEntry ResolveEntry(ExplorerFileEntry fileEntry)
@@ -40,12 +40,12 @@ internal sealed class ExplorerService
     }
 
     /// <summary>
-    /// Scans <paramref name="rootPath"/> with the explorer <paramref name="profileId"/> (or the first
-    /// that supports it, for <see cref="AutoProfileId"/>). The game is detected, or taken from
+    /// Scans <paramref name="rootPath"/> with the explorer <paramref name="explorerId"/> (or the first
+    /// that supports it, for <see cref="AutoExplorerId"/>). The game is detected, or taken from
     /// <paramref name="gameId"/> when one is chosen, and passed to the explorer and stamped on
     /// every entry.
     /// </summary>
-    public ExplorerScanResult Scan(string rootPath, string profileId, string? gameId = GameCatalog.AutoId)
+    public ExplorerScanResult Scan(string rootPath, string explorerId, string? gameId = GameCatalog.AutoId)
     {
         var target = new ExplorerTarget(rootPath);
         if (!target.IsDirectory && !target.IsFile)
@@ -56,8 +56,8 @@ internal sealed class ExplorerService
         var game = GameCatalog.Resolve(target, gameId);
         target = target with { GameId = game?.Profile.Id };
 
-        var isAuto = string.Equals(profileId, AutoProfileId, StringComparison.OrdinalIgnoreCase) && target.IsDirectory;
-        var explorer = ResolveExplorer(target, isAuto ? AutoProfileId : profileId);
+        var isAuto = string.Equals(explorerId, AutoExplorerId, StringComparison.OrdinalIgnoreCase) && target.IsDirectory;
+        var explorer = ResolveExplorer(target, isAuto ? AutoExplorerId : explorerId);
         var entries = explorer.Scan(target)
             .Select(entry => entry.GameId is null && target.GameId is not null ? entry with { GameId = target.GameId } : entry)
             .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
@@ -68,15 +68,15 @@ internal sealed class ExplorerService
             throw new GMConverterException($"No explorer supports: {target.FullPath}");
         }
 
-        return new ExplorerScanResult(new ExplorerProfile(explorer.Id, explorer.DisplayName), entries, game);
+        return new ExplorerScanResult(new ExplorerInfo(explorer.Id, explorer.DisplayName), entries, game);
     }
 
-    private IExplorer ResolveExplorer(ExplorerTarget target, string profileId)
+    private IExplorer ResolveExplorer(ExplorerTarget target, string explorerId)
     {
-        if (!string.Equals(profileId, AutoProfileId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(explorerId, AutoExplorerId, StringComparison.OrdinalIgnoreCase))
         {
-            return _explorers.FirstOrDefault(explorer => string.Equals(explorer.Id, profileId, StringComparison.OrdinalIgnoreCase))
-                ?? throw new GMConverterException($"Unsupported explorer: {profileId}");
+            return _explorers.FirstOrDefault(explorer => string.Equals(explorer.Id, explorerId, StringComparison.OrdinalIgnoreCase))
+                ?? throw new GMConverterException($"Unsupported explorer: {explorerId}");
         }
 
         return _explorers.FirstOrDefault(explorer => explorer.Supports(target))

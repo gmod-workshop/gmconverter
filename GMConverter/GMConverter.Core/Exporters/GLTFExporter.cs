@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using GMConverter.Core.Geometry;
+using GMConverter.Core.Textures;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;

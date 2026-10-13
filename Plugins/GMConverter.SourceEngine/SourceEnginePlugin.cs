@@ -1,7 +1,7 @@
 using GMConverter.SDK.Plugins;
 using GMConverter.SourceEngine.Exporters;
-using GMConverter.SourceEngine.Games;
 using GMConverter.SourceEngine.Importers;
+using GMConverter.SourceEngine.Profiles;
 
 [assembly: Plugin(typeof(GMConverter.SourceEngine.SourceEnginePlugin))]
 
@@ -24,7 +24,7 @@ public sealed class SourceEnginePlugin : IPlugin
         context.RegisterImporter<MDLImporter>();
         context.RegisterExporter<MDLExporter>();
         // The first target registered for the MDL exporter is its default.
-        foreach (var profile in SourceGameProfiles.All)
+        foreach (var profile in SourceProfiles.All)
         {
             context.RegisterGameProfile(profile);
         }

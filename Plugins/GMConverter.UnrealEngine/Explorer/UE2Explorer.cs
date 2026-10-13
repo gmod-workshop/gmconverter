@@ -1,6 +1,7 @@
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
-using GMConverter.UnrealEngine.Formats.Unreal;
+using GMConverter.UnrealEngine.Formats.UE2.Exporters;
+using GMConverter.UnrealEngine.Formats.UE2.Packages;
 using GMConverter.UnrealEngine.Importers;
 
 namespace GMConverter.UnrealEngine.Explorer;

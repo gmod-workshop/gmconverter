@@ -49,8 +49,8 @@
                                 VerticalAlignment="Bottom"/>
                     </Grid>
                     <Grid ColumnDefinitions="*,*,*,Auto,Auto" ColumnSpacing="8">
-                        <ComboBox ItemsSource="{Binding ExplorerProfiles}"
-                                  SelectedItem="{Binding SelectedExplorerProfile}"
+                        <ComboBox ItemsSource="{Binding Explorers}"
+                                  SelectedItem="{Binding SelectedExplorer}"
                                   shad:ControlAssist.Label="Explorer"/>
                         <ComboBox Grid.Column="1"
                                   ItemsSource="{Binding Games}"

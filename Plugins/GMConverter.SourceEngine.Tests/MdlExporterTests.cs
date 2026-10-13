@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Numerics;
-using GMConverter.Core.Plugins;
+using GMConverter.Core.Textures;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;

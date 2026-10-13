@@ -1,5 +1,5 @@
 using System.Numerics;
-using GMConverter.SourceEngine.Geometry;
+using GMConverter.SourceEngine.Physics;
 
 namespace GMConverter.SourceEngine.Tests;
 

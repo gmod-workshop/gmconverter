@@ -64,10 +64,3 @@ public sealed partial class ExplorerNode(string name, ExplorerNodeKind kind = Ex
             : extension.TrimStart('.').ToUpperInvariant();
     }
 }
-
-public enum ExplorerNodeKind
-{
-    Folder,
-    Archive,
-    Model
-}

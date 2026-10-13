@@ -1,7 +1,7 @@
 using GMConverter.Core.Formats;
-using GMConverter.Core.Games;
+using GMConverter.Core.Profiles;
 using GMConverter.SDK.Common;
-using GMConverter.SDK.Games;
+using GMConverter.SDK.Profiles;
 
 namespace GMConverter.Core.Pipeline;
 

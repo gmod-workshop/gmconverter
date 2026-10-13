@@ -3,7 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GMConverter.Core.Explorer;
-using GMConverter.Core.Games;
+using GMConverter.Core.Profiles;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UI.Models;
@@ -73,12 +73,12 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     private readonly List<ExplorerFileEntry> _explorerEntries = [];
     private IReadOnlyList<ExplorerFileEntry> _selectedExplorerEntries = [];
     private CancellationTokenSource? _explorerFilterCts;
-    private string _explorerProfileName = "Explorer";
+    private string _explorerName = "Explorer";
     private string? _scannedGameName;
     private bool _disposed;
 
     [ObservableProperty]
-    private DisplayOption _selectedExplorerProfile;
+    private DisplayOption _selectedExplorer;
 
     [ObservableProperty]
     private DisplayOption _selectedGame;
@@ -122,12 +122,12 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         _setIsBusy = setIsBusy;
         _setStatusMessage = setStatusMessage;
 
-        foreach (var profile in _explorerService.Profiles)
+        foreach (var explorer in _explorerService.Explorers)
         {
-            ExplorerProfiles.Add(new DisplayOption(profile.Id, profile.DisplayName, string.Empty));
+            Explorers.Add(new DisplayOption(explorer.Id, explorer.DisplayName, string.Empty));
         }
 
-        _selectedExplorerProfile = ExplorerProfiles[0];
+        _selectedExplorer = Explorers[0];
 
         foreach (var game in GameCatalog.ImportProfiles)
         {
@@ -143,9 +143,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         new(GameCatalog.AutoId, "Auto-detect", string.Empty)
     ];
 
-    public ObservableCollection<DisplayOption> ExplorerProfiles { get; } =
+    public ObservableCollection<DisplayOption> Explorers { get; } =
     [
-        new(ExplorerService.AutoProfileId, "Auto-detect", string.Empty)
+        new(ExplorerService.AutoExplorerId, "Auto-detect", string.Empty)
     ];
 
     public ObservableCollection<ExplorerNode> ExplorerNodes { get; } = [];
@@ -396,7 +396,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     internal void ApplySettings(UiSettings settings)
     {
-        ConvertViewModel.SetSelected(ExplorerProfiles, settings.ExplorerProfile, value => SelectedExplorerProfile = value);
+        ConvertViewModel.SetSelected(Explorers, settings.ExplorerProfile, value => SelectedExplorer = value);
         ConvertViewModel.SetSelected(Games, settings.ExplorerGame, value => SelectedGame = value);
         ExplorerRootDirectory = settings.ExplorerRootDirectory ?? ExplorerRootDirectory;
         ExplorerFilter = settings.ExplorerFilter ?? ExplorerFilter;
@@ -438,11 +438,11 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
                     _explorerService.ClearCaches();
                 }
 
-                return _explorerService.Scan(ExplorerRootDirectory, SelectedExplorerProfile.Value, SelectedGame.Value);
+                return _explorerService.Scan(ExplorerRootDirectory, SelectedExplorer.Value, SelectedGame.Value);
             });
             _explorerEntries.Clear();
             _explorerEntries.AddRange(result.Entries);
-            _explorerProfileName = result.Profile.DisplayName;
+            _explorerName = result.Explorer.DisplayName;
             _scannedGameName = result.Game?.Profile.DisplayName;
             DetectedGame = FormatDetectedGame(result.Game);
             OnPropertyChanged(nameof(HasExplorerEntries));
@@ -451,7 +451,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
             FindRelatedExplorerAnimationsCommand.NotifyCanExecuteChanged();
             RebuildExplorerNodes();
             _setStatusMessage(clearCaches ? "Explorer refresh complete." : "Explorer scan complete.");
-            _logSink.Append($"Explorer found {result.Entries.Count} supported asset(s) using {result.Profile.DisplayName}.");
+            _logSink.Append($"Explorer found {result.Entries.Count} supported asset(s) using {result.Explorer.DisplayName}.");
             if (result.Game is { } game)
             {
                 _logSink.Append(game.IsDetected
@@ -688,7 +688,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private string FormatUnfilteredExplorerStatus(FilteredExplorerEntries filteredEntries)
     {
-        var source = _scannedGameName is null ? _explorerProfileName : $"{_explorerProfileName}, {_scannedGameName}";
+        var source = _scannedGameName is null ? _explorerName : $"{_explorerName}, {_scannedGameName}";
         var countDetails = $"{source}: {FormatExplorerEntryCount(_explorerEntries)}.";
         return filteredEntries.IsTruncated
             ? $"{countDetails} Showing first {filteredEntries.Entries.Count:N0}; use the filter to narrow results."

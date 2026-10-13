@@ -34,11 +34,13 @@ using CUE4Parse_Conversion.UEFormat.Enums;
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
-using GMConverter.UnrealEngine.Common;
+using GMConverter.UnrealEngine.Archives;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
-using GMConverter.UnrealEngine.Formats.Unreal;
 using GMConverter.UnrealEngine.Importers;
+using GMConverter.UnrealEngine.Materials;
+using GMConverter.UnrealEngine.Profiles;
+using GMConverter.UnrealEngine.Profiles.Fortnite;
 using NewtonsoftJson = Newtonsoft.Json;
 
 namespace GMConverter.UnrealEngine.Explorer;
@@ -1604,7 +1606,7 @@ public sealed class UE4Explorer : IExplorer
 
         // The game decides keys, engine version and mappings, so one archive folder opened as two
         // different games needs two providers.
-        var profile = UnrealGameProfiles.Select(Cue4ParseProviderFactory.ResolveArchiveDirectory(root), gameId);
+        var profile = UnrealProfiles.Select(Cue4ParseProviderFactory.ResolveArchiveDirectory(root), gameId);
         var cacheKey = $"{ProviderCacheKey(root)}|{profile.Id}";
         lock (_cacheLock)
         {

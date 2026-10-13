@@ -1,5 +1,5 @@
 using CUE4Parse.UE4.Objects.Core.Math;
-using GMConverter.UnrealEngine.Formats.Unreal;
+using GMConverter.UnrealEngine.Archives;
 
 namespace GMConverter.UnrealEngine.Tests;
 

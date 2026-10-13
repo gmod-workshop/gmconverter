@@ -224,6 +224,35 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void LodsBecomeLodBlocksSwitchingWhereUnrealSwitches()
+    {
+        // The triangle's bounding sphere has a radius of about 0.707 m (27.84 units). Levels are
+        // given out of order; the one with no meshes is skipped.
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        model = model with
+        {
+            Lods =
+            [
+                new ModelLod(0.1f, model.Meshes),
+                new ModelLod(0.5f, model.Meshes),
+                new ModelLod(0.25f, []),
+            ],
+        };
+
+        var output = ExportWithStubCompiler(model);
+
+        var qc = File.ReadAllLines(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        // 200 × 27.84 / (screen size × 1920).
+        Assert.Equal(["$lod 5.8", "$lod 29"], qc.Where(line => line.StartsWith("$lod", StringComparison.Ordinal)));
+        Assert.Contains("    replacemodel \"triangle.smd\" \"triangle_lod1.smd\"", qc);
+        Assert.Contains("    replacemodel \"triangle.smd\" \"triangle_lod2.smd\"", qc);
+        Assert.True(File.Exists(Path.Join(output, "triangle_lod2.smd")));
+
+        var withoutLods = ExportWithStubCompiler(model, new Dictionary<string, object?> { ["lods"] = false });
+        Assert.DoesNotContain(File.ReadAllLines(Path.Join(withoutLods, "triangle.qc")), line => line.StartsWith("$lod", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BoundsPhysicsModeIgnoresTheModelsBodies()
     {
         var output = ExportWithStubCompiler(CreateRagdoll(), new Dictionary<string, object?>

@@ -104,6 +104,7 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | `--mdl-studioMdlPath <path>` | `--studiomdl-path`, `--studiomdl` | `cestudiomdl.exe` override. | Auto-downloaded to `tools` |
 | `--mdl-vtfCmdPath <path>` | `--vtfcmd-path`, `--vtfcmd` | `VTFCmd.exe` override. | Auto-downloaded to `tools` when materials are built |
 | `--mdl-buildMaterials <true\|false>` | `--no-materials` (sets `false`) | Compile VTFs and VMTs alongside the MDL. | `true` |
+| `--mdl-lods <true\|false>` | | Write the model's simpler levels of detail as `$lod`, for the engine to switch to as the model gets smaller on screen. | `true` |
 | `--mdl-material-maxTextureSize <size>` | `--max-texture-size` | Cap the longest texture edge before VTF compile: `0`, `512`, `1024`, `2048`, or `4096`. `0` disables resizing. | `0` |
 | `--mdl-material-deduplicateTextures [true\|false]` | `--deduplicate-textures` | Reuse one VTF for byte-identical textures. | `false` |
 | `--mdl-physics-enabled [true\|false]` | `--physics` | Generate a collision model. | `false` |
@@ -262,6 +263,8 @@ Blend spaces and aim offsets can be added the same way. Their sample animations 
 Additive animations (layers such as aim poses, flinches and hit reactions that the game adds on top of another animation) keep that role in MDL output: each becomes a `delta` sequence measured against the pose it was authored for, so it can be played as a layer or gesture in Garry's Mod. Played on its own, a delta sequence does not show a normal pose. Formats without layers, such as glTF, receive the layer already applied to its base pose. Layers that Unreal applies in model space are applied in each bone's local space by Source, so they match exactly on their own base pose and approximately on others.
 
 Animations that use Unreal's root motion (the character travels or turns with its root bone, as walk cycles, starts, stops and turns usually do) carry that movement in MDL output, so Garry's Mod moves NPCs and players at the speed their feet step. Animations Unreal marks as looping, such as idles and walk cycles, loop in MDL output.
+
+Meshes keep their levels of detail (LODs). MDL output switches to each simpler level at the same distance Unreal does on a 1920-pixel-wide screen. Source switches by pixel size, so on a narrower screen it switches sooner. Turn this off with `--mdl-lods false`.
 
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 

@@ -61,16 +61,19 @@ internal static class SourceFacing
             _ => track,
         };
 
+        Mesh TurnMesh(Mesh mesh) => mesh with
+        {
+            Vertices = [.. mesh.Vertices.Select(vertex => vertex with
+            {
+                Position = Vector3.Transform(vertex.Position, rotation),
+                Normal = Vector3.Transform(vertex.Normal, rotation),
+            })],
+        };
+
         return model with
         {
-            Meshes = [.. model.Meshes.Select(mesh => mesh with
-            {
-                Vertices = [.. mesh.Vertices.Select(vertex => vertex with
-                {
-                    Position = Vector3.Transform(vertex.Position, rotation),
-                    Normal = Vector3.Transform(vertex.Normal, rotation),
-                })],
-            })],
+            Meshes = [.. model.Meshes.Select(TurnMesh)],
+            Lods = model.Lods is { } lods ? [.. lods.Select(lod => lod with { Meshes = [.. lod.Meshes.Select(TurnMesh)] })] : null,
             Skeleton = model.Skeleton is { } skeleton
                 ? skeleton with
                 {

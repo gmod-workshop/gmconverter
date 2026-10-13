@@ -72,6 +72,11 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
                 Description = "Compile VTFs and VMTs alongside the MDL. Disable for mesh-only output.",
                 Aliases = ["no-materials"],
             },
+            new OptionDescriptor("lods", OptionType.Bool, "Levels of detail")
+            {
+                DefaultValue = true,
+                Description = "Write the model's simpler levels of detail as $lod, for the engine to switch to as the model gets smaller on screen.",
+            },
         ]),
         new OptionGroup("material", "Materials",
         [
@@ -152,6 +157,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         var smdPath = Path.Combine(outputDirectory, $"{safeBaseName}.smd");
         var physicsSmdPath =
             physicsOptions is null ? null : Path.Combine(outputDirectory, $"{safeBaseName}_phys.smd");
+        var lodSmdPaths = options.Lods ? GetLodSmdPaths(model, outputDirectory, safeBaseName) : [];
         var animationSmdPaths = GetAnimationSmdPaths(model, outputDirectory, safeBaseName);
         var basePoseSmdPaths = GetBasePoseSmdPaths(animationSmdPaths, outputDirectory, safeBaseName);
         var qcPath = Path.Combine(outputDirectory, $"{safeBaseName}.qc");
@@ -164,6 +170,11 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Directory.CreateDirectory(materialDirectory);
 
         WriteSmd(model, smdPath);
+        foreach (var (lod, lodSmdPath, _) in lodSmdPaths)
+        {
+            WriteSmd(model with { Meshes = lod.Meshes }, lodSmdPath);
+        }
+
         if (physicsSmdPath is not null)
         {
             WritePhysicsSmd(model, physicsSmdPath, physicsOptions!);
@@ -183,7 +194,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
             clip => target?.GetEvents(clip) ?? [],
-            axis => target?.GetPoseParameter(axis));
+            axis => target?.GetPoseParameter(axis),
+            lodSmdPaths);
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -235,6 +247,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             StudioMdlPath: o.GetString("studioMdlPath"),
             VtfCmdPath: o.GetString("vtfCmdPath"),
             BuildMaterials: o.GetBool("buildMaterials", defaultValue: true),
+            Lods: o.GetBool("lods", defaultValue: true),
             Physics: physics,
             MaterialOptimization: material);
     }
@@ -645,13 +658,22 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Dictionary<AnimationPose, string> basePoseSmdPaths,
         Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities,
         Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
-        Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
+        Func<BlendAxis, SourcePoseParameter?> getPoseParameter,
+        IReadOnlyList<(ModelLod Lod, string SmdPath, float SwitchPoint)>? lodSmdPaths = null)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
 
         writer.WriteLine(FormattableString.Invariant($"$modelname \"{modelPath.Replace('\\', '/')}\""));
         writer.WriteLine(FormattableString.Invariant($"$body \"body\" \"{smdFileName}\""));
+        foreach (var (_, lodSmdPath, switchPoint) in lodSmdPaths ?? [])
+        {
+            writer.WriteLine(FormattableString.Invariant($"$lod {switchPoint:0.##}"));
+            writer.WriteLine("{");
+            writer.WriteLine(FormattableString.Invariant($"    replacemodel \"{smdFileName}\" \"{Path.GetFileName(lodSmdPath)}\""));
+            writer.WriteLine("}");
+        }
+
         foreach (var materialRelativeDirectory in materialRelativeDirectories)
         {
             writer.WriteLine(FormattableString.Invariant($"$cdmaterials \"{materialRelativeDirectory.Replace('\\', '/')}\""));
@@ -1006,6 +1028,40 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
     private static void WriteSkinFamily(StreamWriter writer, IEnumerable<string> materialNames)
     {
         writer.WriteLine("    { " + string.Join(' ', materialNames.Select(name => $"\"{EscapeQcString(name)}\"")) + " }");
+    }
+
+    // Source picks a level by how wide a sphere one unit across at the model's origin is on screen:
+    // its switch point is 100 over that width in pixels. Unreal's screen size is the model's
+    // bounding sphere diameter over the screen width. Both scale the same way with distance and
+    // field of view, so a level switches at the same distance in both on a screen this wide.
+    private const float _lodReferenceScreenWidth = 1920f;
+
+    // The model's levels from most to least detailed, each with its SMD and Source switch point.
+    private static List<(ModelLod Lod, string SmdPath, float SwitchPoint)> GetLodSmdPaths(
+        Model model,
+        string outputDirectory,
+        string safeBaseName)
+    {
+        if (model.Lods is not { Count: > 0 } lods || model.Meshes.Count == 0)
+        {
+            return [];
+        }
+
+        var bounds = model.Bounds();
+        var center = (bounds.Min + bounds.Max) / 2f;
+        var radius = model.Meshes.SelectMany(mesh => mesh.Positions).Max(position => Vector3.Distance(position, center)) * _metersToSourceUnits;
+
+        List<(ModelLod, string, float)> levels = [];
+        var previousSwitchPoint = 0f;
+        foreach (var lod in lods.Where(lod => lod.ScreenSize > 0f && lod.Meshes.Count > 0).OrderByDescending(lod => lod.ScreenSize))
+        {
+            // studiomdl needs each level to switch later than the one before.
+            var switchPoint = MathF.Max(200f * radius / (lod.ScreenSize * _lodReferenceScreenWidth), previousSwitchPoint + 0.01f);
+            levels.Add((lod, Path.Combine(outputDirectory, FormattableString.Invariant($"{safeBaseName}_lod{levels.Count + 1}.smd")), switchPoint));
+            previousSwitchPoint = switchPoint;
+        }
+
+        return levels;
     }
 
     private static (AnimationClip Clip, string SmdPath)[] GetAnimationSmdPaths(

@@ -263,6 +263,8 @@ Additive animations (layers such as aim poses, flinches and hit reactions that t
 
 Animations that use Unreal's root motion (the character travels or turns with its root bone, as walk cycles, starts, stops and turns usually do) carry that movement in MDL output, so Garry's Mod moves NPCs and players at the speed their feet step. Animations Unreal marks as looping, such as idles and walk cycles, loop in MDL output.
 
+Characters built on Unreal's mannequin skeleton (with `foot_l`, `foot_r`, `hand_l` and `hand_r` bones) get Source IK chains for their legs and arms in MDL output. Each animation's foot plants (where a foot stays on the ground) become footstep IK rules, so in game the feet stand on slopes and steps instead of floating or sinking into them. Aim layers don't drag the feet.
+
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 
 Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it, and picks between its media at random. Localised voice lines keep their English recording.

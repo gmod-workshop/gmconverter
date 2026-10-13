@@ -667,6 +667,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         WriteAttachments(writer, model);
         WriteEyePosition(writer, model);
         WriteHitboxes(writer, model);
+        WriteIkChains(writer, model);
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
@@ -742,6 +743,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         {
             playbackOptions.Insert(0, $"activity {activity} 1");
         }
+
+        playbackOptions.AddRange(GetFootstepRules(model, clip));
 
         var lastFrame = GetLastAnimationFrame(clip, clip.Tracks.OfType<BoneTransformTrack>());
         foreach (var animationEvent in events)
@@ -833,6 +836,101 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             }
         }
     }
+
+    // Source names its IK chains after the limb, as in Valve's own characters. Each chain is the end
+    // bone and its two parents; studiomdl works out which way the knee bends from the animations.
+    // The feet are locked while autoplay layers (aim offsets) play, so bending the body to aim
+    // doesn't drag them across the ground.
+    private static void WriteIkChains(StreamWriter writer, Model model)
+    {
+        if (GetIkChains(model) is not { Count: > 0 } chains)
+        {
+            return;
+        }
+
+        foreach (var (name, chain, bone) in chains)
+        {
+            writer.WriteLine(FormattableString.Invariant($"$ikchain \"{name}\" \"{EscapeQcString(bone.Name)}\""));
+        }
+
+        foreach (var (name, _, _) in chains.Where(chain => IsFoot(chain.Chain)))
+        {
+            writer.WriteLine(FormattableString.Invariant($"$ikautoplaylock \"{name}\" 1 0.1"));
+        }
+    }
+
+    // A footstep rule for every stretch of the clip where a foot is planted, so the engine keeps it
+    // on the ground under it. Layers only adjust another sequence's pose, so they get none.
+    private static IEnumerable<string> GetFootstepRules(Model model, AnimationClip clip)
+    {
+        if (clip.Layering is not null || model.Skeleton is not { } skeleton)
+        {
+            yield break;
+        }
+
+        var feet = GetIkChains(model).Where(chain => IsFoot(chain.Chain)).ToArray();
+        if (feet.Length == 0)
+        {
+            yield break;
+        }
+
+        var tracksByBone = clip.Tracks
+            .OfType<BoneTransformTrack>()
+            .GroupBy(track => track.BoneIndex)
+            .ToDictionary(group => group.Key, group => group.First());
+        var lastFrame = GetLastAnimationFrame(clip, tracksByBone.Values);
+        var positions = feet.Select(_ => new List<Vector3>()).ToArray();
+        for (var frameIndex = 0; frameIndex <= lastFrame; frameIndex++)
+        {
+            var frameTransforms = skeleton.Bones.ToDictionary(
+                bone => bone.Index,
+                bone => GetFrameTransform(bone, tracksByBone.GetValueOrDefault(bone.Index), frameIndex, clip.FrameRate));
+            Dictionary<int, Matrix4x4> worlds = [];
+            BuildSourceLocalTransforms(skeleton, frameTransforms, worlds);
+            for (var foot = 0; foot < feet.Length; foot++)
+            {
+                positions[foot].Add(worlds[feet[foot].Bone.Index].Translation);
+            }
+        }
+
+        for (var foot = 0; foot < feet.Length; foot++)
+        {
+            foreach (var plant in SourceFootPlants.Find(positions[foot], clip.FrameRate, clip.Loops))
+            {
+                yield return FormattableString.Invariant(
+                    $"ikrule \"{feet[foot].Name}\" footstep range {plant.Start} {plant.Peak} {plant.Tail} {plant.End} contact {plant.Contact}");
+            }
+        }
+    }
+
+    private static List<(string Name, IkChain Chain, Bone Bone)> GetIkChains(Model model)
+    {
+        if (model is not { Skeleton: { } skeleton, IkChains: { } chains })
+        {
+            return [];
+        }
+
+        var bones = skeleton.Bones.ToDictionary(bone => bone.Index);
+        return
+        [
+            .. chains
+                .Where(chain => bones.TryGetValue(chain.EndBoneIndex, out var end) &&
+                    bones.TryGetValue(end.ParentIndex, out var middle) &&
+                    bones.ContainsKey(middle.ParentIndex))
+                .DistinctBy(chain => chain.Kind)
+                .Select(chain => (GetIkChainName(chain.Kind), chain, bones[chain.EndBoneIndex])),
+        ];
+    }
+
+    private static string GetIkChainName(IkChainKind kind) => kind switch
+    {
+        IkChainKind.LeftFoot => "lfoot",
+        IkChainKind.RightFoot => "rfoot",
+        IkChainKind.LeftHand => "lhand",
+        _ => "rhand",
+    };
+
+    private static bool IsFoot(IkChain chain) => chain.Kind is IkChainKind.LeftFoot or IkChainKind.RightFoot;
 
     // The root's track when the clip's root motion is extracted, or null when it isn't.
     private static BoneTransformTrack? GetRootMotionTrack(Model model, AnimationClip clip)

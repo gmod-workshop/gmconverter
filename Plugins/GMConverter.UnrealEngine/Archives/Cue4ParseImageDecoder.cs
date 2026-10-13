@@ -25,6 +25,11 @@ internal static class Cue4ParseImageDecoder
                 return DecodedImage.Empty;
             }
 
+            if (TryCopyRgba(bitmap) is { } direct)
+            {
+                return direct;
+            }
+
             // CUE4Parse's CTexture.Data is in whatever pixel format the source mip used; ToSkBitmap
             // normalizes via SkiaSharp into either Rgba8888 or Bgra8888 depending on the input.
             // Copying to a canonical Rgba8888 bitmap gives us a single managed byte[] we can hand
@@ -56,6 +61,46 @@ internal static class Cue4ParseImageDecoder
             // can use a placeholder or skip the texture. Process-fatal exceptions (OOM)
             // propagate so a real memory crisis isn't disguised as a benign decode miss.
             return DecodedImage.Empty;
+        }
+    }
+
+    // Mask textures keep data in RGB under an alpha of zero (Zero Company's metal/roughness masks
+    // have no alpha at all). Converting them through SkiaSharp loses that colour, so the common
+    // 8-bit layouts are copied straight from CUE4Parse's decoded data instead.
+    internal static DecodedImage? TryCopyRgba(CTexture texture)
+    {
+        var pixelCount = texture.Width * texture.Height;
+        var source = texture.Data;
+        switch (texture.PixelFormat)
+        {
+            case EPixelFormat.PF_R8G8B8A8 when source.Length >= pixelCount * 4:
+                return new DecodedImage(source[..(pixelCount * 4)], texture.Width, texture.Height, DecodedImagePixelFormat.Rgba8888);
+            case EPixelFormat.PF_B8G8R8A8 when source.Length >= pixelCount * 4:
+                {
+                    var rgba = new byte[pixelCount * 4];
+                    for (var i = 0; i < rgba.Length; i += 4)
+                    {
+                        rgba[i] = source[i + 2];
+                        rgba[i + 1] = source[i + 1];
+                        rgba[i + 2] = source[i];
+                        rgba[i + 3] = source[i + 3];
+                    }
+
+                    return new DecodedImage(rgba, texture.Width, texture.Height, DecodedImagePixelFormat.Rgba8888);
+                }
+            case EPixelFormat.PF_G8 or EPixelFormat.PF_R8 when source.Length >= pixelCount:
+                {
+                    var rgba = new byte[pixelCount * 4];
+                    for (var i = 0; i < pixelCount; i++)
+                    {
+                        rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = source[i];
+                        rgba[i * 4 + 3] = byte.MaxValue;
+                    }
+
+                    return new DecodedImage(rgba, texture.Width, texture.Height, DecodedImagePixelFormat.Rgba8888);
+                }
+            default:
+                return null;
         }
     }
 }

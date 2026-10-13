@@ -21,7 +21,7 @@ internal static class UnrealPsaExporter
         var archive = new UnrealObjectReader(package, reader, export);
         var animation = UnrealMeshAnimation.Read(archive);
         var outputName = package.GetFullExportName(export).Split('.', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? export.ObjectName;
-        var outputPath = Path.Combine(outputDirectory, outputName + ".psa");
+        var outputPath = Path.Join(outputDirectory, outputName + ".psa");
 
         using var outputStream = File.Create(outputPath);
         using var writer = new BinaryWriter(outputStream, Encoding.UTF8, leaveOpen: false);

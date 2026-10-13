@@ -3,21 +3,21 @@ using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Importers;
 
-namespace GMConverter.Core.Pipeline;
+namespace GMConverter.Core.Formats;
 
 /// <summary>
 /// The input and output formats the host offers: plugin importers, plugin exporters, and the
 /// built-in OBJ and glTF exporters, plus the format names that share an exporter. The CLI and UI
 /// look formats up here instead of special-casing them.
 /// </summary>
-internal static class AssetFormats
+internal static class FormatCatalog
 {
     private static readonly string[] _builtInExportFormats = ["obj", "glb", "gltf"];
     private static readonly OBJExporter _objExporter = new();
     private static readonly GLTFExporter _gltfExporter = new();
 
     public static IReadOnlyList<IImporter> Importers => [.. PluginHost.Registry.Importers
-        .OrderBy(importer => importer.InputFormat, StringComparer.OrdinalIgnoreCase)];
+        .OrderBy(importer => importer.Format, StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>Every output format, in display order. Built from the registry on each call.</summary>
     public static IReadOnlyList<ExportFormat> Exports
@@ -30,8 +30,8 @@ internal static class AssetFormats
                 new("glb", "GLB", _gltfExporter) { ForcedOptions = new Dictionary<string, object?> { ["binary"] = true } },
                 new("gltf", "glTF", _gltfExporter) { ForcedOptions = new Dictionary<string, object?> { ["binary"] = false } },
                 .. PluginHost.Registry.Exporters
-                    .Where(exporter => !_builtInExportFormats.Contains(exporter.OutputFormat, StringComparer.OrdinalIgnoreCase))
-                    .Select(exporter => new ExportFormat(exporter.OutputFormat, exporter.OutputFormat.ToUpperInvariant(), exporter)),
+                    .Where(exporter => !_builtInExportFormats.Contains(exporter.Format, StringComparer.OrdinalIgnoreCase))
+                    .Select(exporter => new ExportFormat(exporter.Format, exporter.Format.ToUpperInvariant(), exporter)),
             ];
             if (PluginHost.Registry.GetExporter("mdl") is { } mdlExporter)
             {
@@ -52,7 +52,7 @@ internal static class AssetFormats
     public static IImporter GetImporter(string format)
     {
         return FindImporter(format)
-            ?? throw new GMConverterException($"Unsupported input format: {format}. Formats are contributed by plugins: {string.Join(", ", Importers.Select(importer => importer.InputFormat))}.");
+            ?? throw new GMConverterException($"Unsupported input format: {format}. Formats are contributed by plugins: {string.Join(", ", Importers.Select(importer => importer.Format))}.");
     }
 
     public static ExportFormat? FindExport(string format)

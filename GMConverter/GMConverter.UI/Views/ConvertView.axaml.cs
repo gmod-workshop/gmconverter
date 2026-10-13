@@ -167,7 +167,7 @@ public partial class ConvertView : UserControl
     private static IReadOnlyList<FilePickerFileType> GetInputFileTypes(string inputFormat)
     {
         return ConversionService.FindImporter(inputFormat) is { FileExtensions.Count: > 0 } importer
-            ? [new FilePickerFileType(importer.InputName) { Patterns = [.. importer.FileExtensions.Select(extension => $"*{extension}")] }]
+            ? [new FilePickerFileType(importer.DisplayName) { Patterns = [.. importer.FileExtensions.Select(extension => $"*{extension}")] }]
             : [new FilePickerFileType(inputFormat.ToUpperInvariant()) { Patterns = [$"*.{inputFormat}"] }];
     }
 

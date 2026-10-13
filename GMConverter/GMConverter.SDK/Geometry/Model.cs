@@ -1,5 +1,6 @@
 using System.Numerics;
 using GMConverter.SDK.Animation;
+using GMConverter.SDK.Assets;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
@@ -15,7 +16,10 @@ public sealed record Model(
     IReadOnlyList<MaterialSkin>? Skins = null,
     IReadOnlyList<Attachment>? Attachments = null,
     ModelPhysics? Physics = null)
+    : IAsset
 {
+    AssetKind IAsset.Kind => AssetKind.Model;
+
     public IReadOnlyList<Texture> Textures => Materials
         .SelectMany(material => material.Textures)
         .DistinctBy(texture => texture.Name, StringComparer.OrdinalIgnoreCase)

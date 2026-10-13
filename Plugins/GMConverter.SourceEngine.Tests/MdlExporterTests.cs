@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using GMConverter.Core.Plugins;
 using GMConverter.SDK.Animation;
+using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
@@ -309,12 +310,12 @@ public sealed class MdlExporterTests
         var output = Path.Join(directory, "mdl");
         var stubStudioMdl = Path.Join(directory, "cestudiomdl.exe");
         File.WriteAllText(stubStudioMdl, string.Empty);
-        _ = Record.Exception(() => new MDLExporter(new DefaultTextureFactory()).Export(model, output, model.Name, new OptionValues(
+        _ = Record.Exception(() => new MDLExporter(new DefaultTextureFactory()).Export(model, new ExportContext(output, model.Name, new OptionValues(
             new Dictionary<string, object?>(extraOptions ?? new Dictionary<string, object?>())
             {
                 ["studioMdlPath"] = stubStudioMdl,
                 ["buildMaterials"] = false,
-            })));
+            }))));
         return output;
     }
 }

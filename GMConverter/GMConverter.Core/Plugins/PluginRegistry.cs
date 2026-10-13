@@ -38,11 +38,11 @@ public sealed class PluginRegistry
         _plugins.Add(loaded);
         foreach (var importer in loaded.Context.RegisteredImporters)
         {
-            _importersByFormat[importer.InputFormat] = importer;
+            _importersByFormat[importer.Format] = importer;
         }
         foreach (var exporter in loaded.Context.RegisteredExporters)
         {
-            _exportersByFormat[exporter.OutputFormat] = exporter;
+            _exportersByFormat[exporter.Format] = exporter;
         }
         _explorers.AddRange(loaded.Context.RegisteredExplorers);
     }

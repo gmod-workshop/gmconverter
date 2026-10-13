@@ -15,7 +15,7 @@ using SixLabors.ImageSharp.PixelFormats;
 
 namespace GMConverter.MenOfWar.Importers;
 
-internal sealed class MOWImporter : IImporter
+internal sealed class MOWImporter : IModelImporter
 {
     private const float _animationFrameRate = 30.0f;
     private readonly ITextureFactory _textureFactory;
@@ -29,9 +29,9 @@ internal sealed class MOWImporter : IImporter
         _logger = _loggerFactory.CreateLogger<MOWImporter>();
     }
 
-    public string InputFormat => "mow";
+    public string Format => "mow";
 
-    public string InputName => "Men of War";
+    public string DisplayName => "Men of War";
 
     public IReadOnlyList<string> FileExtensions { get; } = [".def", ".mdl"];
 
@@ -43,7 +43,9 @@ internal sealed class MOWImporter : IImporter
         return MOWSummary.From(inputPath, modelPath, MOWModelFile.Read(modelPath));
     }
 
-    public Model Parse(string inputPath, ModelParseOptions options)
+    public Model Import(ModelImportContext context) => Parse(context.InputPath, context);
+
+    private Model Parse(string inputPath, ModelImportContext options)
     {
         var input = ResolveInput(inputPath);
         var modelPath = input.ModelPath;
@@ -121,7 +123,7 @@ internal sealed class MOWImporter : IImporter
         int parentIndex,
         Matrix4x4 parentTransform,
         string modelDirectory,
-        ModelParseOptions options,
+        ModelImportContext options,
         List<Bone> bones,
         Dictionary<string, List<int>> boneIndicesByMOWName,
         HashSet<string> usedBoneNames,
@@ -187,7 +189,7 @@ internal sealed class MOWImporter : IImporter
         MOWPlyFile ply,
         Matrix4x4 transform,
         int boneIndex,
-        ModelParseOptions options,
+        ModelImportContext options,
         string modelDirectory,
         Dictionary<string, Material> materials,
         MOWTextureResolver textureResolver,
@@ -210,7 +212,7 @@ internal sealed class MOWImporter : IImporter
         string modelDirectory,
         List<Bone> bones,
         IReadOnlyDictionary<string, List<int>> boneIndicesByMOWName,
-        ModelParseOptions options,
+        ModelImportContext options,
         ILogger logger)
     {
         if (bones.Count == 0)
@@ -251,7 +253,7 @@ internal sealed class MOWImporter : IImporter
         MOWAnimationFile animation,
         List<Bone> bones,
         IReadOnlyDictionary<string, List<int>> boneIndicesByMOWName,
-        ModelParseOptions options)
+        ModelImportContext options)
     {
         Dictionary<int, Transform> currentTransforms = bones.ToDictionary(bone => bone.Index, bone => bone.LocalBindPose);
         Dictionary<int, Dictionary<ushort, TransformKeyframe>> keyframesByBone = [];
@@ -323,7 +325,7 @@ internal sealed class MOWImporter : IImporter
         return Path.GetFullPath(Path.IsPathRooted(fileName) ? fileName : Path.Combine(modelDirectory, fileName));
     }
 
-    private static Vertex ConvertVertex(Vertex vertex, Matrix4x4 transform, int boneIndex, ModelParseOptions options)
+    private static Vertex ConvertVertex(Vertex vertex, Matrix4x4 transform, int boneIndex, ModelImportContext options)
     {
         var position = Vector3.Transform(vertex.Position, transform) * options.ScaleFactor;
         var normal = Vector3.TransformNormal(vertex.Normal, transform);
@@ -464,7 +466,7 @@ internal sealed class MOWImporter : IImporter
         indices.Add(boneIndex);
     }
 
-    private static Transform ConvertBoneTransform(Matrix4x4 localTransform, ModelParseOptions options)
+    private static Transform ConvertBoneTransform(Matrix4x4 localTransform, ModelImportContext options)
     {
         if (!Matrix4x4.Decompose(localTransform, out var scale, out var rotation, out var translation))
         {
@@ -480,12 +482,12 @@ internal sealed class MOWImporter : IImporter
         return new Transform(translation, rotation, scale);
     }
 
-    private static Vector3 TransformAnimationPosition(Vector3 position, ModelParseOptions options)
+    private static Vector3 TransformAnimationPosition(Vector3 position, ModelImportContext options)
     {
         return ModelAxisTransforms.TransformPosition(position * options.ScaleFactor, options.AxisMode, "mow");
     }
 
-    private static Quaternion TransformRotation(Quaternion rotation, ModelParseOptions options)
+    private static Quaternion TransformRotation(Quaternion rotation, ModelImportContext options)
     {
         var normalized = NormalizeRotation(rotation);
         if (options.AxisMode is not ModelAxisMode.YUp)

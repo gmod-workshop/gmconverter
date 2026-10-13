@@ -1,5 +1,7 @@
 using GMConverter.Core.Exporters;
+using GMConverter.Core.Formats;
 using GMConverter.Core.Pipeline;
+using GMConverter.Core.Pipeline.Models;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
@@ -33,8 +35,8 @@ internal sealed class ConversionService(UiLogSink logSink)
 
         if (settings.OutputFormat is "info")
         {
-            var importer = AssetFormats.GetImporter(settings.InputFormat);
-            return importer.Summarize(AssetFormats.RequireInputFile(settings.InputPath, importer)).ToString() ?? string.Empty;
+            var importer = FormatCatalog.GetImporter(settings.InputFormat);
+            return importer.Summarize(FormatCatalog.RequireInputFile(settings.InputPath, importer)).ToString() ?? string.Empty;
         }
 
         var result = _runner.Run(new AssetJob(CreateRequest(settings))).Results.Single();
@@ -43,7 +45,7 @@ internal sealed class ConversionService(UiLogSink logSink)
 
     internal static IExporter GetExporter(string format)
     {
-        return AssetFormats.GetExport(format).Exporter;
+        return FormatCatalog.GetExport(format).Exporter;
     }
 
     public PreviewLoadResult LoadPreview(ConversionSettings settings)
@@ -73,7 +75,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             });
             // The viewer shows the bind pose and never plays clips, and a model with hundreds of
             // bundled animations would otherwise write a several-times-larger preview file.
-            new GLTFExporter().Export(model with { Animations = null }, previewDirectory, baseName, previewOptions);
+            new GLTFExporter().Export(model with { Animations = null }, new ExportContext(previewDirectory, baseName, previewOptions));
         }
 
         PhysicsPreviewExport physicsPreview;
@@ -101,7 +103,7 @@ internal sealed class ConversionService(UiLogSink logSink)
 
     internal static IImporter? FindImporter(string inputFormat)
     {
-        return AssetFormats.FindImporter(inputFormat);
+        return FormatCatalog.FindImporter(inputFormat);
     }
 
     private static AssetRequest CreateRequest(ConversionSettings settings)
@@ -123,7 +125,7 @@ internal sealed class ConversionService(UiLogSink logSink)
     // would generate (including CoACD hulls) without the host knowing the exporter's options.
     private static PhysicsPreviewExport ExportPhysicsPreview(ConversionSettings settings, Model model, string previewDirectory, string baseName)
     {
-        if (AssetFormats.FindExport(settings.OutputFormat)?.Exporter is not ICollisionPreview collision)
+        if (FormatCatalog.FindExport(settings.OutputFormat)?.Exporter is not ICollisionPreview collision)
         {
             return new PhysicsPreviewExport(null, 0);
         }
@@ -143,7 +145,7 @@ internal sealed class ConversionService(UiLogSink logSink)
         {
             ["binary"] = true,
         });
-        new GLTFExporter().Export(physicsModel, previewDirectory, physicsBaseName, physicsGltfOptions);
+        new GLTFExporter().Export(physicsModel, new ExportContext(previewDirectory, physicsBaseName, physicsGltfOptions));
         return new PhysicsPreviewExport(Path.Combine(previewDirectory, physicsBaseName + ".glb"), physicsMeshes.Count);
     }
 

@@ -1,7 +1,7 @@
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Options;
 
-namespace GMConverter.Core.Pipeline;
+namespace GMConverter.Core.Formats;
 
 /// <summary>
 /// An output format the host offers. Several formats can share one exporter: <c>glb</c> and
@@ -20,7 +20,7 @@ internal sealed record ExportFormat(string Format, string Label, IExporter Expor
     /// The key the format's option values are kept under. A plain alias shares its exporter's
     /// values (<c>source</c> uses <c>mdl</c>'s); a format that forces options keeps its own.
     /// </summary>
-    public string OptionsKey => ForcedOptions.Count == 0 ? Exporter.OutputFormat : Format;
+    public string OptionsKey => ForcedOptions.Count == 0 ? Exporter.Format : Format;
 
     /// <summary>The exporter's schema without <see cref="ForcedOptions"/>, which users cannot change.</summary>
     public OptionSchema OptionSchema => ForcedOptions.Count == 0

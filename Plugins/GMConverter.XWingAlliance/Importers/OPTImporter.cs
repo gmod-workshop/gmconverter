@@ -14,7 +14,7 @@ using Texture = GMConverter.SDK.Textures.Texture;
 
 namespace GMConverter.XWingAlliance.Importers;
 
-internal sealed class OPTImporter : IImporter
+internal sealed class OPTImporter : IModelImporter
 {
     private readonly ITextureFactory _textureFactory;
 
@@ -23,9 +23,9 @@ internal sealed class OPTImporter : IImporter
         _textureFactory = textureFactory;
     }
 
-    public string InputFormat => "opt";
+    public string Format => "opt";
 
-    public string InputName => "X-Wing Alliance";
+    public string DisplayName => "X-Wing Alliance";
 
     public IReadOnlyList<string> FileExtensions { get; } = [".opt"];
 
@@ -36,7 +36,9 @@ internal sealed class OPTImporter : IImporter
         return OptSummary.From(inputPath, OptFile.FromFile(inputPath));
     }
 
-    public Model Parse(string inputPath, ModelParseOptions options)
+    public Model Import(ModelImportContext context) => Parse(context.InputPath, context);
+
+    private Model Parse(string inputPath, ModelImportContext options)
     {
         var opt = OptFile.FromFile(inputPath);
         var modelName = Path.GetFileNameWithoutExtension(inputPath);

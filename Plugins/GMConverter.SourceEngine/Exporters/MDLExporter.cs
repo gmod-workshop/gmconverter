@@ -16,7 +16,7 @@ namespace GMConverter.SourceEngine.Exporters;
 /// <summary>
 /// Exports a model to the Source Engine MDL format.
 /// </summary>
-internal sealed class MDLExporter : IExporter, ICollisionPreview
+internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 {
     private static readonly UTF8Encoding _utf8NoBom = new(false);
     private const int _sourceMaxConvexPieces = 1024;
@@ -34,9 +34,9 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
     private const float _metersToSourceUnits = 39.3700787f;
     private const double _gimbalLockThreshold = 0.001;
 
-    public string OutputFormat => "mdl";
+    public string Format => "mdl";
 
-    public string OutputName => "Source Engine";
+    public string DisplayName => "Source Engine";
 
     // Full schema declaration — three groups (Tools, Materials, Physics). The host's generic
     // options panel renders these directly; CLI registers a --mdl-<key> argument per descriptor.
@@ -136,13 +136,11 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
         ]),
     ]);
 
-    public void Export(
-        Model model,
-        string outputDirectory,
-        string baseName,
-        OptionValues exportOptions)
+    public ExportResult Export(Model model, ExportContext context)
     {
-        var options = BuildOptions(baseName, exportOptions);
+        var outputDirectory = context.OutputDirectory;
+        var baseName = context.BaseName;
+        var options = BuildOptions(baseName, context.Options);
         var sourceTools = SourceToolPaths.Resolve(options.StudioMdlPath, options.VtfCmdPath, options.BuildMaterials);
         var physicsOptions = options.Physics;
         var modelPath = options.ModelPath;
@@ -190,6 +188,7 @@ internal sealed class MDLExporter : IExporter, ICollisionPreview
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
         Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
+        return new ExportResult([qcPath]);
     }
 
     // Binds the host's option bag into the strongly-typed MDLExportOptions the rest of this

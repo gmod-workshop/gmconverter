@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text;
+using GMConverter.Core.Formats;
 using GMConverter.Core.Pipeline;
 using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
@@ -50,8 +51,8 @@ internal static class Program
 
     private static RootCommand CreateRootCommand()
     {
-        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", AssetFormats.Importers.Select(importer => importer.InputFormat)) + ".");
-        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", AssetFormats.Exports.Select(format => format.Format).Prepend("info")) + ". Source is an alias for mdl.");
+        var inputFormatOption = RequiredOption<string>("--input-format", "Input model format. Supported: " + string.Join(", ", FormatCatalog.Importers.Select(importer => importer.Format)) + ".");
+        var outputFormatOption = RequiredOption<string>("--output-format", "Output format. Supported: " + string.Join(", ", FormatCatalog.Exports.Select(format => format.Format).Prepend("info")) + ". Source is an alias for mdl.");
         var inputPathOption = RequiredOption<string>("--input-path", "Path to the input model file.");
         var outputPathOption = new Option<string>("--output-path")
         {
@@ -97,16 +98,16 @@ internal static class Program
         // and an exporter (mdl does), and their option keys must not collide.
         var usedNames = rootCommand.Options.SelectMany(option => option.Aliases.Prepend(option.Name)).ToHashSet(StringComparer.Ordinal);
         var importerArguments = new List<SchemaArgument>();
-        foreach (var importer in AssetFormats.Importers)
+        foreach (var importer in FormatCatalog.Importers)
         {
-            AddSchemaArguments(rootCommand, $"{importer.InputFormat}-import", importer.InputFormat, importer.OptionSchema, usedNames, importerArguments);
+            AddSchemaArguments(rootCommand, $"{importer.Format}-import", importer.Format, importer.OptionSchema, usedNames, importerArguments);
         }
         var exporterArguments = new List<SchemaArgument>();
         // Formats that share an exporter (glb/gltf, mdl/source) share its flags, named after the
         // exporter; options a format sets itself, like glTF's binary/text choice, get no flag.
-        foreach (var format in AssetFormats.DistinctExporters)
+        foreach (var format in FormatCatalog.DistinctExporters)
         {
-            AddSchemaArguments(rootCommand, format.Exporter.OutputFormat, format.Exporter.OutputFormat, format.OptionSchema, usedNames, exporterArguments);
+            AddSchemaArguments(rootCommand, format.Exporter.Format, format.Exporter.Format, format.OptionSchema, usedNames, exporterArguments);
         }
 
         rootCommand.SetAction(parseResult => Run(
@@ -176,7 +177,7 @@ internal static class Program
     // Exporter flags are named after the exporter, so map a format name to its exporter's.
     private static string NormalizeOutputFormat(string outputFormat)
     {
-        return AssetFormats.FindExport(outputFormat)?.Exporter.OutputFormat ?? outputFormat.Trim().ToLowerInvariant();
+        return FormatCatalog.FindExport(outputFormat)?.Exporter.Format ?? outputFormat.Trim().ToLowerInvariant();
     }
 
     private static OptionValues ReadSchemaOptions(
@@ -242,12 +243,12 @@ internal static class Program
         inputFormat = NormalizeFormat(inputFormat, "input-format");
         outputFormat = NormalizeFormat(outputFormat, "output-format");
 
-        var importer = AssetFormats.FindImporter(inputFormat)
-            ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Formats are contributed by plugins: {string.Join(", ", AssetFormats.Importers.Select(importer => importer.InputFormat))}.");
+        var importer = FormatCatalog.FindImporter(inputFormat)
+            ?? throw new ArgumentException($"Option --input-format '{inputFormat}' is not recognized. Formats are contributed by plugins: {string.Join(", ", FormatCatalog.Importers.Select(importer => importer.Format))}.");
 
         if (outputFormat is "info")
         {
-            Console.WriteLine(importer.Summarize(AssetFormats.RequireInputFile(inputPath, importer)));
+            Console.WriteLine(importer.Summarize(FormatCatalog.RequireInputFile(inputPath, importer)));
             return 0;
         }
 

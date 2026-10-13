@@ -26,15 +26,15 @@ using WriteSettings = SharpGLTF.Schema2.WriteSettings;
 
 namespace GMConverter.Core.Exporters;
 
-internal sealed class GLTFExporter : IExporter
+internal sealed class GLTFExporter : IModelExporter
 {
     // -90° around X rotates Z-up data into Y-up: (x, y, z) → (x, z, -y).
     private static readonly Quaternion _zUpToYUpRotation =
         Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2f);
 
-    public string OutputFormat => "glb";
+    public string Format => "glb";
 
-    public string OutputName => "glTF";
+    public string DisplayName => "glTF";
 
     public OptionSchema OptionSchema { get; } = new(
     [
@@ -54,8 +54,10 @@ internal sealed class GLTFExporter : IExporter
         ]),
     ]);
 
-    public void Export(Model model, string outputDirectory, string baseName, OptionValues options)
+    public ExportResult Export(Model model, ExportContext context)
     {
+        var outputDirectory = context.OutputDirectory;
+        var options = context.Options;
         using var exportScope = PerfTimer.Measure(
             "gltf.export",
             "Export",
@@ -64,7 +66,7 @@ internal sealed class GLTFExporter : IExporter
         var binary = options.GetBool("binary", defaultValue: true);
         var bakeUvTransforms = options.GetBool("bakeUvTransforms");
 
-        var safeBaseName = NameHelpers.SanitizeFileName(baseName);
+        var safeBaseName = NameHelpers.SanitizeFileName(context.BaseName);
         var extension = binary ? ".glb" : ".gltf";
         var outputPath = Path.Combine(outputDirectory, $"{safeBaseName}{extension}");
 
@@ -170,6 +172,8 @@ internal sealed class GLTFExporter : IExporter
                 gltf.SaveGLTF(outputPath, settings);
             }
         }
+
+        return new ExportResult([outputPath]);
     }
 
     private static void ApplyTextureSamplerDefaults(SharpGLTF.Schema2.ModelRoot gltf)

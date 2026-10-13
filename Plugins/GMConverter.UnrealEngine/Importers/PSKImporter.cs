@@ -16,7 +16,7 @@ using SixLabors.ImageSharp;
 
 namespace GMConverter.UnrealEngine.Importers;
 
-internal sealed class PSKImporter : IImporter
+internal sealed class PSKImporter : IModelImporter
 {
     private readonly ITextureFactory _textureFactory;
 
@@ -25,9 +25,9 @@ internal sealed class PSKImporter : IImporter
         _textureFactory = textureFactory;
     }
 
-    public string InputFormat => "psk";
+    public string Format => "psk";
 
-    public string InputName => "Unreal Engine";
+    public string DisplayName => "Unreal Engine";
 
     public IReadOnlyList<string> FileExtensions { get; } = [".psk", ".pskx", ".ue4scene"];
 
@@ -55,7 +55,9 @@ internal sealed class PSKImporter : IImporter
         return PSKSummary.From(inputPath, PSKFile.Read(inputPath));
     }
 
-    public Model Parse(string inputPath, ModelParseOptions options)
+    public Model Import(ModelImportContext context) => Parse(context.InputPath, context);
+
+    private Model Parse(string inputPath, ModelImportContext options)
     {
         using var scope = PerfTimer.Measure("psk.import", "Parse", inputPath);
         // ActorX geometry, bone positions, animation translations, and scene offsets use
@@ -64,7 +66,7 @@ internal sealed class PSKImporter : IImporter
         return IsSceneManifest(inputPath) ? ParseScene(inputPath, options) : ParseSingle(inputPath, options, null);
     }
 
-    private Model ParseScene(string inputPath, ModelParseOptions options)
+    private Model ParseScene(string inputPath, ModelImportContext options)
     {
         using var sceneScope = PerfTimer.Measure("psk.import", "ParseScene", inputPath);
         var manifest = ReadSceneManifest(inputPath);
@@ -165,14 +167,14 @@ internal sealed class PSKImporter : IImporter
             Physics: bodies.Count == 0 ? null : new ModelPhysics(bodies, joints));
     }
 
-    private Model ParseSingle(string inputPath, ModelParseOptions options, PSKSceneTransform? sceneTransform)
+    private Model ParseSingle(string inputPath, ModelImportContext options, PSKSceneTransform? sceneTransform)
     {
         return ParseSingle(inputPath, options, sceneTransform, PSKMaterialResolver.Create(options.Materials, _textureFactory));
     }
 
     private static Model ParseSingle(
         string inputPath,
-        ModelParseOptions options,
+        ModelImportContext options,
         PSKSceneTransform? sceneTransform,
         PSKMaterialResolver materialResolver,
         bool buildAnimations = true)
@@ -282,7 +284,7 @@ internal sealed class PSKImporter : IImporter
     // Bodies and joints are relative to their bones, so like bone sockets they need no scene
     // placement. Bodies on bones this mesh doesn't have are dropped, and so are joints whose
     // bodies are gone.
-    private static ModelPhysics? BuildPhysics(string inputPath, Skeleton? skeleton, ModelParseOptions options)
+    private static ModelPhysics? BuildPhysics(string inputPath, Skeleton? skeleton, ModelImportContext options)
     {
         if (skeleton is null || PSKPhysicsSidecar.TryRead(inputPath) is not { Bodies.Count: > 0 } sidecar)
         {
@@ -337,7 +339,7 @@ internal sealed class PSKImporter : IImporter
         return halfAngle is { } degrees ? new AngularLimit(-degrees, degrees) : null;
     }
 
-    private static CollisionShape BuildCollisionShape(PSKPhysicsShape shape, ModelParseOptions options)
+    private static CollisionShape BuildCollisionShape(PSKPhysicsShape shape, ModelImportContext options)
     {
         var rotation = TransformRotation(shape.Rotation, options);
         var transform = new Transform(TransformPosition(shape.Center, options), rotation, Vector3.One);
@@ -365,7 +367,7 @@ internal sealed class PSKImporter : IImporter
     private static List<Attachment>? BuildAttachments(
         string inputPath,
         Skeleton? skeleton,
-        ModelParseOptions options,
+        ModelImportContext options,
         PSKSceneTransform? sceneTransform)
     {
         if (PSKSocketSidecar.TryRead(inputPath) is not { Sockets.Count: > 0 } sidecar)
@@ -440,7 +442,7 @@ internal sealed class PSKImporter : IImporter
         PSKFile psk,
         int wedgeIndex,
         IReadOnlyDictionary<int, IReadOnlyList<VertexBoneWeight>> weightLookup,
-        ModelParseOptions options,
+        ModelImportContext options,
         PSKSceneTransform? sceneTransform,
         out PSKCorner corner)
     {
@@ -517,7 +519,7 @@ internal sealed class PSKImporter : IImporter
         return normalized;
     }
 
-    private static Skeleton? BuildSkeleton(PSKFile psk, ModelParseOptions options)
+    private static Skeleton? BuildSkeleton(PSKFile psk, ModelImportContext options)
     {
         if (psk.Bones.Count == 0)
         {
@@ -542,7 +544,7 @@ internal sealed class PSKImporter : IImporter
         return new Skeleton(bones);
     }
 
-    private static List<AnimationClip>? BuildAnimations(Skeleton? skeleton, ModelParseOptions options)
+    private static List<AnimationClip>? BuildAnimations(Skeleton? skeleton, ModelImportContext options)
     {
         var animationPaths = options.Options.GetStrings(PSKImporterOptions.AnimationPath);
         if (skeleton is null || animationPaths.Count == 0)
@@ -575,7 +577,7 @@ internal sealed class PSKImporter : IImporter
     private static List<AnimationClip> ReadAnimationClips(
         Skeleton skeleton,
         string animationOption,
-        ModelParseOptions options,
+        ModelImportContext options,
         Dictionary<(string Base, int Frame), AnimationPose> basePoses)
     {
         var animationPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(animationOption));
@@ -661,7 +663,7 @@ internal sealed class PSKImporter : IImporter
         IReadOnlyList<PSAKey> keys,
         IReadOnlyList<PSAScaleKey> scaleKeys,
         int keyIndex,
-        ModelParseOptions options)
+        ModelImportContext options)
     {
         var key = keys[keyIndex];
         var scale = scaleKeys.Count == keys.Count
@@ -678,7 +680,7 @@ internal sealed class PSKImporter : IImporter
     private static AnimationLayering? ReadLayering(
         Skeleton skeleton,
         string animationPath,
-        ModelParseOptions options,
+        ModelImportContext options,
         Dictionary<(string Base, int Frame), AnimationPose> basePoses)
     {
         if (PSALayerSidecar.TryRead(animationPath) is not { } sidecar)
@@ -706,7 +708,7 @@ internal sealed class PSKImporter : IImporter
         return new AnimationLayering(sidecar.Space, basePose);
     }
 
-    private static AnimationPose? ReadPose(Skeleton skeleton, string psaPath, int frame, ModelParseOptions options)
+    private static AnimationPose? ReadPose(Skeleton skeleton, string psaPath, int frame, ModelImportContext options)
     {
         var psa = PSAFile.Read(psaPath);
         if (psa.Bones.Count == 0 || psa.Sequences.Count == 0)
@@ -750,23 +752,23 @@ internal sealed class PSKImporter : IImporter
             : -1;
     }
 
-    private static Vector3 TransformPosition(Vector3 position, ModelParseOptions options)
+    private static Vector3 TransformPosition(Vector3 position, ModelImportContext options)
     {
         var scaled = position * options.ScaleFactor;
         return ModelAxisTransforms.TransformPosition(scaled, options.AxisMode, "psk");
     }
 
-    private static Vector3 TransformNormal(Vector3 normal, ModelParseOptions options)
+    private static Vector3 TransformNormal(Vector3 normal, ModelImportContext options)
     {
         return ModelAxisTransforms.TransformNormal(normal, options.AxisMode, "psk");
     }
 
-    private static Vector3 TransformScale(Vector3 scale, ModelParseOptions options)
+    private static Vector3 TransformScale(Vector3 scale, ModelImportContext options)
     {
         return ModelAxisTransforms.TransformScale(scale, options.AxisMode, "psk");
     }
 
-    private static Quaternion TransformRotation(Quaternion rotation, ModelParseOptions options)
+    private static Quaternion TransformRotation(Quaternion rotation, ModelImportContext options)
     {
         var normalized = NormalizeRotation(rotation);
         if (options.AxisMode is not ModelAxisMode.YUp)
@@ -785,7 +787,7 @@ internal sealed class PSKImporter : IImporter
         return NormalizeRotation(Quaternion.CreateFromRotationMatrix(transformed));
     }
 
-    private static Quaternion TransformBoneRotation(Quaternion rotation, ModelParseOptions options, bool hasParent)
+    private static Quaternion TransformBoneRotation(Quaternion rotation, ModelImportContext options, bool hasParent)
     {
         return TransformRotation(hasParent ? Quaternion.Conjugate(rotation) : rotation, options);
     }

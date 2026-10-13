@@ -1,3 +1,4 @@
+using GMConverter.Core.Formats;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
 
@@ -13,7 +14,7 @@ namespace GMConverter.Core.Pipeline;
 /// <param name="InputPath">The file to import.</param>
 internal sealed record AssetRequest(string InputFormat, string InputPath)
 {
-    /// <summary>An output format from <see cref="AssetFormats.Exports"/>, aliases included.</summary>
+    /// <summary>An output format from <see cref="FormatCatalog.Exports"/>, aliases included.</summary>
     public string? OutputFormat { get; init; }
 
     public string? OutputDirectory { get; init; }

@@ -1,3 +1,4 @@
+using GMConverter.Core.Formats;
 using GMConverter.SDK.Common;
 
 namespace GMConverter.Core.Pipeline;
@@ -15,7 +16,7 @@ internal sealed record AssetDestination(ExportFormat Format, string Directory, s
             throw new GMConverterException("An output format is required.");
         }
 
-        var format = AssetFormats.GetExport(request.OutputFormat);
+        var format = FormatCatalog.GetExport(request.OutputFormat);
         if (string.IsNullOrWhiteSpace(request.OutputDirectory))
         {
             throw new GMConverterException($"Output path is required for {format.Format} output.");
@@ -24,6 +25,6 @@ internal sealed record AssetDestination(ExportFormat Format, string Directory, s
         var baseName = string.IsNullOrWhiteSpace(request.BaseName)
             ? Path.GetFileNameWithoutExtension(request.InputPath)
             : request.BaseName;
-        return new AssetDestination(format, AssetFormats.FullPath(request.OutputDirectory), baseName);
+        return new AssetDestination(format, FormatCatalog.FullPath(request.OutputDirectory), baseName);
     }
 }

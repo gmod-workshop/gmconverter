@@ -1,12 +1,14 @@
+using GMConverter.SDK.Assets;
+
 namespace GMConverter.Core.Pipeline;
 
 /// <summary>
 /// The conversion steps for one kind of asset. <see cref="AssetJobRunner"/> hands each request to
-/// the first pipeline that can run it.
+/// the pipeline for the kind its importer produces.
 /// </summary>
 internal interface IAssetPipeline
 {
-    bool CanRun(AssetRequest request);
+    AssetKind Kind { get; }
 
     AssetResult Run(AssetRequest request);
 }

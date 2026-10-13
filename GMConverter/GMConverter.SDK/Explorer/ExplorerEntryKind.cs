@@ -8,4 +8,7 @@ public enum ExplorerEntryKind
 
     /// <summary>An animation asset: a clip, a sequence of clips, a blend space and the like.</summary>
     Animation,
+
+    /// <summary>A sound or sound event that converts into a <see cref="Audio.Sound"/>.</summary>
+    Sound,
 }

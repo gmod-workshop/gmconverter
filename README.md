@@ -28,6 +28,8 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | Sound format | Read | Write | Notes |
 |---|---|---|---|
 | `WAV` | Yes | Yes* | Writes Source-ready WAVs plus sound definitions for the target game. |
+| Wwise events (`AKEVENT`) | Yes* | No | Exported from Unreal Engine 4/5 archives by the Explorer. |
+| Wwise media (`WEM`) | Yes* | No | Decoded with vgmstream. |
 
 ## CLI
 
@@ -47,7 +49,7 @@ These apply to every input and output format.
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
-| `--input-format <format>` | Input format: `opt`, `mdl`, `psk`, `mow`, or `wav`. | `--input-format psk` | Required |
+| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent` or `wem` for sounds. | `--input-format psk` | Required |
 | `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
@@ -80,6 +82,16 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | --- | --- | --- | --- |
 | `--psk-import-animationPath <path.psa>` | `--animation-path` | PSA animation files to import alongside the mesh. Separate several files with `;`. | None |
 | `--psk-import-blendSpacePath <path.blendspace.json>` | `--blend-space-path` | Blend space files the Explorer writes when it resolves a blend space or aim offset, describing how the imported animations blend. Separate several files with `;`. | None |
+
+</details>
+
+<details>
+<summary>Wwise Import Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--akevent-import-vgmstreamPath <path>` | `vgmstream-cli` override for decoding Wwise events. | Auto-downloaded to `tools` |
+| `--wem-import-vgmstreamPath <path>` | `vgmstream-cli` override for decoding `.wem` files. | Auto-downloaded to `tools` |
 
 </details>
 
@@ -253,6 +265,10 @@ Animations that use Unreal's root motion (the character travels or turns with it
 
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 
+Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it, and picks between its media at random. Localised voice lines keep their English recording.
+
+This first version reads which media an event can play, but not how Wwise mixes it. Volume, pitch variation and switches (such as the floor surface a footstep is on) are not read yet: an event picks between all of its media, and how far it carries is guessed from its name (`FS_` footsteps, `FLY_` foley, `brk_` and `VO` voice, `WPN_` weapons, and so on).
+
 </details>
 
 <details>
@@ -313,7 +329,7 @@ glTF/GLB export writes portable mesh assets with materials, normal maps, skeleto
 <details>
 <summary>WAV</summary>
 
-WAV import reads PCM (8, 16, 24 or 32-bit) and float WAV files as one sound with no events. A `smpl` loop or a Source-style cue point is read as the sound's loop.
+WAV import reads PCM (8, 16, 24 or 32-bit) and float WAV files as one sound with no events. Wwise `.wem` files (for example from FModel) import the same way with `--input-format wem`, decoded with vgmstream. A `smpl` loop or a Source-style cue point is read as the sound's loop.
 
 WAV export writes each clip as a 16-bit PCM WAV under `sound/<sound path>/`. Clips are resampled to a rate Source plays, and a looping clip gets a cue point at its loop start. Sounds that come with events, such as game sound events, also get sound definitions named after the events, so animation sound events play them:
 

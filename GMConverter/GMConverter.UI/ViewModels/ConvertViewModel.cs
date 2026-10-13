@@ -61,8 +61,11 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _setStatusMessage = setStatusMessage;
         _onPreviewLoaded = onPreviewLoaded;
 
-        // Every importer comes from a plugin, so the list is empty when no plugins loaded.
-        _selectedInputFormat = InputFormats.FirstOrDefault() ?? new DisplayOption("", "None", "No importer plugins loaded");
+        // Every importer comes from a plugin, so the list is empty when no plugins loaded. Start on
+        // a model format, since converting models is what most sessions do.
+        _selectedInputFormat = InputFormats.FirstOrDefault(format => InputKind(format) == AssetKind.Model)
+            ?? InputFormats.FirstOrDefault()
+            ?? new DisplayOption("", "None", "No importer plugins loaded");
         OutputFormats = [.. CreateOutputFormats(InputKind(_selectedInputFormat))];
         _selectedOutputFormat = DefaultOutputFormat(OutputFormats);
         _selectedAxisMode = AxisModes[0];

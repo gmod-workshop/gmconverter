@@ -18,6 +18,7 @@ using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
+using CUE4Parse.UE4.Assets.Exports.Wwise;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.IO;
@@ -25,6 +26,7 @@ using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.Engine.Animation;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Wwise;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Animations;
 using CUE4Parse_Conversion.Options;
@@ -33,8 +35,10 @@ using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.UnrealEngine.Archives;
+using GMConverter.UnrealEngine.Audio;
 using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
+using GMConverter.UnrealEngine.Formats.Wwise;
 using GMConverter.UnrealEngine.Importers;
 using GMConverter.UnrealEngine.Materials;
 using GMConverter.UnrealEngine.Profiles;
@@ -213,7 +217,8 @@ public sealed class UE4Explorer : IExplorer
             return cached;
         }
 
-        var provider = GetProvider(fileEntry.ArchivePath, fileEntry.GameId).Provider;
+        var providerContext = GetProvider(fileEntry.ArchivePath, fileEntry.GameId);
+        var provider = providerContext.Provider;
         using (PerfTimer.Measure("ue4.resolve", "ResetExportRoot", exportRoot))
         {
             ResetExportRoot(fileEntry, exportRoot);
@@ -241,6 +246,11 @@ public sealed class UE4Explorer : IExplorer
             // sidecar. The samples are cached themselves, so only the sidecar is rewritten.
             using var blendScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedBlendSpace");
             return ExportResolvedBlendSpace(fileEntry, exportRoot, blendSpace);
+        }
+        else if (sourceExport is UAkAudioEvent audioEvent)
+        {
+            using var soundScope = PerfTimer.Measure("ue4.resolve", "ExportResolvedSoundEvent");
+            resolvedEntry = ExportResolvedSoundEvent(exportRoot, audioEvent, providerContext);
         }
         else if (IsExportableAnimationObject(sourceExport))
         {
@@ -326,6 +336,59 @@ public sealed class UE4Explorer : IExplorer
         var details = $"Resolved UE blend space: {blendSpace.Name} with {samples.Count} sample(s). " +
             "Load a matching SkeletalMesh and use Add Animations to add it.";
         return new ExplorerResolvedEntry(sidecarPath, exportRoot, details, PSKImporterOptions.WithBlendSpace(samplePaths, sidecarPath));
+    }
+
+    // Writes the media a Wwise event plays as .wem files and a sidecar naming them. Decoding is
+    // left to the importer, so resolving needs no external tool and the export stays the game's
+    // own data.
+    private static ExplorerResolvedEntry ExportResolvedSoundEvent(string exportRoot, UAkAudioEvent audioEvent, Cue4ParseProviderContext providerContext)
+    {
+        List<WwiseExtractedSound> sounds;
+        using (PerfTimer.Measure("ue4.resolve", "ExtractAudioEventSounds", audioEvent.Name))
+        {
+            sounds = providerContext.Wwise.ExtractAudioEventSounds(audioEvent);
+        }
+
+        // Localised events carry a recording per language; keep one, plus any shared media.
+        var language = UnrealSoundNames.PreferredLanguage(sounds.Select(sound => UnrealSoundNames.Language(Path.GetFileName(sound.OutputPath))));
+        Directory.CreateDirectory(exportRoot);
+        List<string> media = [];
+        HashSet<string> fileNames = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var sound in sounds)
+        {
+            if (UnrealSoundNames.Language(Path.GetFileName(sound.OutputPath)) is { } soundLanguage &&
+                !soundLanguage.Equals(language, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var data = sound.GetData();
+            if (data.Length == 0)
+            {
+                continue;
+            }
+
+            var stem = UnrealSoundNames.ClipName(Path.GetFileName(sound.OutputPath));
+            var fileName = $"{stem}.{sound.Extension.ToLowerInvariant()}";
+            for (var index = 2; !fileNames.Add(fileName); index++)
+            {
+                fileName = $"{stem}_{index}.{sound.Extension.ToLowerInvariant()}";
+            }
+
+            File.WriteAllBytes(Path.Join(exportRoot, fileName), data);
+            media.Add(fileName);
+        }
+
+        if (media.Count == 0)
+        {
+            throw new GMConverterException($"Wwise event {audioEvent.Name} plays no media this game's files contain.");
+        }
+
+        var category = UnrealSoundNames.Category(audioEvent.Name, audioEvent.GetPathName());
+        var sidecarPath = Path.Join(exportRoot, audioEvent.Name + WwiseEventSidecar.Extension);
+        new WwiseEventSidecar(audioEvent.Name, category, UnrealSoundNames.DefaultAttenuationMeters(category), media).Write(sidecarPath);
+        var details = $"Resolved Wwise event: {audioEvent.Name} with {media.Count} media file(s).";
+        return new ExplorerResolvedEntry(sidecarPath, exportRoot, details);
     }
 
     private static bool IsExportableAnimationObject(UObject export)
@@ -1579,7 +1642,8 @@ public sealed class UE4Explorer : IExplorer
                 var displayPath = $"{asset.PackageName.Text}/{assetClass}/{SanitizeObjectPath(asset.AssetName.Text)}";
                 // Assets listed only because they live with animations (choosers, pose search
                 // databases, level sequences) are animation data to browse, not models.
-                var isAnimation = IsAnimationAssetClass(assetClass) || !isListedClass;
+                var isSound = IsSoundAssetClass(assetClass);
+                var isAnimation = !isSound && (IsAnimationAssetClass(assetClass) || !isListedClass);
                 var isExportableAnimation = isAnimation && IsExportableAnimationClass(assetClass);
                 var details = isAnimation && !isExportableAnimation
                     ? $"Class {assetClass} | Object {objectPath} | Registry {providerPath} | Browse only"
@@ -1598,7 +1662,7 @@ public sealed class UE4Explorer : IExplorer
                 entries.Add(new ExplorerFileEntry(
                     displayPath,
                     objectPath,
-                    isAnimation ? "ueanim" : "psk",
+                    isSound ? WwiseEventImporter.FormatId : isAnimation ? "ueanim" : "psk",
                     providerContext.ArchiveDirectory,
                     providerContext.ArchiveDirectory,
                     providerContext.ArchiveDirectory,
@@ -1608,7 +1672,7 @@ public sealed class UE4Explorer : IExplorer
                     IsConvertible: !isAnimation,
                     AssetClass: assetClass,
                     SkeletonId: skeletonId,
-                    Kind: isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
+                    Kind: isSound ? ExplorerEntryKind.Sound : isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
                     CanAddToModel: isExportableAnimation,
                     BundlesWithModel: bundlesWithModel));
             }
@@ -1622,6 +1686,11 @@ public sealed class UE4Explorer : IExplorer
         return assetClass.Contains("Anim", StringComparison.OrdinalIgnoreCase) ||
             assetClass.Contains("BlendSpace", StringComparison.OrdinalIgnoreCase) ||
             assetClass.Equals("PoseAsset", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSoundAssetClass(string assetClass)
+    {
+        return assetClass.Equals("AkAudioEvent", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsExportableAnimationClass(string assetClass)

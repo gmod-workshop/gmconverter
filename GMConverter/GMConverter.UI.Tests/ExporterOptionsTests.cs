@@ -64,9 +64,14 @@ public sealed class ExporterOptionsTests
         return root;
     }
 
-    internal static ConvertViewModel CreateViewModel()
+    internal static void InitializePlugins()
     {
         PluginHost.Initialize(_pluginsDirectory.Value);
+    }
+
+    internal static ConvertViewModel CreateViewModel()
+    {
+        InitializePlugins();
         var sink = new UiLogSink();
         return new ConvertViewModel(sink, new ConversionService(sink), () => false, _ => { }, _ => { }, (_, _) => { });
     }

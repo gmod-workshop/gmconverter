@@ -1,5 +1,5 @@
 using GMConverter.Core.Exporters;
-using GMConverter.Core.Plugins;
+using GMConverter.Core.Pipeline;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
@@ -11,6 +11,8 @@ namespace GMConverter.UI.Services;
 
 internal sealed class ConversionService(UiLogSink logSink)
 {
+    private readonly AssetJobRunner _runner = new();
+    private readonly ModelPipeline _modelPipeline = new();
     private int _perfLogAnnounced;
 
     private void AnnouncePerfLog()
@@ -29,57 +31,19 @@ internal sealed class ConversionService(UiLogSink logSink)
             $"{settings.InputFormat}->{settings.OutputFormat}");
         AnnouncePerfLog();
 
-        var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
-        var importer = CreateImporter(settings.InputFormat);
-
         if (settings.OutputFormat is "info")
         {
-            return importer.Summarize(inputPath).ToString() ?? string.Empty;
+            var importer = AssetFormats.GetImporter(settings.InputFormat);
+            return importer.Summarize(AssetFormats.RequireInputFile(settings.InputPath, importer)).ToString() ?? string.Empty;
         }
 
-        var outputPath = RequireOutputPath(settings.OutputPath, settings.OutputFormat);
-        var baseName = string.IsNullOrWhiteSpace(settings.BaseName)
-            ? Path.GetFileNameWithoutExtension(inputPath)
-            : settings.BaseName;
-        Model model;
-        using (PerfTimer.Measure("convert.run", $"{settings.InputFormat}.Parse", inputPath))
-        {
-            model = importer.Parse(inputPath, new ModelParseOptions(
-                settings.ScaleFactor,
-                settings.AxisMode,
-                CreateMaterialResolveOptions(settings.MaterialDirectory))
-            {
-                Options = settings.ImporterOptions,
-            });
-        }
-
-        var exporter = GetExporter(settings.OutputFormat);
-        var options = settings.ExporterOptions;
-        if (settings.OutputFormat is "glb" or "gltf")
-        {
-            var values = new Dictionary<string, object?>(options.AsDictionary())
-            {
-                ["binary"] = settings.OutputFormat == "glb"
-            };
-            options = new OptionValues(values);
-        }
-        Directory.CreateDirectory(outputPath);
-        using (PerfTimer.Measure("convert.run", "Exporter.Export", settings.OutputFormat))
-        {
-            exporter.Export(model, outputPath, baseName, options);
-        }
-        return $"Wrote {settings.OutputFormat.ToUpperInvariant()} output to {outputPath}";
+        var result = _runner.Run(new AssetJob(CreateRequest(settings))).Results.Single();
+        return $"Wrote {settings.OutputFormat.ToUpperInvariant()} output to {result.Destination.Directory}";
     }
 
     internal static IExporter GetExporter(string format)
     {
-        return format switch
-        {
-            "obj" => new OBJExporter(),
-            "glb" or "gltf" => new GLTFExporter(),
-            _ => PluginHost.Registry.GetExporter(format == "source" ? "mdl" : format)
-                ?? throw new GMConverterException($"Unsupported output format or plugin not loaded: {format}")
-        };
+        return AssetFormats.GetExport(format).Exporter;
     }
 
     public PreviewLoadResult LoadPreview(ConversionSettings settings)
@@ -87,28 +51,15 @@ internal sealed class ConversionService(UiLogSink logSink)
         using var scope = PerfTimer.Measure("convert.preview", "LoadPreview", settings.InputFormat);
         AnnouncePerfLog();
 
-        var inputPath = RequireInputFile(settings.InputPath, settings.InputFormat);
-        var importer = CreateImporter(settings.InputFormat);
-        Model model;
-        using (PerfTimer.Measure("convert.preview", $"{settings.InputFormat}.Parse", inputPath))
-        {
-            model = importer.Parse(inputPath, new ModelParseOptions(
-                settings.ScaleFactor,
-                settings.AxisMode,
-                CreateMaterialResolveOptions(settings.MaterialDirectory))
-            {
-                Options = settings.ImporterOptions,
-            });
-        }
+        var request = CreateRequest(settings);
+        var model = _modelPipeline.Import(request);
 
         var previewDirectory = Path.Combine(Path.GetTempPath(), "GMConverter.UI", "Preview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(previewDirectory);
 
-        var baseName = string.IsNullOrWhiteSpace(settings.BaseName)
-            ? Path.GetFileNameWithoutExtension(inputPath)
-            : settings.BaseName;
-
-        baseName = SanitizePathToken(baseName);
+        var baseName = SanitizePathToken(string.IsNullOrWhiteSpace(settings.BaseName)
+            ? Path.GetFileNameWithoutExtension(request.InputPath)
+            : settings.BaseName);
         using (PerfTimer.Measure("convert.preview", "GLTFExporter.Export"))
         {
             // BakeUvTransforms folds per-material BakedUv0Scale into the mesh's UVs in lieu of
@@ -148,72 +99,31 @@ internal sealed class ConversionService(UiLogSink logSink)
         };
     }
 
-    private static IImporter CreateImporter(string inputFormat)
-    {
-        return FindImporter(inputFormat)
-            ?? throw new GMConverterException($"Unsupported input format: {inputFormat}");
-    }
-
     internal static IImporter? FindImporter(string inputFormat)
     {
-        return PluginHost.Registry.GetImporter(inputFormat);
+        return AssetFormats.FindImporter(inputFormat);
     }
 
-    private static string RequireInputFile(string path, string inputFormat)
+    private static AssetRequest CreateRequest(ConversionSettings settings)
     {
-        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
-        var extension = Path.GetExtension(fullPath);
-        var allowedExtensions = inputFormat switch
+        return new AssetRequest(settings.InputFormat, settings.InputPath)
         {
-            "psk" => [".psk", ".pskx", ".ue4scene"],
-            "mow" => [".def", ".mdl"],
-            _ => new[] { $".{inputFormat}" }
+            OutputFormat = settings.OutputFormat,
+            OutputDirectory = settings.OutputPath,
+            BaseName = settings.BaseName,
+            ImporterOptions = settings.ImporterOptions,
+            ExporterOptions = settings.ExporterOptions,
+            ScaleFactor = settings.ScaleFactor,
+            AxisMode = settings.AxisMode,
+            MaterialDirectory = settings.MaterialDirectory,
         };
-
-        if (!File.Exists(fullPath))
-        {
-            throw new GMConverterException($"File not found: {fullPath}");
-        }
-
-        if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new GMConverterException($"Expected a {string.Join(" or ", allowedExtensions)} file: {fullPath}");
-        }
-
-        return fullPath;
-    }
-
-    private static string RequireOutputPath(string? path, string outputFormat)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new GMConverterException($"Output path is required for {outputFormat} output.");
-        }
-
-        return Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
-    }
-
-    private static MaterialResolveOptions? CreateMaterialResolveOptions(string? materialDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(materialDirectory))
-        {
-            return null;
-        }
-
-        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(materialDirectory));
-        if (!Directory.Exists(fullPath))
-        {
-            throw new GMConverterException($"Material directory not found: {fullPath}");
-        }
-
-        return new MaterialResolveOptions(fullPath);
     }
 
     // Collision comes from the selected exporter, so the overlay shows exactly what that export
     // would generate (including CoACD hulls) without the host knowing the exporter's options.
     private static PhysicsPreviewExport ExportPhysicsPreview(ConversionSettings settings, Model model, string previewDirectory, string baseName)
     {
-        if (settings.OutputFormat is "info" || GetExporter(settings.OutputFormat) is not ICollisionPreview collision)
+        if (AssetFormats.FindExport(settings.OutputFormat)?.Exporter is not ICollisionPreview collision)
         {
             return new PhysicsPreviewExport(null, 0);
         }

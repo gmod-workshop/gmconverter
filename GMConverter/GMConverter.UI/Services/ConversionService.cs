@@ -2,6 +2,7 @@ using GMConverter.Core.Exporters;
 using GMConverter.Core.Formats;
 using GMConverter.Core.Pipeline;
 using GMConverter.Core.Pipeline.Models;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
@@ -53,7 +54,8 @@ internal sealed class ConversionService(UiLogSink logSink)
         using var scope = PerfTimer.Measure("convert.preview", "LoadPreview", settings.InputFormat);
         AnnouncePerfLog();
 
-        var request = CreateRequest(settings);
+        // The roles table shows what was guessed, so the preview imports without the overrides.
+        var request = CreateRequest(settings) with { RoleOverrides = new Dictionary<string, AnimationRole?>() };
         var model = _modelPipeline.Import(request);
 
         var previewDirectory = Path.Combine(Path.GetTempPath(), "GMConverter.UI", "Preview", Guid.NewGuid().ToString("N"));
@@ -87,7 +89,10 @@ internal sealed class ConversionService(UiLogSink logSink)
         return new PreviewLoadResult(
             PreviewSummary.From(model, physicsPreview.PartCount),
             Path.Combine(previewDirectory, baseName + ".glb"),
-            physicsPreview.ModelPath);
+            physicsPreview.ModelPath)
+        {
+            Animations = [.. (model.Animations ?? []).Select(clip => new PreviewAnimation(clip.Name, clip.Role))],
+        };
     }
 
     public static ModelAxisMode NormalizeAxisMode(string value)
@@ -119,6 +124,7 @@ internal sealed class ConversionService(UiLogSink logSink)
             AxisMode = settings.AxisMode,
             MaterialDirectory = settings.MaterialDirectory,
             SourceGameId = settings.SourceGameId,
+            RoleOverrides = settings.RoleOverrides,
             TargetGameId = settings.TargetGameId,
             TargetOptions = settings.TargetOptions,
         };

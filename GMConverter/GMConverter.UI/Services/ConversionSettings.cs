@@ -1,3 +1,4 @@
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
 
@@ -17,6 +18,9 @@ internal sealed record ConversionSettings(
 {
     /// <summary>The game the input comes from, or null when unknown.</summary>
     public string? SourceGameId { get; init; }
+
+    /// <summary>Roles chosen for animations by clip name, replacing the guessed ones.</summary>
+    public IReadOnlyDictionary<string, AnimationRole?> RoleOverrides { get; init; } = new Dictionary<string, AnimationRole?>();
 
     /// <summary>The game to export for, or null for the exporter's default target.</summary>
     public string? TargetGameId { get; init; }

@@ -1,10 +1,12 @@
 using System.CommandLine;
 using System.Globalization;
 using System.Text;
+using GMConverter.Core.Animation;
 using GMConverter.Core.Formats;
 using GMConverter.Core.Pipeline;
 using GMConverter.Core.Plugins;
 using GMConverter.Core.Profiles;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
@@ -80,6 +82,11 @@ internal static class Program
         {
             Description = "Game the input comes from, so its naming conventions can fill in animation roles. Supported: " + string.Join(", ", GameCatalog.ImportProfiles.Select(profile => profile.Id)) + "."
         };
+        var roleOption = new Option<string[]>("--role")
+        {
+            Description = "Set what an animation is for, replacing the guess from its name: clip=role, such as A_B1_2HRifle_Jog_F=run or Walk_Start_F=none. A role is an action, optionally with a stance and direction (run,rifle,forward). Repeat for several animations. Actions: " + string.Join(", ", AnimationRoleText.Actions) + ".",
+            Arity = ArgumentArity.ZeroOrMore,
+        };
         var targetOption = new Option<string>("--target")
         {
             Description = "Game to export for, when the output format has several. " + DescribeTargets()
@@ -102,6 +109,7 @@ internal static class Program
             noScaleOption,
             axisModeOption,
             gameOption,
+            roleOption,
             targetOption
         };
 
@@ -143,6 +151,7 @@ internal static class Program
                 importerOptions: ReadSchemaOptions(NormalizeInputFormat(parseResult.GetRequiredValue(inputFormatOption)), "input", importerArguments, parseResult),
                 exporterOptions: ReadSchemaOptions(NormalizeOutputFormat(parseResult.GetRequiredValue(outputFormatOption)), "output", exporterArguments, parseResult),
                 sourceGameId: parseResult.GetValue(gameOption),
+                roleOverrides: ParseRoleOverrides(parseResult.GetValue(roleOption)),
                 targetGameId: targetGameId,
                 targetOptions: ReadSchemaOptions(targetGameId ?? "no", "target game", targetArguments, parseResult));
         });
@@ -196,6 +205,19 @@ internal static class Program
     private static string NormalizeInputFormat(string inputFormat)
     {
         return inputFormat.Trim().ToLowerInvariant();
+    }
+
+    private static Dictionary<string, AnimationRole?> ParseRoleOverrides(string[]? values)
+    {
+        var overrides = new Dictionary<string, AnimationRole?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (clip, role) in (values ?? []).Select(AnimationRoleText.ParseOverride))
+        {
+            if (!overrides.TryAdd(clip, role))
+            {
+                throw new ArgumentException($"Option --role names {clip} more than once.");
+            }
+        }
+        return overrides;
     }
 
     // The chosen target, or the output format's default one; null for formats without targets.
@@ -282,6 +304,7 @@ internal static class Program
         OptionValues importerOptions,
         OptionValues exporterOptions,
         string? sourceGameId,
+        IReadOnlyDictionary<string, AnimationRole?> roleOverrides,
         string? targetGameId,
         OptionValues targetOptions)
     {
@@ -308,6 +331,7 @@ internal static class Program
             AxisMode = NormalizeAxisMode(axisModeText),
             MaterialDirectory = materialDirectory,
             SourceGameId = sourceGameId,
+            RoleOverrides = roleOverrides,
             TargetGameId = targetGameId,
             TargetOptions = targetOptions,
         };

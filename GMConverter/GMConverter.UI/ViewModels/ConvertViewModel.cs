@@ -175,6 +175,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
         var settings = CaptureSettings();
         var result = await Task.Run(() => _conversionService.LoadPreview(settings));
+        ApplyPreviewAnimations(result.Animations);
         _onPreviewLoaded(result, InputPath);
         _setStatusMessage("Preview loaded.");
         _logSink.Append("Preview loaded.");
@@ -195,6 +196,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
             CurrentExporterOptions.BuildOptionValues())
         {
             SourceGameId = string.IsNullOrEmpty(SelectedImportGame.Value) ? null : SelectedImportGame.Value,
+            RoleOverrides = BuildRoleOverrides(),
             TargetGameId = SelectedTarget?.Value,
             TargetOptions = CurrentTargetOptions.BuildOptionValues(),
         };

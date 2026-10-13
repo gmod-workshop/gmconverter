@@ -48,22 +48,27 @@
                                 IsEnabled="{Binding IsIdle}"
                                 VerticalAlignment="Bottom"/>
                     </Grid>
-                    <Grid ColumnDefinitions="*,*,Auto,Auto" ColumnSpacing="8">
+                    <Grid ColumnDefinitions="*,*,*,Auto,Auto" ColumnSpacing="8">
                         <ComboBox ItemsSource="{Binding ExplorerProfiles}"
                                   SelectedItem="{Binding SelectedExplorerProfile}"
-                                  shad:ControlAssist.Label="Profile"/>
-                        <TextBox Grid.Column="1"
+                                  shad:ControlAssist.Label="Explorer"/>
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding Games}"
+                                  SelectedItem="{Binding SelectedGame}"
+                                  ToolTip.Tip="{Binding DetectedGame}"
+                                  shad:ControlAssist.Label="Game"/>
+                        <TextBox Grid.Column="2"
                                  Text="{Binding ExplorerFilter}"
                                  Classes="Clearable"
                                  PlaceholderText="class:Anim any:holo,strongarm"
                                  shad:ControlAssist.Label="Filter"/>
-                        <Button Grid.Column="2"
+                        <Button Grid.Column="3"
                                 Classes="Outline"
                                 Content="Animations"
                                 Command="{Binding ShowExplorerAnimationsCommand}"
                                 ToolTip.Tip="Show animation assets"
                                 VerticalAlignment="Bottom"/>
-                        <Button Grid.Column="3"
+                        <Button Grid.Column="4"
                                 Classes="Outline"
                                 Content="Related"
                                 Command="{Binding FindRelatedExplorerAnimationsCommand}"

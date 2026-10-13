@@ -201,9 +201,13 @@ PSA files are supported as animation sidecars for PSK/PSKX. Pass a matching PSA 
 <details>
 <summary>Unreal Engine 4 / 5 Archives</summary>
 
-The Explorer can scan Unreal Engine 4 and 5 `.pak` / `.utoc` archives through CUE4Parse and resolve `StaticMesh` and `SkeletalMesh` assets into the normal conversion workflow. Select either the archive directory or a game `Content` directory that contains a `Paks` folder.
+The Explorer can scan Unreal Engine 4 and 5 `.pak` / `.utoc` archives through CUE4Parse and resolve `StaticMesh` and `SkeletalMesh` assets into the normal conversion workflow. Select the game's install folder, the archive directory, or a `Content` directory that contains a `Paks` folder.
 
-Fortnite installations use a dedicated Unreal profile. When detected, GMConverter uses the Fortnite package version, fetches current AES keys and mappings from UEDB, downloads the mapping file to the local app-data cache, and submits those keys to CUE4Parse before scanning. Other UE4/UE5 archives use the generic profile and may require future game-specific key or version support.
+The **Game** box chooses which game's settings are used. On **Auto-detect**, the Explorer recognises the game from the folder and shows it in the scan status; pick a game yourself if detection gets it wrong. Recognised games:
+
+* **Fortnite** uses the Fortnite package version, fetches current AES keys and mappings from UEDB, downloads the mapping file to the local app-data cache, and submits those keys to CUE4Parse before scanning.
+* **Star Wars Zero Company** is recognised from `SWZeroCompany.exe`.
+* **Other Unreal Engine game** covers every other UE4/UE5 archive with generic settings, and may need future game-specific key or version support.
 
 Most cooked UE5 games (for example Star Wars Zero Company) store "unversioned" properties. The Explorer can still list their assets, but meshes, materials and textures can't be read without a `.usmap` mappings file that matches the game's current build. Dump one from the running game with a tool such as Dumper-7 or UE4SS, then place it in the game's `Paks` folder or anywhere up to the game's install folder. GMConverter picks up the newest `.usmap` it finds there when it opens the archives, so restart GMConverter after adding one, and dump a new file after each game update.
 

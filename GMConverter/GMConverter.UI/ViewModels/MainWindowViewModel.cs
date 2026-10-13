@@ -30,6 +30,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private static readonly HashSet<string> _explorerSettingsProperties = new(StringComparer.Ordinal)
     {
         nameof(ExplorerViewModel.SelectedExplorerProfile),
+        nameof(ExplorerViewModel.SelectedGame),
         nameof(ExplorerViewModel.ExplorerRootDirectory),
         nameof(ExplorerViewModel.ExplorerFilter),
         nameof(ExplorerViewModel.IncludeCompatibleAnimations)
@@ -261,7 +262,8 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Preview.PreviewPhysicsOverlay,
             Convert.SnapshotExporterOptions(),
             Convert.SnapshotImporterOptions(),
-            Explorer.IncludeCompatibleAnimations);
+            Explorer.IncludeCompatibleAnimations,
+            Explorer.SelectedGame.Value);
     }
 
     private void QueueSettingsSave()

@@ -4,6 +4,8 @@ using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.IO;
 using CUE4Parse.UE4.Versions;
+using GMConverter.SDK.Explorer;
+using GMConverter.SDK.Games;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
 
@@ -42,11 +44,21 @@ internal sealed class FortniteUnrealGameProfile : IUnrealGameProfile
 
     public string DisplayName => "Fortnite";
 
-    public bool Supports(string archiveDirectory)
+    public string Engine => "Unreal Engine 5";
+
+    public GameMatch Detect(ExplorerTarget target)
     {
+        if (!Cue4ParseProviderFactory.IsArchiveTarget(target))
+        {
+            return GameMatch.None;
+        }
+
+        var archiveDirectory = Cue4ParseProviderFactory.ResolveArchiveDirectory(target.FullPath);
         return Directory.Exists(archiveDirectory) &&
             (archiveDirectory.Contains("FortniteGame", StringComparison.OrdinalIgnoreCase) ||
-                Directory.EnumerateFiles(archiveDirectory, "pakchunk0-WindowsClient.*", SearchOption.TopDirectoryOnly).Any());
+                Directory.EnumerateFiles(archiveDirectory, "pakchunk0-WindowsClient.*", SearchOption.TopDirectoryOnly).Any())
+                ? GameMatch.Exact
+                : GameMatch.None;
     }
 
     public VersionContainer CreateVersionContainer()

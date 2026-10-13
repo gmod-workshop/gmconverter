@@ -4,19 +4,20 @@ using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.Textures.BC;
 
 using GMConverter.SDK.Common;
+using GMConverter.SDK.Explorer;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
 
 internal static class Cue4ParseProviderFactory
 {
     private static readonly string[] _archivePatterns = ["*.pak", "*.utoc"];
-    private static readonly IUnrealGameProfile[] _profiles =
-    [
-        new FortniteUnrealGameProfile(),
-        new GenericUnrealGameProfile()
-    ];
+    private static readonly HashSet<string> _archiveExtensions = new(StringComparer.OrdinalIgnoreCase) { ".pak", ".utoc" };
 
-    public static Cue4ParseProviderContext Create(string rootPath)
+    /// <summary>
+    /// Opens the archives under <paramref name="rootPath"/> with the profile for
+    /// <paramref name="gameId"/>, or the best-detected profile when it is null or another plugin's.
+    /// </summary>
+    public static Cue4ParseProviderContext Create(string rootPath, string? gameId)
     {
         using var createScope = PerfTimer.Measure("ue4.provider", "Create", rootPath);
 
@@ -26,7 +27,7 @@ internal static class Cue4ParseProviderFactory
         }
 
         var archiveDirectory = ResolveArchiveDirectory(rootPath);
-        var profile = SelectProfile(archiveDirectory);
+        var profile = UnrealGameProfiles.Select(archiveDirectory, gameId);
         PerfTimer.Log("ue4.provider", $"profile={profile.GetType().Name} archive={archiveDirectory}");
         var gameData = profile.TryGetGameData(archiveDirectory);
         var provider = new DefaultFileProvider(
@@ -66,6 +67,13 @@ internal static class Cue4ParseProviderFactory
         }
     }
 
+    /// <summary>True for a folder of Unreal archives (or one level above it) and for a single archive file.</summary>
+    public static bool IsArchiveTarget(ExplorerTarget target)
+    {
+        return target.IsDirectory && LooksLikeArchiveRoot(target.FullPath) ||
+            target.IsFile && _archiveExtensions.Contains(Path.GetExtension(target.FullPath));
+    }
+
     public static bool LooksLikeArchiveRoot(string path)
     {
         var directory = Directory.Exists(path)
@@ -76,10 +84,12 @@ internal static class Cue4ParseProviderFactory
             return false;
         }
 
+        // A child holding the archives covers a game's install folder, whose paks usually sit at
+        // <install>/<Project>/Content/Paks.
         return TryResolveKnownArchiveDirectory(directory, out _) ||
             Directory.EnumerateDirectories(directory, "*", SearchOption.TopDirectoryOnly)
                 .Take(64)
-                .Any(child => ContainsArchiveTopLevel(child));
+                .Any(child => TryResolveKnownArchiveDirectory(child, out _));
     }
 
     public static string ResolveArchiveDirectory(string rootPath)
@@ -118,11 +128,6 @@ internal static class Cue4ParseProviderFactory
             "CUE4Parse");
         Directory.CreateDirectory(dependencyDirectory);
         return Path.Combine(dependencyDirectory, fileName);
-    }
-
-    private static IUnrealGameProfile SelectProfile(string archiveDirectory)
-    {
-        return _profiles.First(profile => profile.Supports(archiveDirectory));
     }
 
     private static bool TryResolveKnownArchiveDirectory(string directory, out string archiveDirectory)

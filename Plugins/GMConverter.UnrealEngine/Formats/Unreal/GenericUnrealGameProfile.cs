@@ -3,18 +3,28 @@ using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
+using GMConverter.SDK.Explorer;
+using GMConverter.SDK.Games;
 
 namespace GMConverter.UnrealEngine.Formats.Unreal;
 
-internal sealed class GenericUnrealGameProfile : IUnrealGameProfile
+/// <summary>
+/// Any Unreal Engine 4/5 game without a profile of its own: UE 5.6 settings, a <c>.usmap</c>
+/// found next to the archives or in the install folder, and no encryption keys. It claims every
+/// Unreal archive folder as a <see cref="GameMatch.Fallback"/>, so a specific game always wins.
+/// Games that only differ in identity derive from it.
+/// </summary>
+internal class GenericUnrealGameProfile : IUnrealGameProfile
 {
-    public string Id => "generic";
+    public virtual string Id => "unreal";
 
-    public string DisplayName => "Unreal Engine 4/5";
+    public virtual string DisplayName => "Other Unreal Engine game";
 
-    public bool Supports(string archiveDirectory)
+    public virtual string Engine => "Unreal Engine 4/5";
+
+    public virtual GameMatch Detect(ExplorerTarget target)
     {
-        return Directory.Exists(archiveDirectory);
+        return Cue4ParseProviderFactory.IsArchiveTarget(target) ? GameMatch.Fallback : GameMatch.None;
     }
 
     public VersionContainer CreateVersionContainer()

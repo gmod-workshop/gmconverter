@@ -1,3 +1,4 @@
+using GMConverter.Core.Games;
 using GMConverter.Core.Plugins;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
@@ -38,7 +39,13 @@ internal sealed class ExplorerService
         }
     }
 
-    public ExplorerScanResult Scan(string rootPath, string profileId)
+    /// <summary>
+    /// Scans <paramref name="rootPath"/> with the explorer <paramref name="profileId"/> (or the first
+    /// that supports it, for <see cref="AutoProfileId"/>). The game is detected, or taken from
+    /// <paramref name="gameId"/> when one is chosen, and passed to the explorer and stamped on
+    /// every entry.
+    /// </summary>
+    public ExplorerScanResult Scan(string rootPath, string profileId, string? gameId = GameCatalog.AutoId)
     {
         var target = new ExplorerTarget(rootPath);
         if (!target.IsDirectory && !target.IsFile)
@@ -46,34 +53,22 @@ internal sealed class ExplorerService
             throw new GMConverterException($"Explorer path not found: {target.FullPath}");
         }
 
-        if (string.Equals(profileId, AutoProfileId, StringComparison.OrdinalIgnoreCase) && target.IsDirectory)
-        {
-            return ScanAuto(target);
-        }
+        var game = GameCatalog.Resolve(target, gameId);
+        target = target with { GameId = game?.Profile.Id };
 
-        var explorer = ResolveExplorer(target, profileId);
+        var isAuto = string.Equals(profileId, AutoProfileId, StringComparison.OrdinalIgnoreCase) && target.IsDirectory;
+        var explorer = ResolveExplorer(target, isAuto ? AutoProfileId : profileId);
         var entries = explorer.Scan(target)
+            .Select(entry => entry.GameId is null && target.GameId is not null ? entry with { GameId = target.GameId } : entry)
             .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return new ExplorerScanResult(
-            new ExplorerProfile(explorer.Id, explorer.DisplayName),
-            entries);
-    }
-
-    private ExplorerScanResult ScanAuto(ExplorerTarget target)
-    {
-        var explorer = ResolveExplorer(target, AutoProfileId);
-        var entries = explorer.Scan(target)
-            .OrderBy(entry => entry.DisplayPath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        if (entries.Length == 0)
+        if (isAuto && entries.Length == 0)
         {
             throw new GMConverterException($"No explorer supports: {target.FullPath}");
         }
 
-        return new ExplorerScanResult(new ExplorerProfile(explorer.Id, explorer.DisplayName), entries);
+        return new ExplorerScanResult(new ExplorerProfile(explorer.Id, explorer.DisplayName), entries, game);
     }
 
     private IExplorer ResolveExplorer(ExplorerTarget target, string profileId)

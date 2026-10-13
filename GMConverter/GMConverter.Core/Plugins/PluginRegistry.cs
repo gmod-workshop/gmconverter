@@ -1,5 +1,6 @@
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Exporters;
+using GMConverter.SDK.Games;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Plugins;
 
@@ -16,12 +17,16 @@ public sealed class PluginRegistry
     private readonly Dictionary<string, IImporter> _importersByFormat = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IExporter> _exportersByFormat = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IExplorer> _explorers = [];
+    private readonly List<IGameProfile> _gameProfiles = [];
 
     public static PluginRegistry Empty { get; } = new();
 
     public IReadOnlyList<PluginManifest> LoadedPlugins => _plugins.Select(p => p.Manifest).ToArray();
 
     public IReadOnlyList<IExplorer> Explorers => _explorers;
+
+    /// <summary>Registered games, in plugin load and registration order.</summary>
+    public IReadOnlyList<IGameProfile> GameProfiles => _gameProfiles;
 
     public IReadOnlyCollection<IImporter> Importers => _importersByFormat.Values.ToArray();
 
@@ -45,5 +50,6 @@ public sealed class PluginRegistry
             _exportersByFormat[exporter.Format] = exporter;
         }
         _explorers.AddRange(loaded.Context.RegisteredExplorers);
+        _gameProfiles.AddRange(loaded.Context.RegisteredGameProfiles);
     }
 }

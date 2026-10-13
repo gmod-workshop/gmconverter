@@ -62,6 +62,29 @@
                     </shad:Card>
                 </UniformGrid>
 
+                <shad:Card HasShadow="True" IsEnabled="{Binding IsIdle}" IsVisible="{Binding HasAnimationRoles}">
+                    <shad:Card.Header>
+                        <StackPanel Spacing="4">
+                            <shad:CardTitle>Animation roles</shad:CardTitle>
+                            <shad:CardDescription>What each animation is for, guessed from its name. Exporters turn roles into game-specific names, such as Source activities. Change a guess to override it; choosing an action keeps the guessed stance and direction.</shad:CardDescription>
+                        </StackPanel>
+                    </shad:Card.Header>
+                    <ItemsControl ItemsSource="{Binding AnimationRoles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AnimationRoleViewModel">
+                                <Grid ColumnDefinitions="2*,*,180" ColumnSpacing="12" Margin="0,2">
+                                    <TextBlock Text="{Binding ClipName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ClipName}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding GuessedText}" VerticalAlignment="Center" Opacity="0.7"/>
+                                    <ComboBox Grid.Column="2"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Static vm:AnimationRoleViewModel.Choices}"
+                                              SelectedItem="{Binding SelectedChoice}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </shad:Card>
+
                 <shad:Card HasShadow="True">
                     <shad:Card.Header>
                         <StackPanel Spacing="4">

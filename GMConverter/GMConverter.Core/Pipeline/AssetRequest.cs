@@ -1,4 +1,5 @@
 using GMConverter.Core.Formats;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
 
@@ -38,6 +39,12 @@ internal sealed record AssetRequest(string InputFormat, string InputPath)
     /// game's conventions reveal (such as animation roles) after import.
     /// </summary>
     public string? SourceGameId { get; init; }
+
+    /// <summary>
+    /// Roles chosen for animations by clip name, replacing what the importer and the source game
+    /// guessed; a null role clears a clip's role.
+    /// </summary>
+    public IReadOnlyDictionary<string, AnimationRole?> RoleOverrides { get; init; } = new Dictionary<string, AnimationRole?>();
 
     /// <summary>The game to export for, or null for the exporter's default target.</summary>
     public string? TargetGameId { get; init; }

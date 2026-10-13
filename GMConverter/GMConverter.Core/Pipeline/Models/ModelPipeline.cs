@@ -1,3 +1,4 @@
+using GMConverter.Core.Animation;
 using GMConverter.Core.Formats;
 using GMConverter.Core.Profiles;
 using GMConverter.SDK.Assets;
@@ -30,7 +31,8 @@ internal sealed class ModelPipeline : AssetPipeline<Model>
         {
             Options = WithDefaults(importer.OptionSchema, request.ImporterOptions),
         });
-        return sourceGame?.Prepare(model) ?? model;
+        model = sourceGame?.Prepare(model) ?? model;
+        return AnimationRoleOverrides.Apply(model, request.RoleOverrides);
     }
 
     private static IImportGameProfile? ResolveSourceGame(string? gameId)

@@ -276,7 +276,7 @@ This first version reads which media an event can play, but not how Wwise mixes 
 
 Source MDL files are supported as input and output. MDL read support decompiles reference SMD meshes through MdlCrowbar and currently imports static reference mesh geometry and material references, not full compiled animation data.
 
-MDL write support generates SMD, QC, material files, optional animation SMDs, and compiles the final MDL with `cestudiomdl`. Material builds use `VTFCmd` to write VTF textures. If `--mdl-studioMdlPath` or `--mdl-vtfCmdPath` (or their `--studiomdl-path` / `--vtfcmd-path` aliases) is omitted, GMConverter downloads portable defaults into a `tools` folder next to the executable.
+MDL write support generates SMD, QC, material files, optional animation SMDs, and compiles the final MDL with `cestudiomdl`. Source has no metalness, so metal surfaces from Unreal materials are approximated: their base colour is darkened and their highlights are tinted by it, and they look best on maps with cubemaps. Material builds use `VTFCmd` to write VTF textures. If `--mdl-studioMdlPath` or `--mdl-vtfCmdPath` (or their `--studiomdl-path` / `--vtfcmd-path` aliases) is omitted, GMConverter downloads portable defaults into a `tools` folder next to the executable.
 
 ```powershell
 ./GMConverter.CLI --input-format opt --output-format mdl `

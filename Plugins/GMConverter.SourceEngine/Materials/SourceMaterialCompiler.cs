@@ -51,6 +51,11 @@ internal sealed class SourceMaterialCompiler
                 }
 
                 var baseTexture = SourceMaterialEmission.BaseTexture(material, _textureFactory);
+                if (HasMetalness(material))
+                {
+                    baseTexture = baseTexture.WithMetalDarkened(material.SpecularTexture!, _textureFactory);
+                }
+
                 var diffuseBasename = WriteOrReuse(
                     baseTexture,
                     material.Name,
@@ -61,11 +66,17 @@ internal sealed class SourceMaterialCompiler
 
                 var specForMask = UseSourcePhong(material) ? GetSourcePhongExponent(material) : null;
 
+                // Metal-aware materials get a mask shaped for metal and paint; others keep using
+                // the exponent texture's red channel.
+                var phongMask = specForMask is not null && HasMetalness(material)
+                    ? material.SpecularTexture!.ToSourcePhongMask(_textureFactory)
+                    : specForMask;
+
                 string? normalBasename = null;
                 if (material.NormalTexture is not null)
                 {
-                    var normalTextureForWrite = specForMask is not null
-                        ? material.NormalTexture.WithMaskInAlpha(specForMask, _textureFactory)
+                    var normalTextureForWrite = phongMask is not null
+                        ? material.NormalTexture.WithMaskInAlpha(phongMask, _textureFactory)
                         : material.NormalTexture;
                     normalBasename = WriteOrReuse(
                         normalTextureForWrite,
@@ -203,9 +214,11 @@ internal sealed class SourceMaterialCompiler
 
         if (specTexturePath is not null && UseSourcePhong(material))
         {
-            WritePhongParameters(writer, specTexturePath, material);
+            var settings = PhongSettings(material);
+            WritePhongParameters(writer, specTexturePath, material, settings);
             WriteEnvmapParameters(
                 writer,
+                settings.EnvmapTint,
                 standaloneMaskPath: normalTexturePath is null ? specTexturePath : null,
                 normalMapAlphaMask: normalTexturePath is not null);
         }
@@ -231,6 +244,13 @@ internal sealed class SourceMaterialCompiler
         return material.DiffuseTexture is not null && material.SpecularTexture is not null;
     }
 
+    // Unreal SpecularMasks carry metalness in G, which Source can only approximate.
+    private static bool HasMetalness(Material material)
+    {
+        return material.SpecularTexture is not null &&
+            material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness;
+    }
+
     private Texture? GetSourcePhongExponent(Material material)
     {
         return material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness
@@ -238,26 +258,44 @@ internal sealed class SourceMaterialCompiler
             : material.SpecularTexture;
     }
 
-    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material)
+    private static SourcePhongSettings PhongSettings(Material material)
     {
-        var settings = SourcePhongSettings.For(material);
+        if (!HasMetalness(material))
+        {
+            return SourcePhongSettings.For(material);
+        }
+
+        var (metalness, gloss) = material.SpecularTexture!.AverageMetalAndGloss();
+        return SourcePhongSettings.For(metalness, gloss);
+    }
+
+    private static void WritePhongParameters(StreamWriter writer, string specularTexturePath, Material material, SourcePhongSettings settings)
+    {
+
 
         writer.WriteLine("    \"$phong\" \"1\"");
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponenttexture\" \"{specularTexturePath}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
+        if (HasMetalness(material))
+        {
+            // The exponent texture's green channel holds metalness, so metal highlights take the
+            // colour of the surface the way a metal's reflections do.
+            writer.WriteLine("    \"$phongalbedotint\" \"1\"");
+        }
     }
 
     // See MDLExporter.WriteEnvmapParameters for rationale.
     private static void WriteEnvmapParameters(
         StreamWriter writer,
+        string envmapTint,
         string? standaloneMaskPath = null,
         bool normalMapAlphaMask = false)
     {
         writer.WriteLine("    \"$envmap\" \"env_cubemap\"");
         writer.WriteLine("    \"$envmapfresnel\" \"1\"");
-        writer.WriteLine("    \"$envmaptint\" \"[0.5 0.5 0.5]\"");
+        writer.WriteLine(FormattableString.Invariant($"    \"$envmaptint\" \"{envmapTint}\""));
         if (normalMapAlphaMask)
         {
             writer.WriteLine("    \"$normalmapalphaenvmapmask\" \"1\"");

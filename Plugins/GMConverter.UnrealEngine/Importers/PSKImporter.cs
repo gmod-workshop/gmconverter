@@ -969,9 +969,11 @@ internal sealed class PSKImporter : IModelImporter
             System.Numerics.Vector2? bakedUv0Scale = null;
             var sidecarSettings = SidecarMaterialSettings.Default;
             string? materialAlias = null;
+            UnrealMaskPacking? specularPacking = null;
             if (TryGetLocalSidecar(material, meshPath, ".json", out var localCueMaterialPath))
             {
                 var cueMaterial = ReadCueMaterial(localCueMaterialPath);
+                specularPacking = cueMaterial.SpecularPacking;
                 references = cueMaterial.Textures;
                 colors = cueMaterial.Colors;
                 bakedUv0Scale = cueMaterial.BakedUv0Scale;
@@ -992,6 +994,7 @@ internal sealed class PSKImporter : IModelImporter
             else if (TryGetSidecar(_cueMaterialSidecars, material, out var cueMaterialPath))
             {
                 var cueMaterial = ReadCueMaterial(cueMaterialPath);
+                specularPacking = cueMaterial.SpecularPacking;
                 references = cueMaterial.Textures;
                 colors = cueMaterial.Colors;
                 bakedUv0Scale = cueMaterial.BakedUv0Scale;
@@ -1041,6 +1044,10 @@ internal sealed class PSKImporter : IModelImporter
                 }
                 normalTexture = TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Normal, hasAlpha: false);
                 specularTexture = TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Specular, hasAlpha: false);
+                if (specularPacking == UnrealMaskPacking.MetallicRoughness && specularTexture is not null)
+                {
+                    specularTexture = UnrealMaskTextures.ToSpecularMasks(specularTexture, _textureFactory);
+                }
                 emissiveTexture = ShouldResolveCueEmissive(materialContext)
                     ? TryLoadCueMaterialTexture(materialContext, references, CueTextureKind.Emissive, hasAlpha: false)
                     : null;
@@ -2180,7 +2187,15 @@ internal sealed class PSKImporter : IModelImporter
                 };
             }
 
-            return new CueMaterial(references, colors, bakedUv0Scale, materialAlias, blendSettings);
+            // Games that pack their masks their own way say so; others use Unreal's SpecularMasks layout.
+            UnrealMaskPacking? specularPacking =
+                document.RootElement.TryGetProperty("SpecularPacking", out var packingEl) &&
+                packingEl.ValueKind is JsonValueKind.String &&
+                Enum.TryParse<UnrealMaskPacking>(packingEl.GetString(), ignoreCase: true, out var packing)
+                    ? packing
+                    : null;
+
+            return new CueMaterial(references, colors, bakedUv0Scale, materialAlias, blendSettings, specularPacking);
         }
 
         private static bool TryReadCueMaterialColor(JsonElement element, out CueMaterialColor color)
@@ -2272,7 +2287,8 @@ internal sealed class PSKImporter : IModelImporter
             Dictionary<string, CueMaterialColor> Colors,
             System.Numerics.Vector2? BakedUv0Scale = null,
             string? MaterialAlias = null,
-            SidecarMaterialSettings? BlendSettingsOverride = null)
+            SidecarMaterialSettings? BlendSettingsOverride = null,
+            UnrealMaskPacking? SpecularPacking = null)
         {
             public SidecarMaterialSettings BlendSettings => BlendSettingsOverride ?? SidecarMaterialSettings.Default;
         }

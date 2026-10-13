@@ -104,5 +104,7 @@ internal sealed class GarrysModProfile : ISourceProfile
         return activities;
     }
 
+    public IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip) => SourceAnimationEvents.For(clip);
+
     public SourcePoseParameter? GetPoseParameter(BlendAxis axis) => SourcePoseParameters.For(axis);
 }

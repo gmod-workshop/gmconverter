@@ -258,6 +258,8 @@ MDL output targets Garry's Mod by default, which adds the attachments Garry's Mo
 
 Garry's Mod and other Source games choose animations by *activity*. When the game an animation comes from is known (`--game`, or set from the Explorer in the GUI), GMConverter works out what each animation is for from its name and gives its sequence the matching activity: idles, walks, runs, turns, attacks, flinches and deaths. Unreal names such as `A_B1_2HRifle_Run_F` (a rifle run, forward) are recognised; starts, stops, transitions, aim poses and additive layers get no activity. NPC activities are used by default; set the Garry's Mod character use to `player` or `both` for player models.
 
+Animation notifies come along too. Footsteps become `AE_NPC_LEFTFOOT` / `AE_NPC_RIGHTFOOT` events, which NPC code turns into step sounds for the surface underfoot, and notifies that play a sound (Unreal sounds or Wwise events) become `AE_CL_PLAYSOUND` events naming that sound.
+
 If a guess is wrong, override it with `--role clip=role` in the CLI, or in the GUI's **Animation roles** table, which lists the animations after you load a preview. Use `--target source`, or choose **Other Source game** as the **Target game** in the GUI, for plain output for other Source games.
 
 Copy the generated `models` and `materials` folders from the output directory into your Garry's Mod add-on or game content folder.

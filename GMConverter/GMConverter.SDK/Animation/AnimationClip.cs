@@ -20,6 +20,7 @@ namespace GMConverter.SDK.Animation;
 /// What the clip is for (a rifle run, a death), when the importer or the source game's profile can
 /// tell; null otherwise. Exporters use it to pick the clips game code plays for each action.
 /// </param>
+/// <param name="Events">Things that happen at moments in the clip, such as footsteps and sounds, in time order.</param>
 public sealed record AnimationClip(
     string Name,
     float FrameRate,
@@ -28,4 +29,5 @@ public sealed record AnimationClip(
     AnimationLayering? Layering = null,
     bool RootMotion = false,
     bool Loops = false,
-    AnimationRole? Role = null);
+    AnimationRole? Role = null,
+    IReadOnlyList<AnimationEvent>? Events = null);

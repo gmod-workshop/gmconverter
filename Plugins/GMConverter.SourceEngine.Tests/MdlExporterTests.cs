@@ -362,6 +362,36 @@ public sealed class MdlExporterTests
         Assert.DoesNotContain("$eyeposition", Qc(model with { Attachments = null }));
     }
 
+    [Fact]
+    public void AnimationEventsBecomeQcEvents()
+    {
+        var walk = new AnimationClip(
+            "walk",
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            Events:
+            [
+                new AnimationEvent(0.1f, AnimationEventKind.Sound, "Servo_Whir"),
+                new AnimationEvent(0.4f, AnimationEventKind.Footstep, Bone: "ball_l"),
+                new AnimationEvent(0.9f, AnimationEventKind.Footstep, Bone: "foot_r"),
+                new AnimationEvent(0.5f, AnimationEventKind.Footstep, Bone: "tail"),
+                new AnimationEvent(0.6f, AnimationEventKind.FireWeapon),
+                new AnimationEvent(5f, AnimationEventKind.Sound, "Late"),
+            ]);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with { Animations = [walk] };
+        string Qc(string? target) => File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model, targetGameId: target), "*.qc", SearchOption.AllDirectories).Single()).ReplaceLineEndings("\n");
+
+        var qc = Qc("garrysmod");
+        Assert.Contains("    { event AE_CL_PLAYSOUND 3 \"Servo_Whir\" }\n    { event AE_NPC_LEFTFOOT 12 \"\" }\n    { event AE_NPC_RIGHTFOOT 27 \"\" }\n", qc);
+        // Events past the end are clamped onto the last frame.
+        Assert.Contains("{ event AE_CL_PLAYSOUND 30 \"Late\" }", qc);
+        // A foot that isn't left or right, and firing, have no shared Source event.
+        Assert.Equal(4, qc.Split("{ event ").Length - 1);
+        Assert.DoesNotContain("{ event", Qc(null));
+    }
+
     // One triangle 1 m across, fully weighted to a single root bone with the given rotation.
     private static Model CreateSkinnedTriangle(Quaternion rootRotation)
     {

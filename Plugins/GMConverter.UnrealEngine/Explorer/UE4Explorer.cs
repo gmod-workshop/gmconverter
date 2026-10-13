@@ -419,8 +419,11 @@ public sealed class UE4Explorer : IExplorer
     // single pose to record, so those clips stay plain baked animations.
     private static void WriteClipSidecar(UAnimSequence sequence, string psaPath)
     {
-        var clip = new PSAClipSidecar(sequence.GetOrDefault("bEnableRootMotion", false), sequence.GetOrDefault("bLoop", false));
-        if (clip.RootMotion || clip.Loops)
+        var clip = new PSAClipSidecar(
+            sequence.GetOrDefault("bEnableRootMotion", false),
+            sequence.GetOrDefault("bLoop", false),
+            UnrealNotifyReader.Read(sequence));
+        if (clip.HasData)
         {
             clip.Write(psaPath);
         }

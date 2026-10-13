@@ -182,6 +182,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         var target = SourceProfiles.Find(context.TargetGameId);
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
+            clip => target?.GetEvents(clip) ?? [],
             axis => target?.GetPoseParameter(axis));
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
@@ -643,6 +644,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         (AnimationClip Clip, string SmdPath)[] animationSmdPaths,
         Dictionary<AnimationPose, string> basePoseSmdPaths,
         Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities,
+        Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
         Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
     {
         var smdFileName = $"{safeBaseName}.smd";
@@ -680,15 +682,16 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             // Game code plays sequences by activity. A clip with several activities is written once
             // per activity, since a sequence holds only one.
             var activities = getActivities(clip);
+            var events = getEvents(clip);
             if (activities.Count == 0)
             {
-                WriteSequence(writer, model, clip, animationSmdPath, clip.Name, activity: null, basePoseSmdPaths);
+                WriteSequence(writer, model, clip, animationSmdPath, clip.Name, activity: null, events, basePoseSmdPaths);
                 continue;
             }
 
             foreach (var activity in activities)
             {
-                WriteSequence(writer, model, clip, animationSmdPath, clip.Name + activity.SequenceSuffix, activity.Name, basePoseSmdPaths);
+                WriteSequence(writer, model, clip, animationSmdPath, clip.Name + activity.SequenceSuffix, activity.Name, events, basePoseSmdPaths);
             }
         }
 
@@ -731,12 +734,21 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         string animationSmdPath,
         string sequenceName,
         string? activity,
+        IReadOnlyList<SourceAnimationEvent> events,
         Dictionary<AnimationPose, string> basePoseSmdPaths)
     {
         var playbackOptions = GetPlaybackOptions(model, clip);
         if (activity is not null)
         {
             playbackOptions.Insert(0, $"activity {activity} 1");
+        }
+
+        var lastFrame = GetLastAnimationFrame(clip, clip.Tracks.OfType<BoneTransformTrack>());
+        foreach (var animationEvent in events)
+        {
+            var frame = Math.Clamp(ToAnimationFrame(animationEvent.TimeSeconds, clip.FrameRate), 0, Math.Max(lastFrame, 0));
+            playbackOptions.Add(FormattableString.Invariant(
+                $"{{ event {animationEvent.Name} {frame} \"{EscapeQcString(animationEvent.Options)}\" }}"));
         }
 
         if (clip.Layering is null && playbackOptions.Count == 0)

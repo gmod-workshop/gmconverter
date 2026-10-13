@@ -1,6 +1,3 @@
-using System.IO.Compression;
-using System.Net.Http.Headers;
-using System.Text.Json;
 using GMConverter.SDK.Common;
 
 namespace GMConverter.SourceEngine.Tools;
@@ -9,7 +6,7 @@ internal sealed record SourceToolPaths(
     string StudioMdlPath,
     string? VtfCmdPath)
 {
-    private const string _vtfEditLatestReleaseApiUrl = "https://api.github.com/repos/Sky-rym/VTFEdit-Reloaded/releases/latest";
+    private const string _vtfEditRepository = "Sky-rym/VTFEdit-Reloaded";
     private const string _studioMdlMainZipUrl = "https://github.com/DeadZoneLuna/StudioMDL-CE/archive/refs/heads/main.zip";
 
     public bool CanCompileMaterials => !string.IsNullOrWhiteSpace(VtfCmdPath);
@@ -21,8 +18,8 @@ internal sealed record SourceToolPaths(
     public static (string? StudioMdl, string? VtfCmd) TryFindLocalDefaults()
     {
         return (
-            FindStudioMdl(GetToolDirectory("studiomdl-ce")),
-            FindExecutable(GetToolDirectory("vtfedit-reloaded"), "VTFCmd.exe"));
+            FindStudioMdl(ToolDownloads.GetToolDirectory("studiomdl-ce")),
+            ToolDownloads.FindExecutable(ToolDownloads.GetToolDirectory("vtfedit-reloaded"), "VTFCmd.exe"));
     }
 
     public static SourceToolPaths Resolve(string? studioMdlPath, string? vtfCmdPath, bool requireVtfCmd)
@@ -42,7 +39,7 @@ internal sealed record SourceToolPaths(
     {
         if (!string.IsNullOrWhiteSpace(overridePath))
         {
-            return RequireExecutable(overridePath, executableName);
+            return ToolDownloads.RequireExecutable(overridePath, executableName);
         }
 
         return ensureDefaultToolAsync().GetAwaiter().GetResult();
@@ -52,30 +49,19 @@ internal sealed record SourceToolPaths(
     {
         return string.IsNullOrWhiteSpace(overridePath)
             ? null
-            : RequireExecutable(overridePath, executableName);
-    }
-
-    private static string RequireExecutable(string path, string executableName)
-    {
-        string fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
-        if (!File.Exists(fullPath))
-        {
-            throw new GMConverterException($"{executableName} not found: {fullPath}");
-        }
-
-        return fullPath;
+            : ToolDownloads.RequireExecutable(overridePath, executableName);
     }
 
     private static async Task<string> EnsureStudioMdlAsync()
     {
-        string toolDirectory = GetToolDirectory("studiomdl-ce");
+        string toolDirectory = ToolDownloads.GetToolDirectory("studiomdl-ce");
         string? existingPath = FindStudioMdl(toolDirectory);
         if (existingPath is not null)
         {
             return existingPath;
         }
 
-        await DownloadAndExtractAsync(_studioMdlMainZipUrl, toolDirectory);
+        await ToolDownloads.DownloadAndExtractAsync(_studioMdlMainZipUrl, toolDirectory);
 
         return FindStudioMdl(toolDirectory) ??
             throw new GMConverterException($"Downloaded StudioMDL-CE, but cestudiomdl.exe was not found in {toolDirectory}.");
@@ -83,30 +69,20 @@ internal sealed record SourceToolPaths(
 
     private static async Task<string> EnsureVtfCmdAsync()
     {
-        string toolDirectory = GetToolDirectory("vtfedit-reloaded");
-        string? existingPath = FindExecutable(toolDirectory, "VTFCmd.exe");
+        string toolDirectory = ToolDownloads.GetToolDirectory("vtfedit-reloaded");
+        string? existingPath = ToolDownloads.FindExecutable(toolDirectory, "VTFCmd.exe");
         if (existingPath is not null)
         {
             return existingPath;
         }
 
-        string archiveUrl = await GetLatestVtfEditArchiveUrlAsync();
-        await DownloadAndExtractAsync(archiveUrl, toolDirectory);
+        string archiveUrl = await ToolDownloads.GetLatestReleaseAssetUrlAsync(
+            _vtfEditRepository,
+            name => name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+        await ToolDownloads.DownloadAndExtractAsync(archiveUrl, toolDirectory);
 
-        return FindExecutable(toolDirectory, "VTFCmd.exe") ??
+        return ToolDownloads.FindExecutable(toolDirectory, "VTFCmd.exe") ??
             throw new GMConverterException($"Downloaded VTFEdit Reloaded, but VTFCmd.exe was not found in {toolDirectory}.");
-    }
-
-    private static string GetToolsDirectory()
-    {
-        string baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
-        return Path.Join(baseDirectory, GetPathSegment("tools"));
-    }
-
-    private static string GetToolDirectory(string toolName)
-    {
-        string segment = GetPathSegment(toolName);
-        return Path.Join(GetToolsDirectory(), segment);
     }
 
     private static string? FindStudioMdl(string rootDirectory)
@@ -121,102 +97,6 @@ internal sealed record SourceToolPaths(
             .FirstOrDefault(path => path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) &&
                 !path.Contains($"{Path.DirectorySeparatorChar}x64{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
 
-        return x86Path ?? FindExecutable(rootDirectory, "cestudiomdl.exe");
-    }
-
-    private static string? FindExecutable(string rootDirectory, string executableName)
-    {
-        return Directory.Exists(rootDirectory)
-            ? Directory.EnumerateFiles(rootDirectory, executableName, SearchOption.AllDirectories).FirstOrDefault()
-            : null;
-    }
-
-    private static async Task<string> GetLatestVtfEditArchiveUrlAsync()
-    {
-        using HttpClient client = CreateHttpClient();
-        await using Stream stream = await client.GetStreamAsync(_vtfEditLatestReleaseApiUrl);
-        using JsonDocument document = await JsonDocument.ParseAsync(stream);
-
-        foreach (JsonElement asset in document.RootElement.GetProperty("assets").EnumerateArray())
-        {
-            string? name = asset.GetProperty("name").GetString();
-            string? downloadUrl = asset.GetProperty("browser_download_url").GetString();
-            if (name is not null &&
-                downloadUrl is not null &&
-                name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                return downloadUrl;
-            }
-        }
-
-        throw new GMConverterException("The latest VTFEdit Reloaded release does not contain a zip asset.");
-    }
-
-    private static async Task DownloadAndExtractAsync(string archiveUrl, string targetDirectory)
-    {
-        targetDirectory = Path.GetFullPath(targetDirectory);
-        Directory.CreateDirectory(targetDirectory);
-        string archivePath = Path.Join(targetDirectory, GetPathSegment("download.zip"));
-        string extractDirectory = Path.Join(targetDirectory, GetPathSegment("extracting"));
-
-        if (Directory.Exists(extractDirectory))
-        {
-            Directory.Delete(extractDirectory, recursive: true);
-        }
-
-        Directory.CreateDirectory(extractDirectory);
-
-        using (HttpClient client = CreateHttpClient())
-        await using (Stream archiveStream = await client.GetStreamAsync(archiveUrl))
-        await using (FileStream fileStream = File.Create(archivePath))
-        {
-            await archiveStream.CopyToAsync(fileStream);
-        }
-
-        ZipFile.ExtractToDirectory(archivePath, extractDirectory, overwriteFiles: true);
-        File.Delete(archivePath);
-
-        foreach (string path in Directory.EnumerateFileSystemEntries(extractDirectory))
-        {
-            string entryName = GetPathSegment(path);
-            string destination = Path.Join(targetDirectory, entryName);
-            if (Directory.Exists(destination))
-            {
-                Directory.Delete(destination, recursive: true);
-            }
-            else if (File.Exists(destination))
-            {
-                File.Delete(destination);
-            }
-
-            if (Directory.Exists(path))
-            {
-                Directory.Move(path, destination);
-            }
-            else
-            {
-                File.Move(path, destination);
-            }
-        }
-
-        Directory.Delete(extractDirectory, recursive: true);
-    }
-
-    private static string GetPathSegment(string path)
-    {
-        string? segment = Path.GetFileName(path);
-        if (string.IsNullOrWhiteSpace(segment) || Path.IsPathRooted(segment))
-        {
-            throw new GMConverterException($"Invalid path segment: {path}");
-        }
-
-        return segment;
-    }
-
-    private static HttpClient CreateHttpClient()
-    {
-        var client = new HttpClient();
-        client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("GMConverter", "1.0"));
-        return client;
+        return x86Path ?? ToolDownloads.FindExecutable(rootDirectory, "cestudiomdl.exe");
     }
 }

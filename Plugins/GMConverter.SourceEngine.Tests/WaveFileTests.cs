@@ -1,5 +1,4 @@
 using GMConverter.SDK.Audio;
-using GMConverter.SourceEngine.Audio;
 
 namespace GMConverter.SourceEngine.Tests;
 

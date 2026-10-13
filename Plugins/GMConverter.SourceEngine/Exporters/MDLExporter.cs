@@ -770,6 +770,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
     // Each gib spawns on its bone's current transform, which is where its mesh was cut from.
     // Garry's Mod's GibBreakClient and GibBreakServer spawn this list, as does a breaking prop.
+    // Without "burst" the engine's default pushes every piece out from the model's origin, so it
+    // bursts apart; at 0 the pieces only get the velocity the caller breaks it with, and fall apart.
     private static void WriteBreakList(StreamWriter writer, IReadOnlyList<(string BoneName, string ModelPath, string QcPath)> gibs)
     {
         writer.WriteLine("$collisiontext");
@@ -777,7 +779,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         foreach (var (boneName, gibModelPath, _) in gibs)
         {
             writer.WriteLine(FormattableString.Invariant(
-                $"    break {{ \"model\" \"{EscapeQcString(gibModelPath)}\" \"placementbone\" \"{EscapeQcString(boneName)}\" }}"));
+                $"    break {{ \"model\" \"{EscapeQcString(gibModelPath)}\" \"placementbone\" \"{EscapeQcString(boneName)}\" \"burst\" \"0\" }}"));
         }
 
         writer.WriteLine("}");

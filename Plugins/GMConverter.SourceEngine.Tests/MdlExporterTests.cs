@@ -259,8 +259,8 @@ public sealed class MdlExporterTests
         });
 
         var qc = File.ReadAllLines(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
-        Assert.Contains("    break { \"model\" \"models/gmconverter/triangle_gibs/root.mdl\" \"placementbone\" \"root\" }", qc);
-        Assert.Contains("    break { \"model\" \"models/gmconverter/triangle_gibs/head.mdl\" \"placementbone\" \"head\" }", qc);
+        Assert.Contains("    break { \"model\" \"models/gmconverter/triangle_gibs/root.mdl\" \"placementbone\" \"root\" \"burst\" \"0\" }", qc);
+        Assert.Contains("    break { \"model\" \"models/gmconverter/triangle_gibs/head.mdl\" \"placementbone\" \"head\" \"burst\" \"0\" }", qc);
         Assert.Equal(2, qc.Count(line => line.StartsWith("    break", StringComparison.Ordinal)));
 
         Assert.Equal(["triangle_gib_head.qc", "triangle_gib_root.qc"], Directory.GetFiles(output, "*_gib_*.qc").Select(Path.GetFileName).Order());

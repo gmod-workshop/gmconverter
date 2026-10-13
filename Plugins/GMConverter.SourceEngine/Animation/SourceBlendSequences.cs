@@ -160,13 +160,11 @@ internal static class SourceBlendSequences
 
     private static List<float> DistinctSorted(IEnumerable<float> values)
     {
+        // Where runs lazily, so each value is compared with the last line added so far.
         List<float> lines = [];
-        foreach (var value in values.Order())
+        foreach (var value in values.Order().Where(value => lines.Count == 0 || !Near(lines[^1], value)))
         {
-            if (lines.Count == 0 || !Near(lines[^1], value))
-            {
-                lines.Add(value);
-            }
+            lines.Add(value);
         }
 
         return lines;

@@ -22,6 +22,8 @@ internal sealed class OBJExporter : IModelExporter
 
     public ExportResult Export(Model model, ExportContext context)
     {
+        // OBJ has no body groups, so it gets the look the model shows by default.
+        model = model with { Meshes = model.DefaultMeshes, BodyGroups = null };
         var outputDirectory = context.OutputDirectory;
         var safeBaseName = NameHelpers.SanitizeFileName(context.BaseName);
         var materialPath = Path.Combine(outputDirectory, $"{safeBaseName}.mtl");

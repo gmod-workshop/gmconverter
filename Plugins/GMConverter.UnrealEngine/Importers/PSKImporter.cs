@@ -49,6 +49,15 @@ internal sealed class PSKImporter : IModelImporter
                 AllowsMultiple = true,
             },
         ]),
+        new OptionGroup("model", "Model",
+        [
+            new OptionDescriptor(PSKImporterOptions.VariantPath, OptionType.Path, "Variants")
+            {
+                Description = "Optional meshes made for the same skeleton (.psk, .pskx or .ue4scene) to add as options of a \"body\" body group, so the model can show any of them. Separate several files with ';'.",
+                Aliases = ["variant-path"],
+                AllowsMultiple = true,
+            },
+        ]),
     ]);
 
     public object Summarize(string inputPath)
@@ -62,7 +71,52 @@ internal sealed class PSKImporter : IModelImporter
         return PSKSummary.From(inputPath, PSKFile.Read(inputPath));
     }
 
-    public Model Import(ModelImportContext context) => PSKBlendSpaces.Attach(Parse(context.InputPath, context), context);
+    public Model Import(ModelImportContext context)
+    {
+        var model = PSKVariants.Attach(Parse(context.InputPath, context), OptionName(context.InputPath), ReadVariants(context));
+        return PSKBlendSpaces.Attach(model, context);
+    }
+
+    // Variants bring only their meshes and materials; the model's own animations, sockets and
+    // physics stay. A variant the Explorer exported keeps its material sidecars in its own
+    // folder, so a scene variant looks there instead of in the model's material folder.
+    private List<(string Name, Model Model)> ReadVariants(ModelImportContext context)
+    {
+        List<(string, Model)> variants = [];
+        var meshOnly = new OptionValues(new Dictionary<string, object?>());
+        foreach (var variantOption in context.Options.GetStrings(PSKImporterOptions.VariantPath))
+        {
+            var variantPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(variantOption));
+            if (!File.Exists(variantPath))
+            {
+                throw new GMConverterException($"Variant file not found: {variantPath}");
+            }
+
+            if (!FileExtensions.Contains(Path.GetExtension(variantPath), StringComparer.OrdinalIgnoreCase))
+            {
+                throw new GMConverterException($"Expected a {string.Join(" or ", FileExtensions)} variant: {variantPath}");
+            }
+
+            var materials = IsSceneManifest(variantPath)
+                ? new MaterialResolveOptions(Path.GetDirectoryName(variantPath)!)
+                : context.Materials;
+            variants.Add((OptionName(variantPath), Parse(variantPath, context with { InputPath = variantPath, Materials = materials, Options = meshOnly })));
+        }
+
+        return variants;
+    }
+
+    // What a body group option showing this file is called: the asset's own name. The Explorer
+    // names scene manifests after the whole object path, so a one-part scene uses its part's name.
+    private static string OptionName(string inputPath)
+    {
+        if (IsSceneManifest(inputPath) && ReadSceneManifest(inputPath).Entries is [var only])
+        {
+            return Path.GetFileNameWithoutExtension(only.Path.Replace('\\', '/').Split('/')[^1]);
+        }
+
+        return Path.GetFileNameWithoutExtension(inputPath);
+    }
 
     private Model Parse(string inputPath, ModelImportContext options)
     {

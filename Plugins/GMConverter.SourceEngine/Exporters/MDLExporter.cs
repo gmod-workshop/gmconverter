@@ -163,7 +163,15 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         Directory.CreateDirectory(materialDirectory);
 
-        WriteSmd(model, smdPath);
+        var bodyParts = SourceBodyParts.Plan(model, safeBaseName);
+        foreach (var option in bodyParts.SelectMany(part => part.Options))
+        {
+            if (option.SmdFileName is { } smdFileName)
+            {
+                WriteSmd(model, Path.Combine(outputDirectory, smdFileName), option.Meshes);
+            }
+        }
+
         if (physicsSmdPath is not null)
         {
             WritePhysicsSmd(model, physicsSmdPath, physicsOptions!);
@@ -180,7 +188,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         }
 
         var target = SourceProfiles.Find(context.TargetGameId);
-        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
+        WriteQc(qcPath, model, modelPath, bodyParts, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
             clip => target?.GetEvents(clip) ?? [],
             axis => target?.GetPoseParameter(axis));
@@ -271,7 +279,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         ProcessRunner.Run(studioMdlPath, [qcPath]);
     }
 
-    private static void WriteSmd(Model model, string smdPath)
+    private static void WriteSmd(Model model, string smdPath, IReadOnlyList<Mesh> meshes)
     {
         using var writer = new StreamWriter(smdPath, false, _utf8NoBom);
         writer.WriteLine("version 1");
@@ -289,7 +297,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             uvScales[material.Name] = material.BakedUv0Scale!.Value;
         }
 
-        foreach (var mesh in model.Meshes)
+        foreach (var mesh in meshes)
         {
             foreach (var submesh in mesh.Submeshes)
             {
@@ -637,7 +645,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         string qcPath,
         Model model,
         string modelPath,
-        string safeBaseName,
+        IReadOnlyList<SourceBodyPart> bodyParts,
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
@@ -647,11 +655,10 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
         Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
     {
-        var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
 
         writer.WriteLine(FormattableString.Invariant($"$modelname \"{modelPath.Replace('\\', '/')}\""));
-        writer.WriteLine(FormattableString.Invariant($"$body \"body\" \"{smdFileName}\""));
+        WriteBodyParts(writer, bodyParts);
         foreach (var materialRelativeDirectory in materialRelativeDirectories)
         {
             writer.WriteLine(FormattableString.Invariant($"$cdmaterials \"{materialRelativeDirectory.Replace('\\', '/')}\""));
@@ -668,7 +675,9 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         WriteEyePosition(writer, model);
         WriteHitboxes(writer, model);
 
-        writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
+        // Every reference SMD carries the whole skeleton in its bind pose, so any of them is the idle.
+        var idleSmd = bodyParts.SelectMany(part => part.Options).First(option => option.SmdFileName is not null).SmdFileName;
+        writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", idleSmd);
 
         // Base poses are plain $animations, so they can be subtracted without showing up as sequences.
         foreach (var basePoseSmdPath in basePoseSmdPaths.Values)
@@ -966,6 +975,27 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         {
             writer.WriteLine(FormattableString.Invariant(
                 $"$hbox {SourceHitGroups.FromBoneName(bone.Name)} \"{EscapeQcString(bone.Name)}\" {Clean(bounds.Min.X)} {Clean(bounds.Min.Y)} {Clean(bounds.Min.Z)} {Clean(bounds.Max.X)} {Clean(bounds.Max.Y)} {Clean(bounds.Max.Z)}"));
+        }
+    }
+
+    private static void WriteBodyParts(StreamWriter writer, IReadOnlyList<SourceBodyPart> bodyParts)
+    {
+        foreach (var part in bodyParts)
+        {
+            if (!part.IsGroup)
+            {
+                writer.WriteLine(FormattableString.Invariant($"$body \"{EscapeQcString(part.Name)}\" \"{part.Options[0].SmdFileName}\""));
+                continue;
+            }
+
+            writer.WriteLine(FormattableString.Invariant($"$bodygroup \"{EscapeQcString(part.Name)}\""));
+            writer.WriteLine("{");
+            foreach (var option in part.Options)
+            {
+                writer.WriteLine(option.SmdFileName is { } smdFileName ? $"    studio \"{smdFileName}\"" : "    blank");
+            }
+
+            writer.WriteLine("}");
         }
     }
 

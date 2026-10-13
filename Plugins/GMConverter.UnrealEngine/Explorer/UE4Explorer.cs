@@ -197,6 +197,16 @@ public sealed class UE4Explorer : IExplorer
 
     public ExplorerResolvedEntry ResolveEntry(ExplorerFileEntry fileEntry)
     {
+        var resolved = ResolveEntryCore(fileEntry);
+        // A skeletal mesh can join another model made for the same skeleton as a body group option.
+        // Set here rather than cached, so entries exported before this existed can be added too.
+        return string.Equals(fileEntry.AssetClass, "SkeletalMesh", StringComparison.OrdinalIgnoreCase)
+            ? resolved with { VariantImporterOptions = PSKImporterOptions.AsVariant(resolved.InputPath) }
+            : resolved;
+    }
+
+    private ExplorerResolvedEntry ResolveEntryCore(ExplorerFileEntry fileEntry)
+    {
         using var resolveScope = PerfTimer.Measure("ue4.resolve", "ResolveEntry", fileEntry.ArchiveEntryPath);
 
         if (fileEntry.ArchivePath is null || fileEntry.ArchiveEntryPath is null)

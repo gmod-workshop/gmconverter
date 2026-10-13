@@ -137,6 +137,24 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
                 Aliases = ["coacd-max-hull-vertices", "max-hull-vertices"],
             },
         ]),
+        new OptionGroup("gibs", "Gibs",
+        [
+            new OptionDescriptor("gibs:enabled", OptionType.Bool, "Generate gibs")
+            {
+                DefaultValue = false,
+                Description = "Cut the model into one physics prop per collision body, for it to break into. The break list needs Generate physics.",
+                Aliases = ["gibs"],
+            },
+            new OptionDescriptor("gibs:minSize", OptionType.Float, "Minimum gib size (cm)")
+            {
+                Minimum = 0m,
+                Maximum = 1000m,
+                Increment = 1m,
+                DefaultValue = 10f,
+                Description = "Pieces smaller than a cube this size join their parent piece, like fingers joining the hand.",
+                Aliases = ["gib-min-size"],
+            },
+        ]),
     ]);
 
     public ExportResult Export(Model model, ExportContext context)
@@ -179,11 +197,17 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             WriteAnimationSmd(model, CreatePoseClip(pose), basePoseSmdPath);
         }
 
+        // Gibs are written before anything compiles, and compiled after the model.
+        var gibs = options.Gibs is { } gibOptions
+            ? WriteGibs(model, outputDirectory, safeBaseName, modelPath, materialRelativeDirectories, gibOptions, physicsOptions?.Mass ?? 100f)
+            : [];
+
         var target = SourceProfiles.Find(context.TargetGameId);
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
             clip => target?.GetEvents(clip) ?? [],
-            axis => target?.GetPoseParameter(axis));
+            axis => target?.GetPoseParameter(axis),
+            gibs);
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -196,7 +220,12 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
         Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
-        return new ExportResult([qcPath]);
+        foreach (var gib in gibs)
+        {
+            RunStudioMdl(sourceTools.StudioMdlPath, gib.QcPath);
+        }
+
+        return new ExportResult([qcPath, .. gibs.Select(gib => gib.QcPath)]);
     }
 
     // Binds the host's option bag into the strongly-typed MDLExportOptions the rest of this
@@ -230,13 +259,18 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             MaxTextureSize: o.GetInt("material:maxTextureSize"),
             DeduplicateTextures: o.GetBool("material:deduplicateTextures"));
 
+        var gibs = o.GetBool("gibs:enabled")
+            ? new GibOptions(MinimumSize: o.GetFloat("gibs:minSize", 10f) / 100f)
+            : null;
+
         return new MDLExportOptions(
             ModelPath: modelPath,
             StudioMdlPath: o.GetString("studioMdlPath"),
             VtfCmdPath: o.GetString("vtfCmdPath"),
             BuildMaterials: o.GetBool("buildMaterials", defaultValue: true),
             Physics: physics,
-            MaterialOptimization: material);
+            MaterialOptimization: material,
+            Gibs: gibs);
     }
 
     private void Compile(
@@ -645,7 +679,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Dictionary<AnimationPose, string> basePoseSmdPaths,
         Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities,
         Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
-        Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
+        Func<BlendAxis, SourcePoseParameter?> getPoseParameter,
+        IReadOnlyList<(string BoneName, string ModelPath, string QcPath)>? gibs = null)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
@@ -725,6 +760,70 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant($"    $mass {(physicsOptions?.Mass ?? 100.0f):0.###}"));
             writer.WriteLine("}");
         }
+
+        // The break list is stored with the collision, so a model without collision can't carry one.
+        if (physicsSmdPath is not null && gibs is { Count: > 0 })
+        {
+            WriteBreakList(writer, gibs);
+        }
+    }
+
+    // Each gib spawns on its bone's current transform, which is where its mesh was cut from.
+    // Garry's Mod's GibBreakClient and GibBreakServer spawn this list, as does a breaking prop.
+    private static void WriteBreakList(StreamWriter writer, IReadOnlyList<(string BoneName, string ModelPath, string QcPath)> gibs)
+    {
+        writer.WriteLine("$collisiontext");
+        writer.WriteLine("{");
+        foreach (var (boneName, gibModelPath, _) in gibs)
+        {
+            writer.WriteLine(FormattableString.Invariant(
+                $"    break {{ \"model\" \"{EscapeQcString(gibModelPath)}\" \"placementbone\" \"{EscapeQcString(boneName)}\" }}"));
+        }
+
+        writer.WriteLine("}");
+    }
+
+    // Writes each gib's SMDs and QC next to the model's (studiomdl writes each MDL relative to its
+    // QC), and returns where each one goes in game: models/<model>_gibs/<bone>.mdl. The model's
+    // mass is shared out by hull volume.
+    private static List<(string BoneName, string ModelPath, string QcPath)> WriteGibs(
+        Model model,
+        string outputDirectory,
+        string safeBaseName,
+        string modelPath,
+        IReadOnlyList<string> materialRelativeDirectories,
+        GibOptions gibOptions,
+        float mass)
+    {
+        if (GetRagdoll(model) is not var (skeleton, physics))
+        {
+            return [];
+        }
+
+        var worlds = BuildSourceWorldTransforms(skeleton);
+        var gibs = SourceGibs.Split(model, skeleton, physics, worlds.Original, worlds.Source, gibOptions.MinimumSize);
+        var totalVolume = MathF.Max(gibs.Sum(gib => gib.Volume), 1e-9f);
+        var modelStem = modelPath.Replace('\\', '/');
+        modelStem = modelStem.EndsWith(".mdl", StringComparison.OrdinalIgnoreCase) ? modelStem[..^4] : modelStem;
+
+        List<(string BoneName, string ModelPath, string QcPath)> written = [];
+        foreach (var gib in gibs)
+        {
+            var name = $"{safeBaseName}_gib_{NameHelpers.SanitizeFileName(gib.BoneName)}";
+            var gibModelPath = $"{modelStem}_gibs/{NameHelpers.SanitizeMaterialName(gib.BoneName)}.mdl";
+            var smdPath = Path.Combine(outputDirectory, $"{name}.smd");
+            var physicsSmdPath = Path.Combine(outputDirectory, $"{name}_phys.smd");
+            var qcPath = Path.Combine(outputDirectory, $"{name}.qc");
+            var gibPhysics = new PhysicsOptions(PhysicsMode.Auto, MathF.Max(mass * gib.Volume / totalVolume, 0.1f), null);
+
+            WriteSmd(gib.Model, smdPath);
+            WritePhysicsSmd(gib.Model, physicsSmdPath, gibPhysics);
+            WriteQc(qcPath, gib.Model, gibModelPath, name, materialRelativeDirectories, physicsSmdPath, gibPhysics, [], [],
+                _ => [], _ => [], _ => null);
+            written.Add((gib.BoneName, "models/" + gibModelPath, qcPath));
+        }
+
+        return written;
     }
 
     private static void WriteSequence(

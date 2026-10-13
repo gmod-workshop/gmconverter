@@ -224,6 +224,60 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void GibsAreCutPerBodyInTheirBonesSpaceAndListedForBreaking()
+    {
+        // A triangle on the head 1 m up, and a finger 5 cm long under the head with its own body.
+        var ragdoll = CreateRagdoll();
+        var finger = new Bone(2, "finger", 1, new Transform(new Vector3(0.1f, 0, 0), Quaternion.Identity, Vector3.One));
+        VertexBoneWeight[] onHead = [new(1, 1f)];
+        VertexBoneWeight[] onFinger = [new(2, 0.8f), new(1, 0.2f)];
+        var headMesh = new Mesh(
+            [
+                new(new Vector3(0, 0, 1), Vector3.UnitZ, Vector2.Zero, onHead),
+                new(new Vector3(0.2f, 0, 1), Vector3.UnitZ, Vector2.UnitX, onHead),
+                new(new Vector3(0, 0.2f, 1), Vector3.UnitZ, Vector2.UnitY, onHead),
+                new(new Vector3(0.1f, 0, 1), Vector3.UnitZ, Vector2.Zero, onFinger),
+                new(new Vector3(0.15f, 0, 1), Vector3.UnitZ, Vector2.UnitX, onFinger),
+                new(new Vector3(0.1f, 0.03f, 1), Vector3.UnitZ, Vector2.UnitY, onFinger),
+            ],
+            [new Submesh("test", [new Triangle(0, 1, 2), new Triangle(3, 4, 5)])]);
+        var model = ragdoll with
+        {
+            Meshes = [.. ragdoll.Meshes, headMesh],
+            Skeleton = new Skeleton([.. ragdoll.Skeleton!.Bones, finger]),
+            Physics = ragdoll.Physics! with
+            {
+                Bodies = [.. ragdoll.Physics.Bodies, new PhysicsBody(2, [new BoxShape(Transform.Identity, new Vector3(0.02f))])],
+            },
+        };
+
+        var output = ExportWithStubCompiler(model, new Dictionary<string, object?>
+        {
+            ["physics:enabled"] = true,
+            ["gibs:enabled"] = true,
+            ["gibs:minSize"] = 5f,
+        });
+
+        var qc = File.ReadAllLines(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        Assert.Contains("    break { \"model\" \"models/gmconverter/triangle_gibs/root.mdl\" \"placementbone\" \"root\" }", qc);
+        Assert.Contains("    break { \"model\" \"models/gmconverter/triangle_gibs/head.mdl\" \"placementbone\" \"head\" }", qc);
+        Assert.Equal(2, qc.Count(line => line.StartsWith("    break", StringComparison.Ordinal)));
+
+        Assert.Equal(["triangle_gib_head.qc", "triangle_gib_root.qc"], Directory.GetFiles(output, "*_gib_*.qc").Select(Path.GetFileName).Order());
+        var headQc = File.ReadAllLines(Path.Join(output, "triangle_gib_head.qc"));
+        Assert.Contains("$modelname \"gmconverter/triangle_gibs/head.mdl\"", headQc);
+        // The finger's body joins the head's, so the head gib has two hulls.
+        Assert.Contains("    $concave", headQc);
+
+        // The head's triangles sit on the head bone's origin rather than 1 m up.
+        var headSmd = File.ReadAllLines(Path.Join(output, "triangle_gib_head.smd"));
+        var heights = headSmd[(Array.IndexOf(headSmd, "triangles") + 1)..^1]
+            .Where(line => line != "test")
+            .Select(line => float.Parse(line.Split(' ')[3], CultureInfo.InvariantCulture));
+        Assert.All(heights, height => Assert.Equal(0f, height, 3));
+    }
+
+    [Fact]
     public void BoundsPhysicsModeIgnoresTheModelsBodies()
     {
         var output = ExportWithStubCompiler(CreateRagdoll(), new Dictionary<string, object?>

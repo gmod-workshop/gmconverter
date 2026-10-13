@@ -51,6 +51,11 @@ internal sealed class SourceMaterialCompiler
                 }
 
                 var baseTexture = SourceMaterialEmission.BaseTexture(material, _textureFactory);
+                if (HasMetalness(material))
+                {
+                    baseTexture = baseTexture.WithMetalDarkened(material.SpecularTexture!, _textureFactory);
+                }
+
                 var diffuseBasename = WriteOrReuse(
                     baseTexture,
                     material.Name,
@@ -231,6 +236,13 @@ internal sealed class SourceMaterialCompiler
         return material.DiffuseTexture is not null && material.SpecularTexture is not null;
     }
 
+    // Unreal SpecularMasks carry metalness in G, which Source can only approximate.
+    private static bool HasMetalness(Material material)
+    {
+        return material.SpecularTexture is not null &&
+            material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness;
+    }
+
     private Texture? GetSourcePhongExponent(Material material)
     {
         return material.SpecularTexturePacking == MaterialSpecularTexturePacking.SpecularMetallicRoughness
@@ -247,6 +259,12 @@ internal sealed class SourceMaterialCompiler
         writer.WriteLine(FormattableString.Invariant($"    \"$phongboost\" \"{settings.Boost}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongexponent\" \"{settings.Exponent}\""));
         writer.WriteLine(FormattableString.Invariant($"    \"$phongfresnelranges\" \"{settings.FresnelRanges}\""));
+        if (HasMetalness(material))
+        {
+            // The exponent texture's green channel holds metalness, so metal highlights take the
+            // colour of the surface the way a metal's reflections do.
+            writer.WriteLine("    \"$phongalbedotint\" \"1\"");
+        }
     }
 
     // See MDLExporter.WriteEnvmapParameters for rationale.

@@ -16,7 +16,7 @@ internal static class UE4ExportCache
 {
     // Bump when ResolveEntry's on-disk layout or the export sidecar shape changes in a way that
     // makes existing caches stale. Readers treat any mismatch as a miss and let the caller rebuild.
-    private const int _toolVersion = 10;
+    private const int _toolVersion = 11;
     private const string _sentinelFileName = "__export.cache.json";
 
     // Default per-archive cache cap. Conservative — Fortnite assets typically decode to 5-50 MB

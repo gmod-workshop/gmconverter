@@ -296,7 +296,7 @@ public sealed class UE4Explorer : IExplorer
                 throw new GMConverterException(CreateUnsupportedMeshMessage(sourceExport, fileEntry.ArchiveEntryPath));
             }
 
-            resolvedEntry = ExportResolvedScene(fileEntry, exportRoot, resolvedExports);
+            resolvedEntry = ExportResolvedScene(fileEntry, exportRoot, resolvedExports, providerContext.Profile.MaterialConventions);
         }
 
         UE4ExportCache.Write(
@@ -517,7 +517,8 @@ public sealed class UE4Explorer : IExplorer
     private static ExplorerResolvedEntry ExportResolvedScene(
         ExplorerFileEntry fileEntry,
         string exportRoot,
-        IReadOnlyList<ResolvedUnrealMesh> resolvedExports)
+        IReadOnlyList<ResolvedUnrealMesh> resolvedExports,
+        UnrealMaterialConventions materialConventions)
     {
         using var sceneScope = PerfTimer.Measure(
             "ue4.export",
@@ -581,11 +582,11 @@ public sealed class UE4Explorer : IExplorer
                     {
                         using (PerfTimer.Measure("ue4.export", "WriteResolvedMaterialOverrides", partDetail))
                         {
-                            WriteResolvedMaterialOverrides(resolvedExport, exportedPart.MeshPath, sessionCache);
+                            WriteResolvedMaterialOverrides(resolvedExport, exportedPart.MeshPath, sessionCache, materialConventions);
                         }
                         using (PerfTimer.Measure("ue4.export", "WriteTextureDataOverrides", partDetail))
                         {
-                            WriteTextureDataOverrides(resolvedExport, exportedPart.MeshPath, exportRoot, sessionCache);
+                            WriteTextureDataOverrides(resolvedExport, exportedPart.MeshPath, exportRoot, sessionCache, materialConventions);
                         }
                     }
                     catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -852,7 +853,8 @@ public sealed class UE4Explorer : IExplorer
         ResolvedUnrealMesh resolvedExport,
         string meshPath,
         string exportRoot,
-        ExportSessionCache sessionCache)
+        ExportSessionCache sessionCache,
+        UnrealMaterialConventions materialConventions)
     {
         if (resolvedExport.TextureData is not { Count: > 0 })
         {
@@ -896,7 +898,8 @@ public sealed class UE4Explorer : IExplorer
                     materialName,
                     Path.GetFileNameWithoutExtension(meshPath),
                     textures,
-                    sessionCache);
+                    sessionCache,
+                    materialConventions);
             }
 
             // Direct texture references from the TextureData entry are explicit UE assignments and
@@ -921,7 +924,8 @@ public sealed class UE4Explorer : IExplorer
     private static void WriteResolvedMaterialOverrides(
         ResolvedUnrealMesh resolvedExport,
         string meshPath,
-        ExportSessionCache sessionCache)
+        ExportSessionCache sessionCache,
+        UnrealMaterialConventions materialConventions)
     {
         var outputDirectory = Path.GetDirectoryName(meshPath);
         if (string.IsNullOrWhiteSpace(outputDirectory))
@@ -955,15 +959,17 @@ public sealed class UE4Explorer : IExplorer
                 }
 
                 Dictionary<string, string> textures = new(StringComparer.OrdinalIgnoreCase);
+                bool usesGameMask;
                 using (PerfTimer.Measure("ue4.export", "DumpMaterialTextureParameters", material.Name))
                 {
-                    DumpMaterialTextureParameters(
+                    usesGameMask = DumpMaterialTextureParameters(
                         parameters,
                         outputDirectory,
                         material.Name,
                         Path.GetFileNameWithoutExtension(meshPath),
                         textures,
-                        sessionCache);
+                        sessionCache,
+                        materialConventions);
                 }
 
                 var colors = SelectMaterialColors(parameters, material.Name);
@@ -978,7 +984,8 @@ public sealed class UE4Explorer : IExplorer
                     textures,
                     colors.Count == 0 ? null : new UnrealMaterialParameterOverride(colors),
                     blendMode,
-                    blendMode == _maskedSidecarBlendMode ? GetOpacityMaskClipValue(material) : null);
+                    blendMode == _maskedSidecarBlendMode ? GetOpacityMaskClipValue(material) : null,
+                    usesGameMask ? materialConventions.MaskPacking?.ToString() : null);
                 File.WriteAllText(materialPath, JsonSerializer.Serialize(sidecar, _sceneManifestJsonOptions));
 
                 WriteMaterialDebugDump(outputDirectory, material, parameters, textures);
@@ -1107,13 +1114,16 @@ public sealed class UE4Explorer : IExplorer
     //      gets `T_NobleCrest_Wing_D` instead of `T_NobleCrest_Generic_D`.
     // This combination gives "mostly automatic" coverage without needing a hand-curated class per
     // master material the way FortnitePorting's Blender plugin does.
-    private static void DumpMaterialTextureParameters(
+    // Returns whether the SpecularMasks channel came from the game's own conventions, whose
+    // packing then applies.
+    private static bool DumpMaterialTextureParameters(
         CMaterialParams2 parameters,
         string outputDirectory,
         string materialName,
         string meshName,
         Dictionary<string, string> textures,
-        ExportSessionCache sessionCache)
+        ExportSessionCache sessionCache,
+        UnrealMaterialConventions materialConventions)
     {
         foreach (var (paramName, reference) in parameters.Textures)
         {
@@ -1128,8 +1138,39 @@ public sealed class UE4Explorer : IExplorer
             }
         }
 
+        var usesGameMask = PromoteGameChannelAliases(textures, materialConventions);
         PromoteCanonicalChannelAliases(textures);
         PromoteCanonicalByTextureName(parameters, textures, materialName, meshName);
+        return usesGameMask;
+    }
+
+    // The game's own parameter names win over the generic guesses, since a master material's
+    // preview slots can point at another layer (Zero Company's point at the damage set). Stand-in
+    // textures that fill a game's unused slots are never taken.
+    private static bool PromoteGameChannelAliases(Dictionary<string, string> textures, UnrealMaterialConventions conventions)
+    {
+        var usesGameMask = false;
+        foreach (var (channel, aliases) in conventions.ChannelAliases)
+        {
+            foreach (var alias in aliases)
+            {
+                if (textures.TryGetValue(alias, out var textureName) && !IsPlaceholderTexture(textureName))
+                {
+                    textures[channel] = textureName;
+                    usesGameMask |= string.Equals(channel, FortniteMaterialAliases.SpecularMasksChannel, StringComparison.OrdinalIgnoreCase);
+                    break;
+                }
+            }
+        }
+
+        return usesGameMask;
+    }
+
+    private static bool IsPlaceholderTexture(string textureName)
+    {
+        return textureName.StartsWith("defaultvirtual", StringComparison.OrdinalIgnoreCase) ||
+            textureName.StartsWith("defaulttexture", StringComparison.OrdinalIgnoreCase) ||
+            textureName.StartsWith("t_flatwhite", StringComparison.OrdinalIgnoreCase);
     }
 
     // For each canonical channel (Diffuse/Normals/SpecularMasks/Emission), walk the priority-ordered
@@ -3205,7 +3246,8 @@ public sealed class UE4Explorer : IExplorer
         Dictionary<string, string> Textures,
         UnrealMaterialParameterOverride? Parameters = null,
         string? BlendMode = null,
-        float? AlphaCutoff = null);
+        float? AlphaCutoff = null,
+        string? SpecularPacking = null);
 
     private sealed record UnrealMaterialParameterOverride(Dictionary<string, UnrealMaterialColorOverride> Colors);
 

@@ -346,16 +346,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private static bool IsExportableAnimationEntry(ExplorerFileEntry entry)
     {
-        return entry.InputFormat.Equals("ueanim", StringComparison.OrdinalIgnoreCase) &&
-            IsExportableAnimationEntryClass(entry.AssetClass);
-    }
-
-    private static bool IsExportableAnimationEntryClass(string? assetClass)
-    {
-        return assetClass is not null &&
-            (assetClass.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) ||
-             assetClass.Equals("AnimMontage", StringComparison.OrdinalIgnoreCase) ||
-             assetClass.Equals("AnimComposite", StringComparison.OrdinalIgnoreCase));
+        return entry.Kind is ExplorerEntryKind.Animation && entry.CanAddToModel;
     }
 
     [RelayCommand(CanExecute = nameof(HasExplorerFilter))]
@@ -515,15 +506,14 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
-    // Only plain sequences: montages and composites mostly re-wrap those same sequences, so
-    // bundling them too would duplicate animations. They can still be added by hand.
+    // Only what the explorer marks for bundling, so wrappers that repeat other clips are skipped.
     private List<ExplorerFileEntry> FindCompatibleAnimations(ExplorerFileEntry entry)
     {
         return entry.SkeletonId is not { } skeletonId
             ? []
             : [.. _explorerEntries.Where(candidate =>
                 IsExportableAnimationEntry(candidate) &&
-                string.Equals(candidate.AssetClass, "AnimSequence", StringComparison.OrdinalIgnoreCase) &&
+                candidate.BundlesWithModel &&
                 string.Equals(candidate.SkeletonId, skeletonId, StringComparison.OrdinalIgnoreCase))];
     }
 
@@ -809,9 +799,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private static bool IsAnimationEntry(ExplorerFileEntry entry)
     {
-        return entry.InputFormat.Equals("ueanim", StringComparison.OrdinalIgnoreCase) ||
-            entry.AssetClass?.Equals("AnimSequence", StringComparison.OrdinalIgnoreCase) is true ||
-            entry.AssetClass?.Equals("AnimMontage", StringComparison.OrdinalIgnoreCase) is true;
+        return entry.Kind is ExplorerEntryKind.Animation;
     }
 
     private sealed record FilteredExplorerEntries(

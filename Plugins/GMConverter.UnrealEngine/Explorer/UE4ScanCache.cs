@@ -19,9 +19,11 @@ namespace GMConverter.UnrealEngine.Explorer;
 // binary representation is ~10x faster to parse and produces roughly half the on-disk size.
 internal static class UE4ScanCache
 {
-    // Bump this when ExplorerFileEntry or the cached envelope changes shape in a non-additive way
-    // — readers will treat older files as a miss and regenerate.
-    private const int _cacheVersion = 3;
+    // Bump this when ExplorerFileEntry or the cached envelope changes shape in a non-additive way,
+    // when it gains fields whose defaults would be wrong for old entries, or when scanning
+    // classifies entries differently; readers treat older files as a miss and regenerate.
+    // 4: entry kinds, and folder-only animation assets are no longer models.
+    private const int _cacheVersion = 4;
 
     // Files whose presence/size/mtime defines "this archive set." We deliberately do not hash file
     // contents (would be slower than the scan we're trying to skip). The set covers PAK and IoStore

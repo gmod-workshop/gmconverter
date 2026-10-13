@@ -1,16 +1,16 @@
 using System.Buffers.Binary;
 using System.Text;
-using GMConverter.SDK.Audio;
 using GMConverter.SDK.Common;
 
-namespace GMConverter.SourceEngine.Audio;
+namespace GMConverter.SDK.Audio;
 
 /// <summary>
-/// Reads and writes RIFF WAVE files. Reading takes the PCM and float encodings audio tools write;
-/// writing produces what Source plays: 16-bit PCM, with a <c>cue </c> chunk marking where a looping
-/// sound starts its loop, because Source loops a WAV from its first cue point to its end.
+/// Reads and writes RIFF WAVE files, the format audio tools and decoders hand each other. Reading
+/// takes the PCM and float encodings tools write. Writing produces 16-bit PCM, with a <c>cue </c>
+/// chunk marking where a looping clip starts its loop, the way Source and many other engines loop
+/// a WAV from its first cue point to its end.
 /// </summary>
-internal static class WaveFile
+public static class WaveFile
 {
     private const ushort _pcmFormat = 1;
     private const ushort _floatFormat = 3;

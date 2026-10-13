@@ -1,7 +1,6 @@
 using GMConverter.SDK.Audio;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
-using GMConverter.SourceEngine.Audio;
 
 namespace GMConverter.SourceEngine.Importers;
 

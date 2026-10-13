@@ -157,35 +157,3 @@ internal sealed class ConversionService(UiLogSink logSink)
         return string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? char.ToLowerInvariant(c) : '_')).Trim('_');
     }
 }
-
-internal sealed record PhysicsPreviewExport(string? ModelPath, int PartCount);
-
-internal sealed record PreviewLoadResult(PreviewSummary Summary, string ModelPath, string? PhysicsModelPath);
-
-internal sealed record PreviewSummary(
-    int MeshCount,
-    int SubmeshCount,
-    int MaterialCount,
-    int TextureCount,
-    int VertexCount,
-    int TriangleCount,
-    int PhysicsPartCount)
-{
-    public static PreviewSummary From(Model model, int physicsPartCount)
-    {
-        return new PreviewSummary(
-            model.Meshes.Count,
-            model.Meshes.Sum(mesh => mesh.Submeshes.Count),
-            model.Materials.Count,
-            model.Textures.Count,
-            model.Meshes.Sum(mesh => mesh.Vertices.Count),
-            model.Meshes.Sum(mesh => mesh.Triangles.Count()),
-            physicsPartCount);
-    }
-
-    public override string ToString()
-    {
-        return $"Meshes {MeshCount} | Submeshes {SubmeshCount} | Materials {MaterialCount} | Textures {TextureCount}\n" +
-            $"Vertices {VertexCount} | Triangles {TriangleCount} | Physics {PhysicsPartCount}";
-    }
-}

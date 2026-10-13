@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using GMConverter.Core.Games;
+using GMConverter.Core.Profiles;
 using GMConverter.UI.Models;
 
 namespace GMConverter.UI.ViewModels;

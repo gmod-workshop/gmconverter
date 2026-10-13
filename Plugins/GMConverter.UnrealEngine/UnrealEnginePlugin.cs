@@ -1,7 +1,7 @@
 using GMConverter.SDK.Plugins;
 using GMConverter.UnrealEngine.Explorer;
-using GMConverter.UnrealEngine.Formats.Unreal;
 using GMConverter.UnrealEngine.Importers;
+using GMConverter.UnrealEngine.Profiles;
 
 [assembly: Plugin(typeof(GMConverter.UnrealEngine.UnrealEnginePlugin))]
 
@@ -23,7 +23,7 @@ public sealed class UnrealEnginePlugin : IPlugin
         context.RegisterImporter<PSKImporter>();
         context.RegisterExplorer<UE4Explorer>();
         context.RegisterExplorer<UE2Explorer>();
-        foreach (var profile in UnrealGameProfiles.All)
+        foreach (var profile in UnrealProfiles.All)
         {
             context.RegisterGameProfile(profile);
         }

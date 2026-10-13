@@ -1,4 +1,4 @@
-using GMConverter.Core.Plugins;
+using GMConverter.Core.Textures;
 using GMConverter.SDK.Importers;
 using GMConverter.XWingAlliance.Importers;
 using JeremyAnsel.Xwa.Opt;

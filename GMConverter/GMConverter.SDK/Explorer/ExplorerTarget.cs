@@ -15,7 +15,7 @@ public sealed record ExplorerTarget
     public bool IsFile => File.Exists(FullPath);
 
     /// <summary>
-    /// The <see cref="Games.IGameProfile.Id"/> of the game the host detected or the user chose for
+    /// The <see cref="Profiles.IGameProfile.Id"/> of the game the host detected or the user chose for
     /// this target, or null when no profile claimed it.
     /// </summary>
     public string? GameId { get; init; }

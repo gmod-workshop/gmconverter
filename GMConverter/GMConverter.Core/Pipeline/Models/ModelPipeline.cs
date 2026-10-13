@@ -1,12 +1,12 @@
 using GMConverter.Core.Formats;
-using GMConverter.Core.Games;
+using GMConverter.Core.Profiles;
 using GMConverter.SDK.Assets;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
-using GMConverter.SDK.Games;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
+using GMConverter.SDK.Profiles;
 
 namespace GMConverter.Core.Pipeline.Models;
 

@@ -1,4 +1,4 @@
-using GMConverter.UnrealEngine.Formats.Unreal;
+using GMConverter.UnrealEngine.Archives;
 
 namespace GMConverter.UnrealEngine.Tests;
 

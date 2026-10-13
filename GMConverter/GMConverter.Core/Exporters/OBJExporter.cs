@@ -1,5 +1,5 @@
 using System.Text;
-using GMConverter.Core.Geometry;
+using GMConverter.Core.Textures;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;

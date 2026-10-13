@@ -32,7 +32,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
 
     private static readonly HashSet<string> _explorerSettingsProperties = new(StringComparer.Ordinal)
     {
-        nameof(ExplorerViewModel.SelectedExplorerProfile),
+        nameof(ExplorerViewModel.SelectedExplorer),
         nameof(ExplorerViewModel.SelectedGame),
         nameof(ExplorerViewModel.ExplorerRootDirectory),
         nameof(ExplorerViewModel.ExplorerFilter),
@@ -251,7 +251,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.SelectedInputFormat.Value,
             Convert.SelectedOutputFormat.Value,
             Convert.SelectedAxisMode.Value,
-            Explorer.SelectedExplorerProfile.Value,
+            Explorer.SelectedExplorer.Value,
             EmptyToNull(Convert.ConfigPath),
             EmptyToNull(Convert.InputPath),
             EmptyToNull(Convert.OutputPath),

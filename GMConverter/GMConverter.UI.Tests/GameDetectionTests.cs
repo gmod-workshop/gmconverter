@@ -1,8 +1,8 @@
 using GMConverter.Core.Explorer;
-using GMConverter.Core.Games;
+using GMConverter.Core.Profiles;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
-using GMConverter.SDK.Games;
+using GMConverter.SDK.Profiles;
 
 namespace GMConverter.UI.Tests;
 

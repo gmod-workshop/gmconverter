@@ -8,9 +8,11 @@ using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
-using GMConverter.SourceEngine.Common;
-using GMConverter.SourceEngine.Games;
-using GMConverter.SourceEngine.Geometry;
+using GMConverter.SourceEngine.Animation;
+using GMConverter.SourceEngine.Materials;
+using GMConverter.SourceEngine.Physics;
+using GMConverter.SourceEngine.Profiles;
+using GMConverter.SourceEngine.Tools;
 
 namespace GMConverter.SourceEngine.Exporters;
 
@@ -176,7 +178,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             WriteAnimationSmd(model, CreatePoseClip(pose), basePoseSmdPath);
         }
 
-        var target = SourceGameProfiles.Find(context.TargetGameId);
+        var target = SourceProfiles.Find(context.TargetGameId);
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(clip, context.TargetOptions) ?? []);
 
@@ -1525,11 +1527,3 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         string MaterialDirectory,
         string MaterialRelativeDirectory);
 }
-
-internal sealed record MDLExportOptions(
-    string ModelPath,
-    string? StudioMdlPath,
-    string? VtfCmdPath,
-    bool BuildMaterials,
-    PhysicsOptions? Physics,
-    MaterialOptimizationOptions? MaterialOptimization = null);

@@ -7,16 +7,6 @@ using Avalonia.Media;
 
 namespace GMConverter.UI.Views;
 
-internal enum PreviewGizmoView
-{
-    PositiveX,
-    NegativeX,
-    PositiveY,
-    NegativeY,
-    PositiveZ,
-    NegativeZ
-}
-
 internal sealed class PreviewGizmo : Control
 {
     private const double _gizmoRadius = 34.0;

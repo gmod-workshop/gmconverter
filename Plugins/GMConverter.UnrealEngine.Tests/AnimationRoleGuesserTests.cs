@@ -1,7 +1,9 @@
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
-using GMConverter.UnrealEngine.Formats.Unreal;
+using GMConverter.UnrealEngine.Animation;
+using GMConverter.UnrealEngine.Profiles;
+using GMConverter.UnrealEngine.Profiles.ZeroCompany;
 
 namespace GMConverter.UnrealEngine.Tests;
 
@@ -73,7 +75,7 @@ public sealed class AnimationRoleGuesserTests
             new AnimationClip("A_Run_Start", 30f, 1f, []),
         ]);
 
-        var prepared = new ZeroCompanyUnrealGameProfile().Prepare(model);
+        var prepared = new ZeroCompanyProfile().Prepare(model);
 
         Assert.Equal(AnimationAction.Run, prepared.Animations![0].Role?.Action);
         Assert.Same(set, prepared.Animations[1].Role);
@@ -85,6 +87,6 @@ public sealed class AnimationRoleGuesserTests
     {
         var model = new Model("m", [], [new Material("m")]);
 
-        Assert.Same(model, new GenericUnrealGameProfile().Prepare(model));
+        Assert.Same(model, new GenericUnrealProfile().Prepare(model));
     }
 }

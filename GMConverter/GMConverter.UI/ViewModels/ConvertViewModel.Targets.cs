@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GMConverter.Core.Formats;
-using GMConverter.Core.Games;
+using GMConverter.Core.Profiles;
 using GMConverter.SDK.Options;
 using GMConverter.UI.Models;
 using GMConverter.UI.ViewModels.Options;

@@ -9,11 +9,11 @@ namespace GMConverter.SDK.Exporters;
 public sealed record ExportContext(string OutputDirectory, string BaseName, OptionValues Options)
 {
     /// <summary>
-    /// The <see cref="Games.IGameProfile.Id"/> of the game being exported for, or null when the
+    /// The <see cref="Profiles.IGameProfile.Id"/> of the game being exported for, or null when the
     /// exporter has no targets. Plugins look up their own settings for the game by this id.
     /// </summary>
     public string? TargetGameId { get; init; }
 
-    /// <summary>Values for the target game's <see cref="Games.IExportGameProfile.OptionSchema"/>, with defaults filled in.</summary>
+    /// <summary>Values for the target game's <see cref="Profiles.IExportGameProfile.OptionSchema"/>, with defaults filled in.</summary>
     public OptionValues TargetOptions { get; init; } = OptionValues.Empty;
 }

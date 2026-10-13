@@ -1,3 +1,5 @@
+using GMConverter.SourceEngine.Physics;
+
 namespace GMConverter.SourceEngine.Tests;
 
 public sealed class SourceHitGroupsTests

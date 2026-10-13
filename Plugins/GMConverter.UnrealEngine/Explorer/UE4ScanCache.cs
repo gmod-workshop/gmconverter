@@ -278,15 +278,3 @@ internal static class UE4ScanCache
         return Path.Join(CacheDirectory, fileName);
     }
 }
-
-internal sealed record ArchiveFingerprint(string Hash, int FileCount, long TotalBytes);
-
-[MessagePackObject(keyAsPropertyName: true, AllowPrivate = true)]
-internal sealed record CachedScanEnvelope(
-    int Version,
-    string Fingerprint,
-    string ArchivePath,
-    DateTimeOffset ScannedAt,
-    int FileCount,
-    long TotalBytes,
-    IReadOnlyList<ExplorerFileEntry> Entries);

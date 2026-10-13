@@ -4,27 +4,6 @@ using GMConverter.SDK.Common;
 
 namespace GMConverter.MenOfWar.Formats;
 
-[Flags]
-internal enum MOWAnimationChunkType : ushort
-{
-    Position = 1,
-    Quaternion = 2,
-    InvertedQuaternion = 4,
-    Unknown = 8,
-    Unknown2 = 16,
-    Vertices = 32
-}
-
-internal sealed record MOWAnimationEvent(
-    int EntityIndex,
-    MOWAnimationChunkType Type,
-    Vector3? Position,
-    Quaternion? Rotation);
-
-internal sealed record MOWAnimationFrame(
-    ushort Time,
-    IReadOnlyList<MOWAnimationEvent> Events);
-
 internal sealed class MOWAnimationFile
 {
     private static readonly byte[] _magic = "EANM"u8.ToArray();

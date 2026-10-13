@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using GMConverter.Core.Textures;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Plugins;
 using GMConverter.SDK.Textures;

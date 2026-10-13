@@ -347,6 +347,21 @@ public sealed class MdlExporterTests
 
     private sealed record BlendSpaceTestSample(string Name, float Yaw, float Pitch);
 
+    [Fact]
+    public void EyePositionFollowsTheEyesAttachment()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            Attachments = [new Attachment("eyes", 0, new Transform(new Vector3(0, 0, 1.5f), Quaternion.Identity, Vector3.One))],
+        };
+
+        string Qc(Model exported) => File.ReadAllText(Directory.GetFiles(ExportWithStubCompiler(exported), "*.qc", SearchOption.AllDirectories).Single());
+
+        // The root sits 0.25 m along X; the eyes are 1.5 m above it, in inches.
+        Assert.Contains("$eyeposition 9.8425 0 59.0551", Qc(model));
+        Assert.DoesNotContain("$eyeposition", Qc(model with { Attachments = null }));
+    }
+
     // One triangle 1 m across, fully weighted to a single root bone with the given rotation.
     private static Model CreateSkinnedTriangle(Quaternion rootRotation)
     {

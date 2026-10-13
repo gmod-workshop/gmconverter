@@ -107,6 +107,7 @@ These apply when MDL output targets Garry's Mod (the default).
 | Option | Description | Default |
 |---|---|---|
 | `--garrysmod-characterUse <use>` | Which activities animations get: `npc` (`ACT_IDLE`, `ACT_RUN`, …), `player` (`ACT_HL2MP_*` for player models), or `both`, which writes a `<name>_player` copy of each sequence for the player set. | `npc` |
+| `--garrysmod-eyes <true\|false>` | Add an `eyes` attachment on the head bone, facing the model's front, and set `$eyeposition` from it, so NPCs look and aim from their head. A model's own `eyes` attachment is kept. | `true` |
 | `--garrysmod-handAttachments <true\|false>` | Add `anim_attachment_RH` and `anim_attachment_LH` on the hands, copied from the model's hand sockets (or placed on the hand bones), which Garry's Mod uses to place held items. | `true` |
 
 </details>

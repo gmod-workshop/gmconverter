@@ -15,6 +15,7 @@ namespace GMConverter.SourceEngine.Profiles.GarrysMod;
 internal sealed class GarrysModProfile : ISourceProfile
 {
     public const string HandAttachmentsOption = "handAttachments";
+    public const string EyesOption = "eyes";
     public const string CharacterUseOption = "characterUse";
     public const string NpcUse = "npc";
     public const string PlayerUse = "player";
@@ -42,6 +43,11 @@ internal sealed class GarrysModProfile : ISourceProfile
                 Choices = [NpcUse, PlayerUse, BothUses],
                 Description = "Which activities animations get: NPC activities (ACT_IDLE, ACT_RUN, …), player-model activities (ACT_HL2MP_*), or both, with a copy of each sequence for the player set.",
             },
+            new OptionDescriptor(EyesOption, OptionType.Bool, "Eyes")
+            {
+                DefaultValue = true,
+                Description = "Add an eyes attachment on the head and set $eyeposition from it, so NPCs look and aim from their head.",
+            },
             new OptionDescriptor(HandAttachmentsOption, OptionType.Bool, "Hand attachments")
             {
                 DefaultValue = true,
@@ -67,7 +73,12 @@ internal sealed class GarrysModProfile : ISourceProfile
 
     public Model Prepare(Model model, OptionValues options)
     {
-        return options.GetBool(HandAttachmentsOption, defaultValue: true) ? HandAttachments.AddAliases(model) : model;
+        if (options.GetBool(HandAttachmentsOption, defaultValue: true))
+        {
+            model = HandAttachments.AddAliases(model);
+        }
+
+        return options.GetBool(EyesOption, defaultValue: true) ? EyesAttachment.AddIfMissing(model) : model;
     }
 
     public IReadOnlyList<SourceActivity> GetActivities(AnimationClip clip, OptionValues options)

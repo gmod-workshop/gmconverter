@@ -61,6 +61,78 @@ public sealed class AssetPipelineTests
     }
 
     [Fact]
+    public void DefaultTargetPreparesTheModelAndReachesTheExporter()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("sample", CreateInput(output))
+        {
+            OutputFormat = "sample",
+            OutputDirectory = output,
+            BaseName = "result",
+        };
+
+        var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
+
+        Assert.Equal("test.target", result.Destination.Target?.Id);
+        using var written = JsonDocument.Parse(File.ReadAllText(Path.Join(output, "result.json")));
+        Assert.Equal("test.target", written.RootElement.GetProperty("target").GetString());
+        // The target's options arrive with their defaults filled in.
+        Assert.Equal(string.Empty, written.RootElement.GetProperty("targetSuffix").GetString());
+        Assert.Equal("triangle", written.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public void ChosenTargetAndItsOptionsAreUsed()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("sample", CreateInput(output))
+        {
+            OutputFormat = "sample",
+            OutputDirectory = output,
+            BaseName = "result",
+            TargetGameId = "TEST.TARGET2",
+            TargetOptions = new OptionValues(new Dictionary<string, object?> { ["suffix"] = "!" }),
+        };
+
+        new AssetJobRunner().Run(new AssetJob(request));
+
+        using var written = JsonDocument.Parse(File.ReadAllText(Path.Join(output, "result.json")));
+        Assert.Equal("test.target2", written.RootElement.GetProperty("target").GetString());
+        Assert.Equal("triangle!", written.RootElement.GetProperty("model").GetString());
+    }
+
+    [Fact]
+    public void UnknownTargetFailsBeforeTheInputIsRead()
+    {
+        var request = new AssetRequest("sample", Path.Join(CreateOutputDirectory(), "missing.sample"))
+        {
+            OutputFormat = "sample",
+            OutputDirectory = CreateOutputDirectory(),
+            TargetGameId = "garrysmod",
+        };
+
+        var error = Assert.Throws<GMConverterException>(() => new AssetJobRunner().Run(new AssetJob(request)));
+
+        Assert.Contains("test.target, test.target2", error.Message);
+    }
+
+    [Fact]
+    public void FormatsWithoutTargetsExportWithoutOne()
+    {
+        var output = CreateOutputDirectory();
+        var request = new AssetRequest("sample", CreateInput(output))
+        {
+            OutputFormat = "obj",
+            OutputDirectory = output,
+        };
+
+        var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
+
+        Assert.Null(result.Destination.Target);
+        Assert.Throws<GMConverterException>(() => new AssetJobRunner().Run(new AssetJob(request with { TargetGameId = "test.target" })));
+    }
+
+    [Fact]
     public void BaseNameDefaultsToTheInputFileName()
     {
         var output = CreateOutputDirectory();

@@ -104,10 +104,17 @@
                         <shad:Card.Header>
                             <StackPanel Spacing="4">
                                 <shad:CardTitle>Export options</shad:CardTitle>
-                                <shad:CardDescription>Options provided by the selected exporter.</shad:CardDescription>
+                                <shad:CardDescription>Options provided by the selected exporter and the game it exports for.</shad:CardDescription>
                             </StackPanel>
                         </shad:Card.Header>
-                        <settings:OptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
+                        <StackPanel Spacing="16">
+                            <ComboBox ItemsSource="{Binding Targets}"
+                                      SelectedItem="{Binding SelectedTarget}"
+                                      IsVisible="{Binding HasTargets}"
+                                      shad:ControlAssist.Label="Target game"/>
+                            <settings:OptionsPanel DataContext="{Binding CurrentExporterOptions}"/>
+                            <settings:OptionsPanel DataContext="{Binding CurrentTargetOptions}"/>
+                        </StackPanel>
                     </shad:Card>
 
                     <shad:Card HasShadow="True" IsEnabled="{Binding IsIdle}">

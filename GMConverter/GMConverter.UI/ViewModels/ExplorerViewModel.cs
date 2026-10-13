@@ -129,7 +129,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
         _selectedExplorerProfile = ExplorerProfiles[0];
 
-        foreach (var game in GameCatalog.Profiles)
+        foreach (var game in GameCatalog.ImportProfiles)
         {
             Games.Add(new DisplayOption(game.Id, game.DisplayName, game.Engine));
         }

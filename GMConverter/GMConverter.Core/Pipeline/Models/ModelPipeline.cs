@@ -4,6 +4,7 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
+using GMConverter.SDK.Options;
 
 namespace GMConverter.Core.Pipeline.Models;
 
@@ -33,9 +34,16 @@ internal sealed class ModelPipeline : AssetPipeline<Model>
         var format = destination.Format;
         var exporter = (IModelExporter)format.Exporter;
         var options = format.ApplyForcedOptions(WithDefaults(exporter.OptionSchema, request.ExporterOptions));
+        var target = destination.Target;
+        var targetOptions = target is null ? OptionValues.Empty : WithDefaults(target.OptionSchema, request.TargetOptions);
+        var model = target?.Prepare(asset, targetOptions) ?? asset;
         Directory.CreateDirectory(destination.Directory);
         using var scope = PerfTimer.Measure("pipeline", $"{format.Format}.Export", destination.Directory);
-        return exporter.Export(asset, new ExportContext(destination.Directory, destination.BaseName, options));
+        return exporter.Export(model, new ExportContext(destination.Directory, destination.BaseName, options)
+        {
+            TargetGameId = target?.Id,
+            TargetOptions = targetOptions,
+        });
     }
 
     private static MaterialResolveOptions? CreateMaterialResolveOptions(string? materialDirectory)

@@ -67,6 +67,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
         _selectedAxisMode = AxisModes[0];
         RefreshCurrentExporterOptions();
         RefreshCurrentImporterOptions();
+        RefreshTargets();
     }
 
     public ObservableCollection<DisplayOption> InputFormats { get; } =
@@ -91,6 +92,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
     partial void OnSelectedOutputFormatChanged(DisplayOption value)
     {
         RefreshCurrentExporterOptions();
+        RefreshTargets();
     }
 
     partial void OnSelectedInputFormatChanged(DisplayOption value)
@@ -189,7 +191,11 @@ public sealed partial class ConvertViewModel : ViewModelBase
             (float)ScaleFactor,
             ConversionService.NormalizeAxisMode(SelectedAxisMode.Value),
             CurrentImporterOptions.BuildOptionValues(),
-            CurrentExporterOptions.BuildOptionValues());
+            CurrentExporterOptions.BuildOptionValues())
+        {
+            TargetGameId = SelectedTarget?.Value,
+            TargetOptions = CurrentTargetOptions.BuildOptionValues(),
+        };
     }
 
     internal void TryLoadDefaultConfig()
@@ -219,6 +225,7 @@ public sealed partial class ConvertViewModel : ViewModelBase
 
         LoadExporterOptions(settings.ExporterOptions);
         LoadImporterOptions(settings.ImporterOptions);
+        LoadTargets(settings.ExportTargets, settings.TargetOptions);
     }
 
     internal void ApplyExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)

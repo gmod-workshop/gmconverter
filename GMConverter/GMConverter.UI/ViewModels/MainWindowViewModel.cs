@@ -24,7 +24,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         nameof(ConvertViewModel.MaterialDirectory),
         nameof(ConvertViewModel.ScaleFactor),
         nameof(ConvertViewModel.CurrentExporterOptions),
-        nameof(ConvertViewModel.CurrentImporterOptions)
+        nameof(ConvertViewModel.CurrentImporterOptions),
+        nameof(ConvertViewModel.SelectedTarget),
+        nameof(ConvertViewModel.CurrentTargetOptions)
     };
 
     private static readonly HashSet<string> _explorerSettingsProperties = new(StringComparer.Ordinal)
@@ -263,7 +265,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             Convert.SnapshotExporterOptions(),
             Convert.SnapshotImporterOptions(),
             Explorer.IncludeCompatibleAnimations,
-            Explorer.SelectedGame.Value);
+            Explorer.SelectedGame.Value,
+            Convert.SnapshotTargets(),
+            Convert.SnapshotTargetOptions());
     }
 
     private void QueueSettingsSave()

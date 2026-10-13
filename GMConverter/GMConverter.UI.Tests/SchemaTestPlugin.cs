@@ -23,6 +23,8 @@ public sealed class SchemaTestPlugin : IPlugin
         context.RegisterImporter(new SchemaTestImporter());
         context.RegisterExporter(new SchemaTestExporter());
         context.RegisterGameProfile(new SchemaTestGameProfile());
+        context.RegisterGameProfile(new SchemaTestTargetProfile("test.target", "Test target"));
+        context.RegisterGameProfile(new SchemaTestTargetProfile("test.target2", "Second test target"));
     }
 
     public void OnUnload()
@@ -76,13 +78,18 @@ public sealed class SchemaTestExporter : IModelExporter
         // The model name echoes the importer's "modelName" option, so tests can see both sides.
         var path = Path.Join(context.OutputDirectory, context.BaseName + ".json");
         File.WriteAllText(path,
-            JsonSerializer.Serialize(new Dictionary<string, object?>(context.Options.AsDictionary()) { ["model"] = model.Name }));
+            JsonSerializer.Serialize(new Dictionary<string, object?>(context.Options.AsDictionary())
+            {
+                ["model"] = model.Name,
+                ["target"] = context.TargetGameId,
+                ["targetSuffix"] = context.TargetOptions.GetString("suffix"),
+            }));
         return new ExportResult([path]);
     }
 }
 
 /// <summary>A game claimed by any folder holding a <see cref="MarkerFile"/>.</summary>
-public sealed class SchemaTestGameProfile : IGameProfile
+public sealed class SchemaTestGameProfile : IImportGameProfile
 {
     public const string MarkerFile = "test-game.marker";
 
@@ -92,4 +99,22 @@ public sealed class SchemaTestGameProfile : IGameProfile
 
     public GameMatch Detect(ExplorerTarget target) =>
         target.IsDirectory && File.Exists(Path.Join(target.FullPath, MarkerFile)) ? GameMatch.Exact : GameMatch.None;
+}
+
+/// <summary>A target of the sample exporter that appends its <c>suffix</c> option (empty by default) to the model's name.</summary>
+public sealed class SchemaTestTargetProfile(string id, string displayName) : IExportGameProfile
+{
+    public string Id => id;
+    public string DisplayName => displayName;
+    public string Engine => "Test engine";
+    public string ExporterFormat => "sample";
+    public OptionSchema OptionSchema { get; } = new([
+        new OptionGroup("target", "Target", [
+            new OptionDescriptor("suffix", OptionType.String, "Suffix") { DefaultValue = "" }
+        ])
+    ]);
+
+    public GameMatch Detect(ExplorerTarget target) => GameMatch.None;
+
+    public Model Prepare(Model model, OptionValues options) => model with { Name = model.Name + options.GetString("suffix") };
 }

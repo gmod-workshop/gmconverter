@@ -324,6 +324,63 @@ public sealed class ExporterOptionsTests
     }
 
     [AvaloniaFact]
+    public void TargetsFollowTheOutputFormatAndAreRemembered()
+    {
+        var vm = CreateViewModel();
+        SelectFormat(vm, "sample");
+        Assert.Equal(["test.target", "test.target2"], vm.Targets.Select(target => target.Value));
+        Assert.Equal("test.target", vm.SelectedTarget?.Value);
+
+        vm.SelectedTarget = vm.Targets.Single(target => target.Value == "test.target2");
+        FindTargetOption(vm, "suffix").TryLoad("?");
+        Assert.Equal("test.target2", vm.CaptureSettings().TargetGameId);
+        Assert.Equal("?", vm.CaptureSettings().TargetOptions.GetString("suffix"));
+
+        SelectFormat(vm, "obj");
+        Assert.False(vm.HasTargets);
+        Assert.Null(vm.CaptureSettings().TargetGameId);
+
+        SelectFormat(vm, "sample");
+        Assert.Equal("test.target2", vm.SelectedTarget?.Value);
+
+        var restored = CreateViewModel();
+        var settings = UiSettings.Parse(_minimalSettingsJson)!;
+        restored.ApplySettings(settings with
+        {
+            ExportTargets = JsonSerializer.Deserialize<Dictionary<string, string>>(JsonSerializer.Serialize(vm.SnapshotTargets())),
+            TargetOptions = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, object?>>>(JsonSerializer.Serialize(vm.SnapshotTargetOptions())),
+        });
+        SelectFormat(restored, "sample");
+        Assert.Equal("test.target2", restored.SelectedTarget?.Value);
+        Assert.Equal("?", restored.CaptureSettings().TargetOptions.GetString("suffix"));
+    }
+
+    [AvaloniaFact]
+    public void CliTargetArgumentsReachTheTarget()
+    {
+        _ = CreateViewModel();
+        var output = Path.Join(Path.GetTempPath(), "GMConverter.SchemaTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        var input = Path.Join(output, "input.sample");
+        File.WriteAllText(input, "test");
+        string[] common = ["--input-format", "sample", "--output-format", "sample", "--input-path", input, "--output-path", output];
+
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "default"]));
+        Assert.Equal(0, CLI.Program.Main([.. common, "--name", "chosen", "--target", "test.target2", "--test.target2-suffix", "+"]));
+        Assert.NotEqual(0, CLI.Program.Main([.. common, "--name", "wrong", "--target", "test.target2", "--test.target-suffix", "+"]));
+        Assert.NotEqual(0, CLI.Program.Main([.. common, "--name", "unknown", "--target", "garrysmod"]));
+
+        JsonElement Result(string name) => JsonDocument.Parse(File.ReadAllText(Path.Join(output, name + ".json"))).RootElement;
+        Assert.Equal("test.target", Result("default").GetProperty("target").GetString());
+        Assert.Equal("test.target2", Result("chosen").GetProperty("target").GetString());
+        Assert.Equal("triangle+", Result("chosen").GetProperty("model").GetString());
+        Assert.False(File.Exists(Path.Join(output, "wrong.json")));
+    }
+
+    private static OptionViewModel FindTargetOption(ConvertViewModel vm, string key) =>
+        vm.CurrentTargetOptions.Groups.SelectMany(group => group.Options).Single(option => option.Key == key);
+
+    [AvaloniaFact]
     public void CliImporterArgumentsAndAliasesReachImporter()
     {
         _ = CreateViewModel();

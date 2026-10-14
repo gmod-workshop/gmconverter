@@ -9,4 +9,10 @@ internal static partial class UnityLogMessages
         Level = LogLevel.Warning,
         Message = "Skipped {Count} Unity textures in formats that cannot be decoded: {Names}")]
     public static partial void SkippedTextures(this ILogger logger, int count, string names);
+
+    [LoggerMessage(
+        EventId = 3001,
+        Level = LogLevel.Warning,
+        Message = "Skipped {Count} Unity animation clips: {Names}")]
+    public static partial void SkippedAnimations(this ILogger logger, int count, string names);
 }

@@ -18,7 +18,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `PSK` / `PSKX`        | Yes* | No | Read       | Read*                | Read            | Read* |
 | `UE4` / `UE5` archives | Yes* | No | Read       | Read*                | Read            | - |
 | `MOW` (`DEF` / `MDL`) | Yes* | No | Read | Read* | Read* | Read* |
-| Unity player builds | Yes* | No | Read | Read* | Read | - |
+| Unity player builds | Yes* | No | Read | Read* | Read | Read* |
 | `OBJ` / `MTL`         | No | Yes | Write      | Write                | -               | - |
 | `glTF` / `GLB`        | No | Yes | Write      | Write                | Write           | Write |
 
@@ -92,6 +92,8 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | Option | Alias | Description | Default |
 | --- | --- | --- | --- |
 | `--unity-import-includeInactive <true\|false>` | None | Also import renderers that are disabled or sit under inactive game objects, such as alternative outfits. | `false` |
+| `--unity-import-controllerAnimations <true\|false>` | None | Import the clips the model's Animator controllers play. | `true` |
+| `--unity-import-animations <clips>` | None | More clips to import, as the Explorer adds them (`<file>:<path id>`, separated by `;`). Humanoid clips play on any humanoid character. | None |
 
 </details>
 
@@ -295,16 +297,17 @@ This first version reads which media an event can play, but not how Wwise mixes 
 
 The Explorer can browse Windows Unity player builds (games with a `<Game>_Data` folder holding `globalgamemanagers`). Select the game's install folder or its `_Data` folder. Builds packed into AssetBundles or Addressables, and WebGL or mobile builds, are not read yet. **Liar's Bar** is recognised by name.
 
-The Explorer lists three kinds of model, and the game's sounds:
+The Explorer lists three kinds of model, the game's animations and its sounds:
 
 * **Prefabs** (`Prefabs/...`): game objects saved in the shared assets, such as characters. Each converts with every renderer under it: skinned meshes become one skeletal model posed as the prefab was saved, and props attached to bones (chairs, cups, hats) follow the bone above them.
 * **Scene objects** (`Scenes/<scene>/...`): the top-level objects of each scene with renderers under them. Whole scene sections can be very large.
 * **Meshes** (`Meshes/<file>/...`): single meshes, with the materials, rotation and scale of an object that draws them in the game.
+* **Animations** (`Animations/<file>/...`): every animation clip. Select a model, then use **Add Animations** on clips to convert them with it.
 * **Sounds** (`Sounds/<file>/...`): every audio clip. Exporting one writes its FMOD sound bank (`.fsb`) and converts it with the `fsb` importer, decoded with [vgmstream](https://github.com/vgmstream/vgmstream) like Wwise media. Each clip becomes one sound with no events. Audio from Unity 4 and earlier is not read.
 
 Hidden parts (disabled renderers and inactive objects, often alternative outfits or held items) are left out unless `--unity-import-includeInactive true` is set.
 
-Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the base colour map and tint, normal map, HDRP mask map (metallic and smoothness), emission, alpha clipping and transparency. Custom shaders fall back to their main texture. Crunch-compressed textures are skipped with a warning. Texture tiling and offset are applied to the model's texture coordinates. Animations and blend shapes are not imported yet.
+Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the base colour map and tint, normal map, HDRP mask map (metallic and smoothness), emission, alpha clipping and transparency. Custom shaders fall back to their main texture. Crunch-compressed textures are skipped with a warning. Texture tiling and offset are applied to the model's texture coordinates. Prefabs and scene objects bring the clips their Animator controllers play. Humanoid clips, which Unity stores as muscle values, are turned into bone rotations through the character's avatar, so a clip made for one humanoid character plays on any other. Props a clip moves get a bone of their own. Clips that switch objects on and off, change blend shapes or materials, or use legacy animation are not converted: the objects keep their saved visibility. Blend shapes are not imported yet.
 
 </details>
 

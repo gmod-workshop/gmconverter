@@ -23,15 +23,20 @@ internal sealed class UnityAnimationBuilder
     private const int _firstMuscleAttribute = 42;
 
     private readonly UnitySkeleton _skeleton;
+    private readonly UnityTransformNode _animatorRoot;
+    private readonly UnityTransformNode[] _toggledBones;
     private readonly UnityTransformNode[] _bones;
     private readonly Dictionary<uint, UnityTransformNode> _nodesByPathHash = [];
     private readonly UnityHumanoidSolver? _solver;
     private readonly (int Node, UnityTransformNode Bone)[] _humanBones = [];
     private readonly UnityTransformNode? _hipsBone;
 
-    public UnityAnimationBuilder(UnitySkeleton skeleton, UnityTransformNode animatorRoot, UnityAvatar? avatar)
+    public UnityAnimationBuilder(UnitySkeleton skeleton, UnityTransformNode animatorRoot, UnityAvatar? avatar, IReadOnlySet<UnityTransformNode>? toggledBones = null)
     {
         _skeleton = skeleton;
+        _animatorRoot = animatorRoot;
+        _toggledBones = [.. (toggledBones ?? new HashSet<UnityTransformNode>())
+            .Where(node => skeleton.Indices.ContainsKey(node) && node.Ancestors().Prepend(node).Contains(animatorRoot))];
         _bones = new UnityTransformNode[skeleton.Skeleton.Bones.Count];
         foreach (var (node, index) in skeleton.Indices)
         {
@@ -89,8 +94,11 @@ internal sealed class UnityAnimationBuilder
         var transforms = bindings
             .Where(binding => binding.TransformCurve != UnityTransformCurve.None && _nodesByPathHash.ContainsKey(binding.Path))
             .ToArray();
+        var toggles = bindings
+            .Where(binding => binding.IsActiveToggle && _nodesByPathHash.ContainsKey(binding.Path))
+            .ToDictionary(binding => _nodesByPathHash[binding.Path], binding => binding.FirstCurve);
         var solveHumanoid = humanoid.Length > 0 && _solver is not null;
-        if (!solveHumanoid && transforms.Length == 0)
+        if (!solveHumanoid && transforms.Length == 0 && !_toggledBones.Any(bone => Chain(bone).Any(toggles.ContainsKey)))
         {
             return null;
         }
@@ -103,6 +111,7 @@ internal sealed class UnityAnimationBuilder
         var values = new float[curves.CurveCount];
         var muscles = new float[UnityHumanoidSolver.MuscleCount];
         var keyframes = _bones.Select(_ => new List<TransformKeyframe>(frameCount)).ToArray();
+        var visibility = _toggledBones.ToDictionary(bone => bone, _ => new List<VisibilityKeyframe>());
         var locals = new Dictionary<UnityTransformNode, UnityXform>();
 
         for (var frame = 0; frame < frameCount; frame++)
@@ -121,6 +130,17 @@ internal sealed class UnityAnimationBuilder
                 ApplyTransform(binding, values, locals);
             }
 
+            foreach (var (bone, frames) in visibility)
+            {
+                var visible = Chain(bone).All(node => toggles.TryGetValue(node, out var curve)
+                    ? values[curve] > 0.5f
+                    : node.GameObject?["m_IsActive"].AsBool != false);
+                if (frames.Count == 0 || frames[^1].Visible != visible)
+                {
+                    frames.Add(new VisibilityKeyframe(frame / sampleRate, visible));
+                }
+            }
+
             for (var bone = 0; bone < _bones.Length; bone++)
             {
                 var node = _bones[bone];
@@ -133,7 +153,11 @@ internal sealed class UnityAnimationBuilder
             }
         }
 
-        IAnimationTrack[] tracks = [.. keyframes.Select((frames, bone) => new BoneTransformTrack(bone, frames))];
+        IAnimationTrack[] tracks =
+        [
+            .. keyframes.Select((frames, bone) => new BoneTransformTrack(bone, frames)),
+            .. visibility.Select(pair => new BoneVisibilityTrack(_skeleton.Indices[pair.Key], pair.Value)),
+        ];
         return new AnimationClip(
             name,
             sampleRate,
@@ -212,6 +236,19 @@ internal sealed class UnityAnimationBuilder
             UnityTransformCurve.Euler => local with { Rotation = Euler(vector) },
             _ => local,
         };
+    }
+
+    // A node and the nodes above it up to the animated root: all must be switched on for it to show.
+    private IEnumerable<UnityTransformNode> Chain(UnityTransformNode node)
+    {
+        for (var current = node; current is not null; current = current.Parent)
+        {
+            yield return current;
+            if (current == _animatorRoot)
+            {
+                yield break;
+            }
+        }
     }
 
     // Unity's Quaternion.Euler: degrees, turning about Z, then X, then Y.

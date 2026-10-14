@@ -5,7 +5,9 @@ namespace GMConverter.Unity.Animation;
 /// <summary>
 /// Turns a humanoid pose (the body's position and rotation plus 95 muscle values) into local
 /// transforms for an avatar's human skeleton. Each bone's muscles rotate it in its muscle frame;
-/// the hips are placed so the body's centre of mass and orientation match the pose's.
+/// the hips are placed so the body's centre of mass and orientation match the pose's. The body
+/// orientation is Unity's: right across the upper legs and arms, up from the legs to the arms,
+/// which reproduces each avatar's stored reference orientation.
 /// </summary>
 internal sealed class UnityHumanoidSolver
 {
@@ -13,10 +15,14 @@ internal sealed class UnityHumanoidSolver
     public const int MuscleCount = 95;
 
     private const int _hips = 0;
-    private const int _spine = 7;
+    private const int _leftUpperLeg = 1;
+    private const int _rightUpperLeg = 2;
+    private const int _leftUpperArm = 14;
+    private const int _rightUpperArm = 15;
+    private const int _leftHand = 18;
+    private const int _rightHand = 19;
     private const int _bodyMuscleCount = 55;
     private const int _fingerMusclesPerHand = 20;
-    private const float _degrees = MathF.PI / 180f;
 
     // The muscles turning each body bone about its x (twist), y and z axes, or -1.
     private static readonly int[,] _bodyMuscles =
@@ -35,14 +41,6 @@ internal sealed class UnityHumanoidSolver
         { -1, 16, 15 }, { -1, 18, 17 }, // Eyes
         { -1, 20, 19 }, // Jaw
     };
-
-    // How far each spine bone's twist, side and front-back muscles turn the body's orientation
-    // away from the hips', in degrees.
-    private static readonly Vector3[] _spineSpread = [new(20f, -30f, -30f), new(20f, -20f, -20f), new(10f, -10f, -10f)];
-
-    // Unity's LookRotation(right, forward), which takes x to y, y to z and z to x: from the spine
-    // muscles' axes (twist, side, front-back) to the body's (up, forward, right).
-    private static readonly Quaternion _spineFrame = Quaternion.Normalize(new Quaternion(0.5f, 0.5f, 0.5f, 0.5f));
 
     private readonly UnityAvatar _avatar;
     private readonly (int X, int Y, int Z)[] _nodeMuscles;
@@ -79,9 +77,11 @@ internal sealed class UnityHumanoidSolver
     /// <summary>
     /// Local transforms for every human skeleton node. <paramref name="muscles"/> holds the 95
     /// muscle values; <paramref name="bodyPosition"/> is the centre of mass in human units and
-    /// <paramref name="bodyRotation"/> the body's orientation.
+    /// <paramref name="bodyRotation"/> the body's orientation. <paramref name="handGoals"/>, when
+    /// the clip has them, are where Unity put the left and right hands, relative to the body in
+    /// human units.
     /// </summary>
-    public UnityXform[] Solve(ReadOnlySpan<float> muscles, Vector3 bodyPosition, Quaternion bodyRotation)
+    public UnityXform[] Solve(ReadOnlySpan<float> muscles, Vector3 bodyPosition, Quaternion bodyRotation, (Vector3 Left, Vector3 Right)? handGoals = null)
     {
         var locals = _avatar.Pose.ToArray();
         for (var node = 0; node < locals.Length; node++)
@@ -99,31 +99,63 @@ internal sealed class UnityHumanoidSolver
             return locals;
         }
 
-        // The hips turn with the body, less the share of its orientation the spine's muscles give.
-        var spread = Quaternion.Identity;
-        for (var bone = 0; bone < _spineSpread.Length; bone++)
-        {
-            var factors = _spineSpread[bone] * _degrees;
-            var angles = new Vector3(
-                Muscle(muscles, _bodyMuscles[_spine + bone, 0]) * factors.X,
-                Muscle(muscles, _bodyMuscles[_spine + bone, 1]) * factors.Y,
-                Muscle(muscles, _bodyMuscles[_spine + bone, 2]) * factors.Z);
-            spread *= UnityAvatarAxes.SwingTwist(angles);
-        }
-
-        spread = _spineFrame * spread * Quaternion.Conjugate(_spineFrame);
-        var hipsRotation = Quaternion.Normalize(
-            bodyRotation * Quaternion.Conjugate(spread) * Quaternion.Conjugate(_avatar.Root.Rotation) * _referenceGlobals[HipsNode].Rotation);
+        // Unity's body orientation comes from the limbs: right across the upper legs and upper
+        // arms, up from between the legs to between the arms. Find it with the hips unturned; the
+        // hips' rotation is whatever turns that onto the pose's body rotation.
+        var parentGlobal = _avatar.Parents[HipsNode] >= 0 ? _referenceGlobals[_avatar.Parents[HipsNode]] : UnityXform.Identity;
+        locals[HipsNode] = Relative(new UnityXform(Vector3.Zero, Quaternion.Identity, _referenceGlobals[HipsNode].Scale), parentGlobal);
+        var unturned = BodyOrientation(Globals(locals));
+        var hipsRotation = Quaternion.Normalize(bodyRotation * Quaternion.Conjugate(unturned));
 
         // Pose the skeleton with the hips at the origin in that orientation to find where the
         // centre of mass sits relative to them, then move the hips to put it at the body position.
-        var parentGlobal = _avatar.Parents[HipsNode] >= 0 ? _referenceGlobals[_avatar.Parents[HipsNode]] : UnityXform.Identity;
         locals[HipsNode] = Relative(new UnityXform(Vector3.Zero, hipsRotation, _referenceGlobals[HipsNode].Scale), parentGlobal);
         var globals = Globals(locals);
         var massCenter = MassCenter(globals) + Vector3.Transform(_massOffset, bodyRotation);
         var hipsPosition = (bodyPosition * _avatar.Scale) - (massCenter - globals[HipsNode].Translation);
+
+        // Unity's centre of mass isn't quite the bones' mass-weighted average, which leaves the
+        // body a few centimetres off; the hand goals, where Unity's own solve put the hands, show
+        // by how much. The hands share that error, so move the whole body by their average miss.
+        if (handGoals is { } goals &&
+            _avatar.BodyNodes[_leftHand] is var leftHand and >= 0 &&
+            _avatar.BodyNodes[_rightHand] is var rightHand and >= 0)
+        {
+            var leftGoal = (bodyPosition + Vector3.Transform(goals.Left, bodyRotation)) * _avatar.Scale;
+            var rightGoal = (bodyPosition + Vector3.Transform(goals.Right, bodyRotation)) * _avatar.Scale;
+            var hipsOffset = hipsPosition - globals[HipsNode].Translation;
+            var miss = ((leftGoal - globals[leftHand].Translation) + (rightGoal - globals[rightHand].Translation)) * 0.5f;
+            hipsPosition += miss - hipsOffset;
+        }
+
         locals[HipsNode] = Relative(new UnityXform(hipsPosition, hipsRotation, _referenceGlobals[HipsNode].Scale), parentGlobal);
         return locals;
+    }
+
+    private Quaternion BodyOrientation(UnityXform[] globals)
+    {
+        if (!TryPosition(globals, _leftUpperLeg, out var leftLeg) || !TryPosition(globals, _rightUpperLeg, out var rightLeg) ||
+            !TryPosition(globals, _leftUpperArm, out var leftArm) || !TryPosition(globals, _rightUpperArm, out var rightArm))
+        {
+            return Quaternion.Identity;
+        }
+
+        var right = (rightLeg - leftLeg) + (rightArm - leftArm);
+        var up = Vector3.Normalize(((leftArm + rightArm) - (leftLeg + rightLeg)) * 0.5f);
+        var forward = Vector3.Normalize(Vector3.Cross(right, up));
+        right = Vector3.Cross(up, forward);
+        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(new Matrix4x4(
+            right.X, right.Y, right.Z, 0f,
+            up.X, up.Y, up.Z, 0f,
+            forward.X, forward.Y, forward.Z, 0f,
+            0f, 0f, 0f, 1f)));
+    }
+
+    private bool TryPosition(UnityXform[] globals, int bone, out Vector3 position)
+    {
+        var node = _avatar.BodyNodes[bone];
+        position = node >= 0 ? globals[node].Translation : default;
+        return node >= 0;
     }
 
     private void AddFingers(IReadOnlyList<int> handNodes, int firstMuscle)

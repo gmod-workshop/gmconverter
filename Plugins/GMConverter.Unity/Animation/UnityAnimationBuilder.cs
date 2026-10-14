@@ -18,6 +18,8 @@ internal sealed class UnityAnimationBuilder
     private const float _defaultSampleRate = 30f;
     private const int _rootPositionAttribute = 7;
     private const int _rootRotationAttribute = 10;
+    private const int _leftHandGoalAttribute = 28;
+    private const int _rightHandGoalAttribute = 35;
     private const int _firstMuscleAttribute = 42;
 
     private readonly UnitySkeleton _skeleton;
@@ -145,11 +147,24 @@ internal sealed class UnityAnimationBuilder
         Array.Clear(muscles);
         var rootPosition = Vector3.Zero;
         var rootRotation = new Vector4(0f, 0f, 0f, 1f);
+        var leftHandGoal = Vector3.Zero;
+        var rightHandGoal = Vector3.Zero;
+        var goalCurves = 0;
         foreach (var binding in humanoid)
         {
             var attribute = (int)binding.Attribute;
             var value = values[binding.FirstCurve];
-            if (attribute >= _rootPositionAttribute && attribute < _rootRotationAttribute)
+            if (attribute >= _leftHandGoalAttribute && attribute < _leftHandGoalAttribute + 3)
+            {
+                leftHandGoal[attribute - _leftHandGoalAttribute] = value;
+                goalCurves++;
+            }
+            else if (attribute >= _rightHandGoalAttribute && attribute < _rightHandGoalAttribute + 3)
+            {
+                rightHandGoal[attribute - _rightHandGoalAttribute] = value;
+                goalCurves++;
+            }
+            else if (attribute >= _rootPositionAttribute && attribute < _rootRotationAttribute)
             {
                 rootPosition[attribute - _rootPositionAttribute] = value;
             }
@@ -166,7 +181,7 @@ internal sealed class UnityAnimationBuilder
         var rotation = rootRotation.LengthSquared() > 1e-12f
             ? Quaternion.Normalize(new Quaternion(rootRotation.X, rootRotation.Y, rootRotation.Z, rootRotation.W))
             : Quaternion.Identity;
-        var solved = _solver!.Solve(muscles, rootPosition, rotation);
+        var solved = _solver!.Solve(muscles, rootPosition, rotation, goalCurves == 6 ? (leftHandGoal, rightHandGoal) : null);
 
         // Bones keep their own lengths; only the hips move.
         foreach (var (node, bone) in _humanBones)

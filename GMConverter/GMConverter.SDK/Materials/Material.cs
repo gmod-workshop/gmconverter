@@ -79,6 +79,30 @@ public sealed class Material(
     // Second texture combined with the diffuse before lighting.
     public MaterialLayer? DetailLayer { get; } = detailLayer;
 
+    /// <summary>A copy of this material under another name, sharing its textures.</summary>
+    public Material WithName(string newName)
+    {
+        return new Material(
+            newName,
+            Path,
+            DiffuseTexture,
+            SpecularTexture,
+            NormalTexture,
+            EmissiveTexture,
+            SurfaceKind,
+            SpecularTexturePacking,
+            NormalTextureConvention,
+            BakedUv0Scale,
+            SpecularFactor,
+            UvScrollRate,
+            EmissiveUvScrollRate,
+            BlendMode,
+            AlphaCutoff,
+            EmissiveLayer,
+            UvTransform,
+            DetailLayer);
+    }
+
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 
     public bool IsIlluminated => EmissiveTexture is not null;

@@ -145,6 +145,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         var baseName = context.BaseName;
         var options = BuildOptions(baseName, context.Options);
         model = SourceFacing.FaceForward(model);
+        model = SourceMaterialNames.MakeSafe(model);
         var sourceTools = SourceToolPaths.Resolve(options.StudioMdlPath, options.VtfCmdPath, options.BuildMaterials);
         var physicsOptions = options.Physics;
         var modelPath = options.ModelPath;

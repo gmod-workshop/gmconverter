@@ -50,7 +50,7 @@ These apply to every input and output format.
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
-| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent` or `wem` for sounds. | `--input-format psk` | Required |
+| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent`, `wem` or `fsb` for sounds. | `--input-format psk` | Required |
 | `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
@@ -102,6 +102,15 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | --- | --- | --- |
 | `--akevent-import-vgmstreamPath <path>` | `vgmstream-cli` override for decoding Wwise events. | Auto-downloaded to `tools` |
 | `--wem-import-vgmstreamPath <path>` | `vgmstream-cli` override for decoding `.wem` files. | Auto-downloaded to `tools` |
+
+</details>
+
+<details>
+<summary>FMOD Import Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--fsb-import-vgmstreamPath <path>` | `vgmstream-cli` override for decoding FMOD sound banks (`.fsb`), including Unity audio clips. | Auto-downloaded to `tools` |
 
 </details>
 
@@ -286,15 +295,16 @@ This first version reads which media an event can play, but not how Wwise mixes 
 
 The Explorer can browse Windows Unity player builds (games with a `<Game>_Data` folder holding `globalgamemanagers`). Select the game's install folder or its `_Data` folder. Builds packed into AssetBundles or Addressables, and WebGL or mobile builds, are not read yet. **Liar's Bar** is recognised by name.
 
-The Explorer lists three kinds of model:
+The Explorer lists three kinds of model, and the game's sounds:
 
 * **Prefabs** (`Prefabs/...`): game objects saved in the shared assets, such as characters. Each converts with every renderer under it: skinned meshes become one skeletal model posed as the prefab was saved, and props attached to bones (chairs, cups, hats) follow the bone above them.
 * **Scene objects** (`Scenes/<scene>/...`): the top-level objects of each scene with renderers under them. Whole scene sections can be very large.
 * **Meshes** (`Meshes/<file>/...`): single meshes, with the materials, rotation and scale of an object that draws them in the game.
+* **Sounds** (`Sounds/<file>/...`): every audio clip. Exporting one writes its FMOD sound bank (`.fsb`) and converts it with the `fsb` importer, decoded with [vgmstream](https://github.com/vgmstream/vgmstream) like Wwise media. Each clip becomes one sound with no events. Audio from Unity 4 and earlier is not read.
 
 Hidden parts (disabled renderers and inactive objects, often alternative outfits or held items) are left out unless `--unity-import-includeInactive true` is set.
 
-Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the base colour map and tint, normal map, HDRP mask map (metallic and smoothness), emission, alpha clipping and transparency. Custom shaders fall back to their main texture. Crunch-compressed textures are skipped with a warning. Texture tiling and offset are applied to the model's texture coordinates. Animations, sounds and blend shapes are not imported yet.
+Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the base colour map and tint, normal map, HDRP mask map (metallic and smoothness), emission, alpha clipping and transparency. Custom shaders fall back to their main texture. Crunch-compressed textures are skipped with a warning. Texture tiling and offset are applied to the model's texture coordinates. Animations and blend shapes are not imported yet.
 
 </details>
 
@@ -356,7 +366,7 @@ glTF/GLB export writes portable mesh assets with materials, normal maps, skeleto
 <details>
 <summary>WAV</summary>
 
-WAV import reads PCM (8, 16, 24 or 32-bit) and float WAV files as one sound with no events. Wwise `.wem` files (for example from FModel) import the same way with `--input-format wem`, decoded with vgmstream. A `smpl` loop or a Source-style cue point is read as the sound's loop.
+WAV import reads PCM (8, 16, 24 or 32-bit) and float WAV files as one sound with no events. Wwise `.wem` files (for example from FModel) import the same way with `--input-format wem`, and FMOD sound banks with `--input-format fsb` (one clip for each sound in the bank), both decoded with vgmstream. A `smpl` loop or a Source-style cue point is read as the sound's loop.
 
 WAV export writes each clip as a 16-bit PCM WAV under `sound/<sound path>/`. Clips are resampled to a rate Source plays, and a looping clip gets a cue point at its loop start. Sounds that come with events, such as game sound events, also get sound definitions named after the events, so animation sound events play them:
 

@@ -10,6 +10,7 @@ internal sealed class UnityMaterialProperties
     private readonly Dictionary<string, (Vector2 Scale, Vector2 Offset)> _textureTransforms = new(StringComparer.Ordinal);
     private readonly Dictionary<string, float> _floats = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Vector4> _colors = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _keywords = new(StringComparer.Ordinal);
 
     private UnityMaterialProperties(string name, string shaderName)
     {
@@ -20,6 +21,9 @@ internal sealed class UnityMaterialProperties
     public string Name { get; }
 
     public string ShaderName { get; }
+
+    /// <summary>Colour properties in the order the material saved them.</summary>
+    public IEnumerable<KeyValuePair<string, Vector4>> Colors => _colors;
 
     public static UnityMaterialProperties Read(UnityAssetLibrary library, UnityObject material)
     {
@@ -50,7 +54,38 @@ internal sealed class UnityMaterialProperties
             properties._colors[entry["first"].AsString] = new Vector4(color["r"].AsFloat, color["g"].AsFloat, color["b"].AsFloat, color["a"].AsFloat);
         }
 
+        // Unity 2021 and later list enabled keywords in m_ValidKeywords; older builds keep one string.
+        foreach (var keyword in UnityFields.Items(material["m_ValidKeywords"]))
+        {
+            properties._keywords.Add(keyword.AsString);
+        }
+
+        if (material["m_ShaderKeywords"] is { IsDummy: false } keywords)
+        {
+            properties._keywords.UnionWith(keywords.AsString.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        }
+
         return properties;
+    }
+
+    /// <summary>Whether the shader keyword <paramref name="keyword"/> is enabled, such as <c>_EMISSION</c>.</summary>
+    public bool HasKeyword(string keyword)
+    {
+        return _keywords.Contains(keyword);
+    }
+
+    /// <summary>Whether any of <paramref name="names"/> is a saved colour property.</summary>
+    public bool HasColor(params ReadOnlySpan<string> names)
+    {
+        foreach (var name in names)
+        {
+            if (_colors.ContainsKey(name))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The first of <paramref name="names"/> that holds a texture, with its tiling and offset.</summary>

@@ -18,6 +18,15 @@ internal sealed class UnityMaterialBuilder(UnityAssetLibrary library, ITextureFa
     private const float _defaultSpecular = 0.5f;
     private const int _solidTextureSize = 4;
 
+    private static readonly string[] _tintProperties = ["_BaseColor", "_UnlitColor", "_Color"];
+
+    // Colour properties every HDRP or shader graph material carries that are not a surface colour.
+    private static readonly HashSet<string> _nonSurfaceColors = new(StringComparer.Ordinal)
+    {
+        "_EmissionColor", "_EmissiveColor", "_EmissiveColorLDR", "_SpecColor", "_SpecularColor",
+        "_DoubleSidedConstants", "_DiffusionProfileAsset", "_TransmittanceColor", "_UVMappingMask", "_UVDetailsMappingMask",
+    };
+
     private readonly Dictionary<UnityObjectKey, UnityMaterial> _materials = [];
     private readonly List<UnityMaterial> _converted = [];
     private readonly Dictionary<UnityObjectKey, UnityTextureImage?> _images = [];
@@ -63,7 +72,9 @@ internal sealed class UnityMaterialBuilder(UnityAssetLibrary library, ITextureFa
         var keepsAlpha = blendMode is not MaterialBlendMode.Unspecified;
 
         var baseTexture = properties.FindTexture("_BaseColorMap", "_UnlitColorMap", "_BaseMap", "_MainTex");
-        var tint = properties.GetColor(Vector4.One, "_BaseColor", "_UnlitColor", "_Color");
+        var tint = baseTexture is null && !properties.HasColor(_tintProperties) && FindCustomColor(properties) is { } custom
+            ? custom
+            : properties.GetColor(Vector4.One, _tintProperties);
         var diffuse = BuildDiffuse(name, baseTexture?.Texture, tint, keepsAlpha);
         var (uvScale, uvOffset) = baseTexture is { } found ? properties.GetTextureTransform(found.Property) : (Vector2.One, Vector2.Zero);
 
@@ -87,6 +98,23 @@ internal sealed class UnityMaterialBuilder(UnityAssetLibrary library, ITextureFa
             blendMode: blendMode,
             alphaCutoff: alphaCutoff);
         return new UnityMaterial(material, uvScale, uvOffset);
+    }
+
+    // Custom shaders (shader graphs) name their colours freely, such as a liquid's _SideColor. The
+    // first colour property that reads as a surface colour stands in, opaque, since what its alpha
+    // means is up to the shader.
+    private static Vector4? FindCustomColor(UnityMaterialProperties properties)
+    {
+        foreach (var (name, color) in properties.Colors)
+        {
+            if (!_nonSurfaceColors.Contains(name) &&
+                (name.EndsWith("Color", StringComparison.OrdinalIgnoreCase) || name.EndsWith("Tint", StringComparison.OrdinalIgnoreCase)))
+            {
+                return color with { W = 1f };
+            }
+        }
+
+        return null;
     }
 
     private static (MaterialBlendMode Mode, float Cutoff) GetBlendMode(UnityMaterialProperties properties)
@@ -192,7 +220,11 @@ internal sealed class UnityMaterialBuilder(UnityAssetLibrary library, ITextureFa
 
     private Texture? BuildEmissive(string materialName, UnityMaterialProperties properties)
     {
-        var color = properties.GetColor(Vector4.Zero, "_EmissiveColor", "_EmissionColor");
+        // HDRP reads _EmissiveColor; _EmissionColor is the built-in and URP property, which
+        // materials keep at white and only light up with the _EMISSION keyword.
+        var color = properties.ShaderName.StartsWith("HDRP/", StringComparison.Ordinal)
+            ? properties.GetColor(Vector4.Zero, "_EmissiveColor")
+            : properties.HasKeyword("_EMISSION") ? properties.GetColor(Vector4.Zero, "_EmissionColor") : Vector4.Zero;
         var peak = MathF.Max(color.X, MathF.Max(color.Y, color.Z));
         if (peak <= 0.001f)
         {

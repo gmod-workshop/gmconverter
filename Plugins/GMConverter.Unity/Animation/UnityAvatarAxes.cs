@@ -30,6 +30,18 @@ internal sealed record UnityAvatarAxes(Quaternion PreQ, Quaternion PostQ, Vector
         return Quaternion.Normalize(PreQ * SwingTwist(angles) * Quaternion.Conjugate(PostQ));
     }
 
+    /// <summary>The twist angle, in radians, that the twist muscle value <paramref name="muscle"/> turns the bone by.</summary>
+    public float Twist(float muscle)
+    {
+        return Angle(muscle, Min.X, Max.X) * Sign.X;
+    }
+
+    /// <summary>A turn of <paramref name="angle"/> radians about the twist axis, in the bone's local frame.</summary>
+    public Quaternion TwistBy(float angle)
+    {
+        return Quaternion.Normalize(PostQ * Quaternion.CreateFromAxisAngle(Vector3.UnitX, angle) * Quaternion.Conjugate(PostQ));
+    }
+
     /// <summary>
     /// Mecanim's swing-twist from angles in radians: a twist of x about X, then a swing toward y
     /// and z. Each angle is held as the tangent of its half, so the swing turns about (0, tan y/2,

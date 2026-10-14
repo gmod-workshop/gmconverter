@@ -57,6 +57,20 @@ public sealed class UnityAnimationTests
     }
 
     [Fact]
+    public void TwistFollowsTheMuscleAndTurnsAboutTheTwistAxis()
+    {
+        var turn = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f);
+        var axes = new UnityAvatarAxes(Quaternion.Identity, turn, new Vector3(-1f, 1f, 1f), new Vector3(-0.5f, 0f, 0f), new Vector3(1f, 0f, 0f));
+
+        Assert.Equal(-1f, axes.Twist(1f), 5);
+        Assert.Equal(0.5f, axes.Twist(-1f), 5);
+
+        // PostQ turns the muscle frame's x onto the bone's y, so the twist turns about y.
+        AssertRotates(axes.TwistBy(MathF.PI / 2f), Vector3.UnitY, Vector3.UnitY);
+        AssertRotates(axes.TwistBy(MathF.PI / 2f), Vector3.UnitZ, Vector3.Transform(Vector3.UnitZ, Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f)));
+    }
+
+    [Fact]
     public void XformUnderComposesLikeUnityParenting()
     {
         var parent = new UnityXform(new Vector3(1f, 0f, 0f), Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f), new Vector3(2f, 2f, 2f));

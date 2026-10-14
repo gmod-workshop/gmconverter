@@ -40,6 +40,7 @@ internal sealed class SourceMaterialCompiler
         // the same RGB content compiled as DXT5 vs DXT1 produces different VTFs and one VMT may
         // need translucency while the other does not. Exact is part of it for the same reason.
         var contentBasenames = new Dictionary<(ulong Hash, bool HasAlpha, bool Exact), string>();
+        Dictionary<TextureSet, WrittenTextures> writtenTextures = [];
 
         try
         {
@@ -50,59 +51,23 @@ internal sealed class SourceMaterialCompiler
                     continue;
                 }
 
-                var baseTexture = SourceMaterialEmission.BaseTexture(material, _textureFactory);
-                var diffuseBasename = WriteOrReuse(
-                    baseTexture,
-                    material.Name,
-                    baseTexture.HasAlpha,
-                    materialSourceDirectory,
-                    materialOutputDirectory,
-                    contentBasenames);
-
-                var specForMask = UseSourcePhong(material) ? GetSourcePhongExponent(material) : null;
-
-                string? normalBasename = null;
-                if (material.NormalTexture is not null)
+                // Materials split by SourceTranslucencySplit share every texture with their
+                // original, so their VTFs are written once whatever the deduplication setting.
+                var key = new TextureSet(
+                    material.DiffuseTexture,
+                    material.NormalTexture,
+                    material.SpecularTexture,
+                    material.EmissiveTexture,
+                    material.SpecularTexturePacking,
+                    material.EmissiveLayer,
+                    material.DetailLayer);
+                if (!writtenTextures.TryGetValue(key, out var written))
                 {
-                    var normalTextureForWrite = specForMask is not null
-                        ? material.NormalTexture.WithMaskInAlpha(specForMask, _textureFactory)
-                        : material.NormalTexture;
-                    normalBasename = WriteOrReuse(
-                        normalTextureForWrite,
-                        $"{material.Name}_normal",
-                        hasAlpha: specForMask is not null,
-                        materialSourceDirectory,
-                        materialOutputDirectory,
-                        contentBasenames);
+                    written = WriteTextures(material, normalizedMaterialDirectory, materialSourceDirectory, materialOutputDirectory, contentBasenames);
+                    writtenTextures[key] = written;
                 }
 
-                string? specBasename = null;
-                if (specForMask is not null)
-                {
-                    // Phong-exponent texture's alpha carries the phong mask (per
-                    // ToSourcePhongExponent), so compile as DXT5 to keep that channel intact.
-                    specBasename = WriteOrReuse(
-                        specForMask,
-                        $"{material.Name}_spec",
-                        hasAlpha: true,
-                        materialSourceDirectory,
-                        materialOutputDirectory,
-                        contentBasenames);
-                }
-
-                Dictionary<string, string> extraTexturePaths = [];
-                foreach (var extra in SourceMaterialEmission.ExtraTextures(material, _textureFactory).Concat(SourceMaterialDetail.ExtraTextures(material, _textureFactory)))
-                {
-                    var basename = WriteOrReuse(
-                        extra.Texture,
-                        extra.SharedBasename ?? $"{material.Name}{extra.Suffix}",
-                        extra.Texture.HasAlpha,
-                        materialSourceDirectory,
-                        materialOutputDirectory,
-                        contentBasenames,
-                        extra.Exact);
-                    extraTexturePaths[extra.Suffix] = $"{normalizedMaterialDirectory}/{basename}";
-                }
+                var (diffuseBasename, normalBasename, specBasename, extraTexturePaths) = written;
 
                 var vmtPath = Path.Join(materialOutputDirectory, GetFileNameOnly($"{material.Name}.vmt"));
                 WriteVmt(
@@ -121,6 +86,70 @@ internal sealed class SourceMaterialCompiler
                 Directory.Delete(materialSourceDirectory, recursive: true);
             }
         }
+    }
+
+    private WrittenTextures WriteTextures(
+        Material material,
+        string normalizedMaterialDirectory,
+        string materialSourceDirectory,
+        string materialOutputDirectory,
+        Dictionary<(ulong Hash, bool HasAlpha, bool Exact), string> contentBasenames)
+    {
+        var baseTexture = SourceMaterialEmission.BaseTexture(material, _textureFactory);
+        var diffuseBasename = WriteOrReuse(
+            baseTexture,
+            material.Name,
+            baseTexture.HasAlpha,
+            materialSourceDirectory,
+            materialOutputDirectory,
+            contentBasenames);
+
+        var specForMask = UseSourcePhong(material) ? GetSourcePhongExponent(material) : null;
+
+        string? normalBasename = null;
+        if (material.NormalTexture is not null)
+        {
+            var normalTextureForWrite = specForMask is not null
+                ? material.NormalTexture.WithMaskInAlpha(specForMask, _textureFactory)
+                : material.NormalTexture;
+            normalBasename = WriteOrReuse(
+                normalTextureForWrite,
+                $"{material.Name}_normal",
+                hasAlpha: specForMask is not null,
+                materialSourceDirectory,
+                materialOutputDirectory,
+                contentBasenames);
+        }
+
+        string? specBasename = null;
+        if (specForMask is not null)
+        {
+            // Phong-exponent texture's alpha carries the phong mask (per
+            // ToSourcePhongExponent), so compile as DXT5 to keep that channel intact.
+            specBasename = WriteOrReuse(
+                specForMask,
+                $"{material.Name}_spec",
+                hasAlpha: true,
+                materialSourceDirectory,
+                materialOutputDirectory,
+                contentBasenames);
+        }
+
+        Dictionary<string, string> extraTexturePaths = [];
+        foreach (var extra in SourceMaterialEmission.ExtraTextures(material, _textureFactory).Concat(SourceMaterialDetail.ExtraTextures(material, _textureFactory)))
+        {
+            var basename = WriteOrReuse(
+                extra.Texture,
+                extra.SharedBasename ?? $"{material.Name}{extra.Suffix}",
+                extra.Texture.HasAlpha,
+                materialSourceDirectory,
+                materialOutputDirectory,
+                contentBasenames,
+                extra.Exact);
+            extraTexturePaths[extra.Suffix] = $"{normalizedMaterialDirectory}/{basename}";
+        }
+
+        return new WrittenTextures(diffuseBasename, normalBasename, specBasename, extraTexturePaths);
     }
 
     private string WriteOrReuse(
@@ -296,4 +325,19 @@ internal sealed class SourceMaterialCompiler
 
         return string.IsNullOrWhiteSpace(normalized) ? "gmconverter" : normalized;
     }
+
+    private readonly record struct TextureSet(
+        Texture? Diffuse,
+        Texture? Normal,
+        Texture? Specular,
+        Texture? Emissive,
+        MaterialSpecularTexturePacking SpecularPacking,
+        MaterialEmissiveLayer? EmissiveLayer,
+        MaterialLayer? DetailLayer);
+
+    private sealed record WrittenTextures(
+        string Diffuse,
+        string? Normal,
+        string? Specular,
+        Dictionary<string, string> Extras);
 }

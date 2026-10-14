@@ -82,6 +82,17 @@ public sealed class Material(
     /// <summary>A copy of this material under another name, sharing its textures.</summary>
     public Material WithName(string newName)
     {
+        return Copy(newName, BlendMode);
+    }
+
+    /// <summary>A copy of this material with another blend mode, sharing its textures.</summary>
+    public Material WithBlendMode(string newName, MaterialBlendMode newBlendMode)
+    {
+        return Copy(newName, newBlendMode);
+    }
+
+    private Material Copy(string newName, MaterialBlendMode newBlendMode)
+    {
         return new Material(
             newName,
             Path,
@@ -96,7 +107,7 @@ public sealed class Material(
             SpecularFactor,
             UvScrollRate,
             EmissiveUvScrollRate,
-            BlendMode,
+            newBlendMode,
             AlphaCutoff,
             EmissiveLayer,
             UvTransform,

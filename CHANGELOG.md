@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- For plugin authors, the SDK now shares the vgmstream decoder (`GMConverter.SDK.Audio.VgmstreamDecoder`) that the Wwise importers use, including its download into `tools/vgmstream` and its `vgmstreamPath` option, so other plugins can decode game audio formats the same way.
 - For plugin authors, the SDK now shares WAV reading and writing (`GMConverter.SDK.Audio.WaveFile`) and finding or downloading portable tools under `tools/` (`GMConverter.SDK.Common.ToolDownloads`), so any plugin can read decoded audio or fetch a helper tool the way the Source plugin fetches studiomdl and VTFCmd.
 - Updated CUE4Parse to its current version (October 2026). Unreal animations decode more accurately: rotations are no longer slightly unnormalised between keys, and looping animations end on their first pose again. Montages exported from the Unreal Explorer now name their sequence after the animation instead of `DefaultSlot`. Fortnite installs that mount streamed (on-demand) content scan again instead of failing. Existing UE4/5 exports are rebuilt once.
 - Renamed the core library from `GMConverter` to `GMConverter.Core`. The assembly is now `GMConverter.Core.dll`, the package ID is `GMConverter.Core`, and its namespaces moved from `GMConverter.Plugins`, `GMConverter.Explorer`, `GMConverter.Geometry`, and `GMConverter.Exporters` to `GMConverter.Core.*`. Plugins are unaffected because they reference only `GMConverter.SDK`.

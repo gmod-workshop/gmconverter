@@ -1,7 +1,6 @@
 using GMConverter.SDK.Audio;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
-using GMConverter.UnrealEngine.Audio;
 
 namespace GMConverter.UnrealEngine.Importers;
 
@@ -14,12 +13,12 @@ internal sealed class WemImporter : ISoundImporter
 
     public IReadOnlyList<string> FileExtensions { get; } = [".wem"];
 
-    public OptionSchema OptionSchema { get; } = new([new OptionGroup("tools", "Tools", [WwiseEventImporter.VgmstreamPathDescriptor()])]);
+    public OptionSchema OptionSchema { get; } = new([new OptionGroup("tools", "Tools", [VgmstreamDecoder.PathOptionDescriptor("Wwise media")])]);
 
     public Sound Import(SoundImportContext context)
     {
         var name = Path.GetFileNameWithoutExtension(context.InputPath);
-        var clip = VgmstreamDecoder.Resolve(context.Options.GetString(WwiseEventImporter.VgmstreamPathOption)).Decode(context.InputPath, name);
+        var clip = VgmstreamDecoder.Resolve(context.Options.GetString(VgmstreamDecoder.PathOption)).Decode(context.InputPath, name);
         return new Sound(name, [clip], []);
     }
 

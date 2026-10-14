@@ -181,8 +181,16 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             WriteAnimationSmd(model, CreatePoseClip(pose), basePoseSmdPath);
         }
 
+        // Parts hidden at rest need an idle sequence that hides them; otherwise idle is the reference pose.
+        string? idleSmdPath = null;
+        if (model.Skeleton is { } skeleton && SourceBoneVisibility.HasHiddenBones(skeleton))
+        {
+            idleSmdPath = Path.Combine(outputDirectory, $"{safeBaseName}_idle.smd");
+            WriteAnimationSmd(model, new AnimationClip("idle", 30f, 0f, []), idleSmdPath);
+        }
+
         var target = SourceProfiles.Find(context.TargetGameId);
-        WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
+        WriteQc(qcPath, model, modelPath, safeBaseName, idleSmdPath, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
             clip => target?.GetEvents(clip) ?? [],
             axis => target?.GetPoseParameter(axis));
@@ -640,6 +648,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Model model,
         string modelPath,
         string safeBaseName,
+        string? idleSmdPath,
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
@@ -670,7 +679,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         WriteEyePosition(writer, model);
         WriteHitboxes(writer, model);
 
-        writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
+        writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", idleSmdPath is null ? smdFileName : Path.GetFileName(idleSmdPath));
 
         // Base poses are plain $animations, so they can be subtracted without showing up as sequences.
         foreach (var basePoseSmdPath in basePoseSmdPaths.Values)
@@ -1082,6 +1091,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             .GroupBy(track => track.BoneIndex)
             .ToDictionary(group => group.Key, group => group.First());
         var lastFrame = GetLastAnimationFrame(clip, tracksByBone.Values);
+        var hidesBones = SourceBoneVisibility.HasHiddenBones(model.Skeleton) || clip.Tracks.OfType<BoneVisibilityTrack>().Any();
         var root = model.Skeleton.Bones.FirstOrDefault(bone => bone.ParentIndex < 0);
         var rebaseRoot = root is not null && GetRootMotionTrack(model, clip) is { } rootTrack
             ? CreateRootMotionRebase(root, rootTrack, clip.FrameRate)
@@ -1097,6 +1107,12 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             {
                 frameTransforms[root!.Index] = rebaseRoot(frameTransforms[root.Index]);
             }
+
+            if (hidesBones)
+            {
+                SourceBoneVisibility.Apply(model.Skeleton, frameTransforms, SourceBoneVisibility.HiddenBones(model.Skeleton, clip, frameIndex));
+            }
+
             var sourceTransforms = BuildSourceLocalTransforms(model.Skeleton, frameTransforms);
 
             foreach (var bone in model.Skeleton.Bones.OrderBy(bone => bone.Index))

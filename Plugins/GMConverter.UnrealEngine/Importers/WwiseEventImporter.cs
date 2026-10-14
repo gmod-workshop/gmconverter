@@ -1,7 +1,6 @@
 using GMConverter.SDK.Audio;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
-using GMConverter.UnrealEngine.Audio;
 using GMConverter.UnrealEngine.Formats.Wwise;
 
 namespace GMConverter.UnrealEngine.Importers;
@@ -13,7 +12,6 @@ namespace GMConverter.UnrealEngine.Importers;
 internal sealed class WwiseEventImporter : ISoundImporter
 {
     public const string FormatId = "akevent";
-    public const string VgmstreamPathOption = "vgmstreamPath";
 
     public string Format => FormatId;
 
@@ -21,19 +19,13 @@ internal sealed class WwiseEventImporter : ISoundImporter
 
     public IReadOnlyList<string> FileExtensions { get; } = [WwiseEventSidecar.Extension];
 
-    public OptionSchema OptionSchema { get; } = new([new OptionGroup("tools", "Tools", [VgmstreamPathDescriptor()])]);
-
-    internal static OptionDescriptor VgmstreamPathDescriptor() => new(VgmstreamPathOption, OptionType.Path, "vgmstream override")
-    {
-        Description = "Optional vgmstream-cli executable for decoding Wwise media. Auto-downloads to tools/ when omitted.",
-        DefaultValueFactory = VgmstreamDecoder.TryFindLocal,
-    };
+    public OptionSchema OptionSchema { get; } = new([new OptionGroup("tools", "Tools", [VgmstreamDecoder.PathOptionDescriptor("Wwise media")])]);
 
     public Sound Import(SoundImportContext context)
     {
         var sidecar = WwiseEventSidecar.Read(context.InputPath);
         var directory = Path.GetDirectoryName(context.InputPath)!;
-        var decoder = VgmstreamDecoder.Resolve(context.Options.GetString(VgmstreamPathOption));
+        var decoder = VgmstreamDecoder.Resolve(context.Options.GetString(VgmstreamDecoder.PathOption));
 
         // Each decode is its own vgmstream process, and footstep events can hold hundreds of
         // variations, so they run side by side.

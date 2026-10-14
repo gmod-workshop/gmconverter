@@ -18,6 +18,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `PSK` / `PSKX`        | Yes* | No | Read       | Read*                | Read            | Read* |
 | `UE4` / `UE5` archives | Yes* | No | Read       | Read*                | Read            | - |
 | `MOW` (`DEF` / `MDL`) | Yes* | No | Read | Read* | Read* | Read* |
+| Unity player builds | Yes* | No | Read | Read* | Read | - |
 | `OBJ` / `MTL`         | No | Yes | Write      | Write                | -               | - |
 | `glTF` / `GLB`        | No | Yes | Write      | Write                | Write           | Write |
 
@@ -82,6 +83,15 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | --- | --- | --- | --- |
 | `--psk-import-animationPath <path.psa>` | `--animation-path` | PSA animation files to import alongside the mesh. Separate several files with `;`. | None |
 | `--psk-import-blendSpacePath <path.blendspace.json>` | `--blend-space-path` | Blend space files the Explorer writes when it resolves a blend space or aim offset, describing how the imported animations blend. Separate several files with `;`. | None |
+
+</details>
+
+<details>
+<summary>Unity Import Options</summary>
+
+| Option | Alias | Description | Default |
+| --- | --- | --- | --- |
+| `--unity-import-includeInactive <true\|false>` | None | Also import renderers that are disabled or sit under inactive game objects, such as alternative outfits. | `false` |
 
 </details>
 
@@ -192,7 +202,7 @@ physics-mass = 100
 
 ## Plugins
 
-Unreal Engine, Source Engine, Men of War and X-Wing Alliance support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
+Unreal Engine, Unity, Source Engine, Men of War and X-Wing Alliance support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
 
 Each plugin declares its own options; see [Format Options](#format-options).
 
@@ -268,6 +278,23 @@ Sockets on Unreal meshes and skeletons (named attach points such as a weapon han
 Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it, and picks between its media at random. Localised voice lines keep their English recording.
 
 This first version reads which media an event can play, but not how Wwise mixes it. Volume, pitch variation and switches (such as the floor surface a footstep is on) are not read yet: an event picks between all of its media, and how far it carries is guessed from its name (`FS_` footsteps, `FLY_` foley, `brk_` and `VO` voice, `WPN_` weapons, and so on).
+
+</details>
+
+<details>
+<summary>Unity Player Builds</summary>
+
+The Explorer can browse Windows Unity player builds (games with a `<Game>_Data` folder holding `globalgamemanagers`). Select the game's install folder or its `_Data` folder. Builds packed into AssetBundles or Addressables, and WebGL or mobile builds, are not read yet. **Liar's Bar** is recognised by name.
+
+The Explorer lists three kinds of model:
+
+* **Prefabs** (`Prefabs/...`): game objects saved in the shared assets, such as characters. Each converts with every renderer under it: skinned meshes become one skeletal model posed as the prefab was saved, and props attached to bones (chairs, cups, hats) follow the bone above them.
+* **Scene objects** (`Scenes/<scene>/...`): the top-level objects of each scene with renderers under them. Whole scene sections can be very large.
+* **Meshes** (`Meshes/<file>/...`): single meshes, with the materials, rotation and scale of an object that draws them in the game.
+
+Hidden parts (disabled renderers and inactive objects, often alternative outfits or held items) are left out unless `--unity-import-includeInactive true` is set.
+
+Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the base colour map and tint, normal map, HDRP mask map (metallic and smoothness), emission, alpha clipping and transparency. Custom shaders fall back to their main texture. Crunch-compressed textures are skipped with a warning. Texture tiling and offset are applied to the model's texture coordinates. Animations, sounds and blend shapes are not imported yet.
 
 </details>
 
@@ -406,3 +433,5 @@ Generate a [CoACD](https://colin97.github.io/CoACD/) based collision mesh:
 - [Ab4d.SharpEngine](https://www.ab4d.com/SharpEngine.aspx) - Avalonia 3D preview rendering
 - [DarklightGames/io_scene_psk_psa](https://github.com/DarklightGames/io_scene_psk_psa) - PSK/PSA support
 - [colin97/CoACD](https://github.com/colin97/CoACD) - Convex decomposition
+- [nesrak1/AssetsTools.NET](https://github.com/nesrak1/AssetsTools.NET) and [UABEA](https://github.com/nesrak1/UABEA) - Unity asset reading and class database
+- [AssetRipper/TextureDecoder](https://github.com/AssetRipper/TextureDecoder) - Unity texture decoding

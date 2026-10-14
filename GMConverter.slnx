@@ -13,6 +13,8 @@
     <Project Path="Plugins/GMConverter.SourceEngine.Tests/GMConverter.SourceEngine.Tests.csproj" />
     <Project Path="Plugins/GMConverter.UnrealEngine/GMConverter.UnrealEngine.csproj" />
     <Project Path="Plugins/GMConverter.UnrealEngine.Tests/GMConverter.UnrealEngine.Tests.csproj" />
+    <Project Path="Plugins/GMConverter.Unity/GMConverter.Unity.csproj" />
+    <Project Path="Plugins/GMConverter.Unity.Tests/GMConverter.Unity.Tests.csproj" />
     <Project Path="Plugins/GMConverter.XWingAlliance/GMConverter.XWingAlliance.csproj" />
     <Project Path="Plugins/GMConverter.XWingAlliance.Tests/GMConverter.XWingAlliance.Tests.csproj" />
   </Folder>

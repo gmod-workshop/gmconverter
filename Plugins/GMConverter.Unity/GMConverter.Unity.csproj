@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>GMConverter.Unity</AssemblyName>
+        <PackageId>GMConverter.Unity</PackageId>
+        <RootNamespace>GMConverter.Unity</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Ships as a self-contained plugin: the host copies bin/ verbatim into plugins/<id>/,
+             so NuGet dependencies (AssetsTools.NET, the texture decoder) must sit next to the
+             plugin assembly. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="AssetRipper.TextureDecoder" Version="2.6.3" />
+        <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\GMConverter\GMConverter.SDK\GMConverter.SDK.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="GMConverter.Unity.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Player builds strip type trees, so AssetsTools.NET reads them from this class database
+             (from UABEA, MIT). -->
+        <EmbeddedResource Include="ClassData\classdata.tpk" LogicalName="GMConverter.Unity.classdata.tpk" />
+        <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+</Project>

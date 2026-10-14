@@ -26,6 +26,17 @@ public sealed class UnityAnimationTests
     }
 
     [Fact]
+    public void SwingOnBothAxesUsesHalfAngleTangents()
+    {
+        // 90° on y and z: the axis is (0, 1, 1) and the angle 2·atan(√2), not √2·90°.
+        var swing = UnityAvatarAxes.SwingTwist(new Vector3(0f, MathF.PI / 2f, MathF.PI / 2f));
+        var angle = 2f * MathF.Acos(Math.Clamp(swing.W, -1f, 1f));
+
+        Assert.Equal(2f * MathF.Atan(MathF.Sqrt(2f)), angle, 4);
+        Assert.Equal(swing.Y, swing.Z, 5);
+    }
+
+    [Fact]
     public void MusclesReachTheLimitOnTheirSide()
     {
         var axes = new UnityAvatarAxes(Quaternion.Identity, Quaternion.Identity, Vector3.One, new Vector3(0f, 0f, -0.5f), new Vector3(0f, 0f, 1.5f));
@@ -43,6 +54,20 @@ public sealed class UnityAnimationTests
         // PreQ * SwingTwist * PostQ⁻¹ with zero muscles is PreQ * PostQ⁻¹, here no rotation at all.
         AssertRotates(axes.Rotate(Vector3.Zero), Vector3.UnitX, Vector3.UnitX);
         Assert.True(Quaternion.Dot(axes.Rotate(new Vector3(0f, 0f, 0.5f)), axes.Rotate(new Vector3(0f, 0f, -0.5f))) < 0.99f);
+    }
+
+    [Fact]
+    public void TwistFollowsTheMuscleAndTurnsAboutTheTwistAxis()
+    {
+        var turn = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f);
+        var axes = new UnityAvatarAxes(Quaternion.Identity, turn, new Vector3(-1f, 1f, 1f), new Vector3(-0.5f, 0f, 0f), new Vector3(1f, 0f, 0f));
+
+        Assert.Equal(-1f, axes.Twist(1f), 5);
+        Assert.Equal(0.5f, axes.Twist(-1f), 5);
+
+        // PostQ turns the muscle frame's x onto the bone's y, so the twist turns about y.
+        AssertRotates(axes.TwistBy(MathF.PI / 2f), Vector3.UnitY, Vector3.UnitY);
+        AssertRotates(axes.TwistBy(MathF.PI / 2f), Vector3.UnitZ, Vector3.Transform(Vector3.UnitZ, Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f)));
     }
 
     [Fact]

@@ -29,14 +29,17 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
     public Model BuildHierarchy(UnityObject rootTransform, bool includeInactive, UnityAnimationRequest animations)
     {
         var hierarchy = UnityHierarchy.Load(library, rootTransform);
-        var renderers = FindRenderers(hierarchy, includeInactive);
         var animators = UnityAnimators.Find(library, hierarchy, animations);
+        var toggled = animators.ToggledNodes();
+        var renderers = FindRenderers(hierarchy, includeInactive, toggled);
 
-        // Props the clips move need bones of their own for their meshes to follow.
+        // Props the clips move or turn on and off need bones of their own for their meshes to
+        // follow; those saved switched off start hidden.
         HashSet<UnityTransformNode> drawn = [.. renderers.SelectMany(renderer => renderer.Node.Ancestors().Prepend(renderer.Node))];
-        UnityTransformNode[] movedProps = [.. animators.MovedNodes().Where(drawn.Contains)];
-        var skeleton = renderers.Any(renderer => renderer.IsSkinned) || movedProps.Length > 0
-            ? BuildSkeleton(hierarchy, renderers, movedProps)
+        HashSet<UnityTransformNode> toggledProps = [.. toggled.Where(drawn.Contains)];
+        UnityTransformNode[] props = [.. animators.MovedNodes().Where(drawn.Contains).Union(toggledProps)];
+        var skeleton = renderers.Any(renderer => renderer.IsSkinned) || props.Length > 0
+            ? BuildSkeleton(hierarchy, renderers, props, toggledProps)
             : null;
 
         List<Mesh> meshes = [];
@@ -54,13 +57,13 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
             meshes,
             CollectMaterials(),
             skeleton?.Skeleton,
-            skeleton is null ? null : BuildAnimations(animators, skeleton),
+            skeleton is null ? null : BuildAnimations(animators, skeleton, toggledProps),
             Forward: UnitySpace.Forward);
     }
 
-    private List<AnimationClip>? BuildAnimations(UnityAnimators animators, UnitySkeleton skeleton)
+    private List<AnimationClip>? BuildAnimations(UnityAnimators animators, UnitySkeleton skeleton, IReadOnlySet<UnityTransformNode> toggledProps)
     {
-        var animations = animators.Build(skeleton);
+        var animations = animators.Build(skeleton, toggledProps);
         SkippedAnimations = animators.Skipped;
         return animations;
     }
@@ -104,10 +107,10 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
         return UnitySpace.Compose(Vector3.Zero, rotation, scale);
     }
 
-    private List<UnityRenderer> FindRenderers(UnityHierarchy hierarchy, bool includeInactive)
+    private List<UnityRenderer> FindRenderers(UnityHierarchy hierarchy, bool includeInactive, IReadOnlySet<UnityTransformNode> toggled)
     {
         List<UnityRenderer> renderers = [];
-        foreach (var node in hierarchy.Nodes.Where(node => includeInactive || node.IsActive))
+        foreach (var node in hierarchy.Nodes.Where(node => includeInactive || node.IsActive || IsShownByClips(node, toggled)))
         {
             foreach (var renderer in hierarchy.GetComponents(node, AssetClassID.SkinnedMeshRenderer))
             {
@@ -134,6 +137,13 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
         return renderers;
     }
 
+    // Whether every switched-off game object above the node is one a clip switches on.
+    private static bool IsShownByClips(UnityTransformNode node, IReadOnlySet<UnityTransformNode> toggled)
+    {
+        return node.Ancestors().Prepend(node).All(current =>
+            current.GameObject?["m_IsActive"].AsBool != false || toggled.Contains(current));
+    }
+
     private static bool IsEnabled(UnityObject renderer, bool includeInactive)
     {
         return includeInactive || renderer["m_Enabled"].AsBool;
@@ -142,10 +152,14 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
     // Keeps every bone a skinned renderer uses and every animated prop, plus their ancestors, so each
     // bone's parent is its parent in the hierarchy and the root is always present for rigid parts
     // to fall back on.
-    private static UnitySkeleton BuildSkeleton(UnityHierarchy hierarchy, IReadOnlyList<UnityRenderer> renderers, IEnumerable<UnityTransformNode> movedProps)
+    private static UnitySkeleton BuildSkeleton(
+        UnityHierarchy hierarchy,
+        IReadOnlyList<UnityRenderer> renderers,
+        IEnumerable<UnityTransformNode> props,
+        HashSet<UnityTransformNode> toggledProps)
     {
         HashSet<UnityTransformNode> used = [hierarchy.Root];
-        foreach (var bone in renderers.SelectMany(renderer => renderer.Bones).OfType<UnityTransformNode>().Concat(movedProps))
+        foreach (var bone in renderers.SelectMany(renderer => renderer.Bones).OfType<UnityTransformNode>().Concat(props))
         {
             if (used.Add(bone))
             {
@@ -160,7 +174,8 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
                 index,
                 UniqueName(names, node.Name),
                 node.Parent is { } parent ? indices[parent] : -1,
-                new Transform(UnitySpace.Position(node.LocalPosition), UnitySpace.Rotation(node.LocalRotation), UnitySpace.Scale(node.LocalScale))))
+                new Transform(UnitySpace.Position(node.LocalPosition), UnitySpace.Rotation(node.LocalRotation), UnitySpace.Scale(node.LocalScale)),
+                HiddenAtRest: toggledProps.Contains(node) && !node.IsActive))
             .ToArray();
 
         return new UnitySkeleton(new Skeleton(bones), indices);

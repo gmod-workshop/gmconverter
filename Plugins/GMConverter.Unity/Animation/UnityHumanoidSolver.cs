@@ -19,8 +19,6 @@ internal sealed class UnityHumanoidSolver
     private const int _rightUpperLeg = 2;
     private const int _leftUpperArm = 14;
     private const int _rightUpperArm = 15;
-    private const int _leftHand = 18;
-    private const int _rightHand = 19;
     private const int _bodyMuscleCount = 55;
     private const int _fingerMusclesPerHand = 20;
 
@@ -77,11 +75,9 @@ internal sealed class UnityHumanoidSolver
     /// <summary>
     /// Local transforms for every human skeleton node. <paramref name="muscles"/> holds the 95
     /// muscle values; <paramref name="bodyPosition"/> is the centre of mass in human units and
-    /// <paramref name="bodyRotation"/> the body's orientation. <paramref name="handGoals"/>, when
-    /// the clip has them, are where Unity put the left and right hands, relative to the body in
-    /// human units.
+    /// <paramref name="bodyRotation"/> the body's orientation.
     /// </summary>
-    public UnityXform[] Solve(ReadOnlySpan<float> muscles, Vector3 bodyPosition, Quaternion bodyRotation, (Vector3 Left, Vector3 Right)? handGoals = null)
+    public UnityXform[] Solve(ReadOnlySpan<float> muscles, Vector3 bodyPosition, Quaternion bodyRotation)
     {
         var locals = _avatar.Pose.ToArray();
         for (var node = 0; node < locals.Length; node++)
@@ -100,12 +96,13 @@ internal sealed class UnityHumanoidSolver
         }
 
         // Unity's body orientation comes from the limbs: right across the upper legs and upper
-        // arms, up from between the legs to between the arms. Find it with the hips unturned; the
-        // hips' rotation is whatever turns that onto the pose's body rotation.
+        // arms, up from between the legs to between the arms. Clips store it relative to the
+        // avatar's own reference orientation, so they play on any avatar. Find it with the hips
+        // unturned; the hips' rotation is whatever turns that onto the pose's.
         var parentGlobal = _avatar.Parents[HipsNode] >= 0 ? _referenceGlobals[_avatar.Parents[HipsNode]] : UnityXform.Identity;
         locals[HipsNode] = Relative(new UnityXform(Vector3.Zero, Quaternion.Identity, _referenceGlobals[HipsNode].Scale), parentGlobal);
         var unturned = BodyOrientation(Globals(locals));
-        var hipsRotation = Quaternion.Normalize(bodyRotation * Quaternion.Conjugate(unturned));
+        var hipsRotation = Quaternion.Normalize(bodyRotation * _avatar.Root.Rotation * Quaternion.Conjugate(unturned));
 
         // Pose the skeleton with the hips at the origin in that orientation to find where the
         // centre of mass sits relative to them, then move the hips to put it at the body position.
@@ -113,20 +110,6 @@ internal sealed class UnityHumanoidSolver
         var globals = Globals(locals);
         var massCenter = MassCenter(globals) + Vector3.Transform(_massOffset, bodyRotation);
         var hipsPosition = (bodyPosition * _avatar.Scale) - (massCenter - globals[HipsNode].Translation);
-
-        // Unity's centre of mass isn't quite the bones' mass-weighted average, which leaves the
-        // body a few centimetres off; the hand goals, where Unity's own solve put the hands, show
-        // by how much. The hands share that error, so move the whole body by their average miss.
-        if (handGoals is { } goals &&
-            _avatar.BodyNodes[_leftHand] is var leftHand and >= 0 &&
-            _avatar.BodyNodes[_rightHand] is var rightHand and >= 0)
-        {
-            var leftGoal = (bodyPosition + Vector3.Transform(goals.Left, bodyRotation)) * _avatar.Scale;
-            var rightGoal = (bodyPosition + Vector3.Transform(goals.Right, bodyRotation)) * _avatar.Scale;
-            var hipsOffset = hipsPosition - globals[HipsNode].Translation;
-            var miss = ((leftGoal - globals[leftHand].Translation) + (rightGoal - globals[rightHand].Translation)) * 0.5f;
-            hipsPosition += miss - hipsOffset;
-        }
 
         locals[HipsNode] = Relative(new UnityXform(hipsPosition, hipsRotation, _referenceGlobals[HipsNode].Scale), parentGlobal);
         return locals;

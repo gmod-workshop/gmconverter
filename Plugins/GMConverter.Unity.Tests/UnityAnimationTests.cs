@@ -26,6 +26,17 @@ public sealed class UnityAnimationTests
     }
 
     [Fact]
+    public void SwingOnBothAxesUsesHalfAngleTangents()
+    {
+        // 90° on y and z: the axis is (0, 1, 1) and the angle 2·atan(√2), not √2·90°.
+        var swing = UnityAvatarAxes.SwingTwist(new Vector3(0f, MathF.PI / 2f, MathF.PI / 2f));
+        var angle = 2f * MathF.Acos(Math.Clamp(swing.W, -1f, 1f));
+
+        Assert.Equal(2f * MathF.Atan(MathF.Sqrt(2f)), angle, 4);
+        Assert.Equal(swing.Y, swing.Z, 5);
+    }
+
+    [Fact]
     public void MusclesReachTheLimitOnTheirSide()
     {
         var axes = new UnityAvatarAxes(Quaternion.Identity, Quaternion.Identity, Vector3.One, new Vector3(0f, 0f, -0.5f), new Vector3(0f, 0f, 1.5f));

@@ -30,14 +30,16 @@ internal sealed record UnityAvatarAxes(Quaternion PreQ, Quaternion PostQ, Vector
         return Quaternion.Normalize(PreQ * SwingTwist(angles) * Quaternion.Conjugate(PostQ));
     }
 
-    /// <summary>A swing about the axis (0, y, z) by its length, after a twist of x about X; all in radians.</summary>
+    /// <summary>
+    /// Mecanim's swing-twist from angles in radians: a twist of x about X, then a swing toward y
+    /// and z. Each angle is held as the tangent of its half, so the swing turns about (0, tan y/2,
+    /// tan z/2) and the quaternion is (tx, ty + tx·tz, tz − tx·ty, 1) normalized. Swinging on both
+    /// axes at once lands short of a plain axis-angle swing near the limits.
+    /// </summary>
     public static Quaternion SwingTwist(Vector3 angles)
     {
-        var swingAngle = MathF.Sqrt((angles.Y * angles.Y) + (angles.Z * angles.Z));
-        var swing = swingAngle > 1e-8f
-            ? Quaternion.CreateFromAxisAngle(new Vector3(0f, angles.Y / swingAngle, angles.Z / swingAngle), swingAngle)
-            : Quaternion.Identity;
-        return swing * Quaternion.CreateFromAxisAngle(Vector3.UnitX, angles.X);
+        var t = new Vector3(MathF.Tan(angles.X * 0.5f), MathF.Tan(angles.Y * 0.5f), MathF.Tan(angles.Z * 0.5f));
+        return Quaternion.Normalize(new Quaternion(t.X, t.Y + (t.X * t.Z), t.Z - (t.X * t.Y), 1f));
     }
 
     private static float Angle(float muscle, float min, float max)

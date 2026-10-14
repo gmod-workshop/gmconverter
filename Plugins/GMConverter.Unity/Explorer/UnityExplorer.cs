@@ -5,17 +5,21 @@ using AssetsTools.NET.Extra;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.Unity.Assets;
+using GMConverter.Unity.Audio;
 
 namespace GMConverter.Unity.Explorer;
 
 /// <summary>
 /// Browses a Unity player build. Lists prefabs and scene objects that hold renderers (each becomes
-/// a model with everything under it) and every mesh on its own, with the materials of a renderer
-/// that draws it.
+/// a model with everything under it), every mesh on its own, with the materials of a renderer
+/// that draws it, and every audio clip as a sound.
 /// </summary>
 public sealed class UnityExplorer : IExplorer
 {
     private const string _referenceFolder = "__unity";
+
+    // Audio clips resolve to their FMOD sound bank, which FsbImporter reads.
+    private const string _soundFormat = "fsb";
 
     private static readonly HashSet<AssetClassID> _rendererClasses = [AssetClassID.MeshRenderer, AssetClassID.SkinnedMeshRenderer];
 
@@ -81,6 +85,17 @@ public sealed class UnityExplorer : IExplorer
                     var details = string.Create(CultureInfo.InvariantCulture, $"Mesh {name} | {fileName} | Path ID {info.PathId}");
                     entries.Add(CreateEntry(dataDirectory, $"Meshes/{Path.GetFileNameWithoutExtension(fileName)}/{Sanitize(name)}", fileName, entryPath, "Mesh", details));
                 }
+
+                foreach (var clip in library.ObjectsOfType(file, AssetClassID.AudioClip))
+                {
+                    var audio = new UnityAudioClip(clip);
+                    var details = string.Create(CultureInfo.InvariantCulture, $"AudioClip {audio.Name} | {fileName} | Path ID {clip.PathId} | {audio.Describe()}");
+                    entries.Add(CreateEntry(dataDirectory, $"Sounds/{Path.GetFileNameWithoutExtension(fileName)}/{Sanitize(audio.Name)}", fileName, clip.Key.ToString(), "AudioClip", details) with
+                    {
+                        InputFormat = _soundFormat,
+                        Kind = ExplorerEntryKind.Sound,
+                    });
+                }
             }
 
             return MakeDisplayPathsUnique(entries)
@@ -97,10 +112,25 @@ public sealed class UnityExplorer : IExplorer
         }
 
         var parts = entryPath.Split('|');
-        var reference = new UnityAssetReference(dataDirectory, parts[0], parts.Length > 1 ? parts[1] : null);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entryPath)))[..12];
         var name = Sanitize(Path.GetFileName(fileEntry.DisplayPath));
         var directory = Path.Join(ExplorerFileSystem.GetExtractionRoot(dataDirectory), _referenceFolder, hash);
+        Directory.CreateDirectory(directory);
+
+        if (fileEntry.Kind == ExplorerEntryKind.Sound)
+        {
+            var bankPath = Path.Join(directory, name + UnityAudioClip.BankExtension);
+            var library = UnityAssetLibrary.For(dataDirectory);
+            lock (library.SyncRoot)
+            {
+                var clip = new UnityAudioClip(library.Get(UnityObjectKey.Parse(parts[0])));
+                File.WriteAllBytes(bankPath, clip.ReadBank(library));
+            }
+
+            return new ExplorerResolvedEntry(bankPath, directory, fileEntry.Details);
+        }
+
+        var reference = new UnityAssetReference(dataDirectory, parts[0], parts.Length > 1 ? parts[1] : null);
         var path = Path.Join(directory, name + UnityAssetReference.FileExtension);
         reference.Write(path);
 

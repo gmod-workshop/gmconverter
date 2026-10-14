@@ -70,6 +70,33 @@ public sealed class VgmstreamDecoder
         }
     }
 
+    /// <summary>
+    /// Decodes every sound in <paramref name="inputPath"/>, for containers such as FMOD banks
+    /// that hold several. A single sound is named <paramref name="name"/>; several are named
+    /// <c>name_1</c>, <c>name_2</c> and so on, in the container's order.
+    /// </summary>
+    public IReadOnlyList<SoundClip> DecodeAll(string inputPath, string name)
+    {
+        var outputDirectory = Path.Join(Path.GetTempPath(), "GMConverter", "vgmstream", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outputDirectory);
+        try
+        {
+            // -S 0 runs to the last subsong, and ?s names each output after its subsong number.
+            Run("-i", "-L", "-S", "0", "-o", Path.Join(outputDirectory, "?s.wav"), inputPath);
+            var outputs = Directory.GetFiles(outputDirectory, "*.wav")
+                .OrderBy(path => int.TryParse(Path.GetFileNameWithoutExtension(path), out var subsong) ? subsong : int.MaxValue)
+                .ToArray();
+            return [.. outputs.Select(path => WaveFile.Read(path) with
+            {
+                Name = outputs.Length == 1 ? name : $"{name}_{Path.GetFileNameWithoutExtension(path)}",
+            })];
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
     private void Run(params string[] arguments)
     {
         var startInfo = new ProcessStartInfo(_executable)

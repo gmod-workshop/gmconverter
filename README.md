@@ -19,6 +19,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `UE4` / `UE5` archives | Yes* | No | Read       | Read*                | Read            | - |
 | `MOW` (`DEF` / `MDL`) | Yes* | No | Read | Read* | Read* | Read* |
 | Unity player builds | Yes* | No | Read | Read* | Read | Read* |
+| Godot 4 games | Yes* | No | Read | Read* | Read | - |
 | `OBJ` / `MTL`         | No | Yes | Write      | Write                | -               | - |
 | `glTF` / `GLB`        | No | Yes | Write      | Write                | Write           | Write |
 
@@ -317,7 +318,13 @@ Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the b
 
 The Explorer can browse games made with Godot 4.0 to 4.3. Select the game's install folder, its executable, or its `.pck` file; the game's files can be in a `.pck` beside the executable or inside the executable itself. Encrypted packs are not read.
 
-The Explorer lists the game's sounds under `Sounds/`, by the path they had in the game's project. Ogg Vorbis sounds and 16-bit and 8-bit WAV sounds convert; compressed WAV sounds (IMA ADPCM, QOA) do not. Each becomes one sound with no events; a sound set to loop keeps its loop.
+The Explorer lists, by the path each had in the game's project:
+
+* **Models** (`Models/...`): every model the project imported (`.glb`, `.fbx`, `.blend` and other scenes). Each converts with every mesh in it, placed as the model has them; skinned meshes keep their skeleton.
+* **Scenes** (`Scenes/...`): the game's own scenes (`.tscn`), such as an item put together from several models. Scenes they instance are brought in. Whole levels can be very large.
+* **Sounds** (`Sounds/...`): every sound the project imported. Ogg Vorbis sounds and 16-bit and 8-bit WAV sounds convert; compressed WAV sounds (IMA ADPCM, QOA) do not. Each becomes one sound with no events; a sound set to loop keeps its loop.
+
+Hidden meshes are left out unless `--godot-import-includeHidden true` is set. Materials read `StandardMaterial3D` and `ORMMaterial3D`: the albedo texture and colour, normal map, roughness and metallic, emission, transparency and texture scale. Unshaded materials glow with their own colour. Custom shaders fall back to a plain material, and primitive meshes Godot generates at run time (boxes, planes, cylinders) are skipped with a warning. Animations are not converted yet.
 
 </details>
 

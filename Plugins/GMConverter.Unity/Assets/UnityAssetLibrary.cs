@@ -106,6 +106,17 @@ internal sealed class UnityAssetLibrary
         return Find(key) ?? throw new GMConverterException($"Unity object not found: {key}");
     }
 
+    /// <summary>
+    /// The object's serialized bytes. Builds without type trees describe only Unity's own classes,
+    /// so a script's fields have to be read from these by their known layout.
+    /// </summary>
+    public static byte[] ReadRawData(UnityObject unityObject)
+    {
+        var reader = unityObject.File.file.Reader;
+        reader.Position = unityObject.Info.GetAbsoluteByteOffset(unityObject.File.file);
+        return reader.ReadBytes((int)unityObject.Info.ByteSize);
+    }
+
     /// <summary>Class of the object a PPtr field points at without deserializing it, or null for a null or missing reference.</summary>
     public AssetClassID? PeekClass(AssetsFileInstance file, AssetTypeValueField pointer)
     {

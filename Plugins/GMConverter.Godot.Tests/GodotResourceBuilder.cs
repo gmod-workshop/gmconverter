@@ -123,6 +123,53 @@ internal sealed class GodotResourceBuilder
         }
     };
 
+    public static Action<BinaryWriter> Int32s(params int[] values) => writer =>
+    {
+        writer.Write(32);
+        writer.Write(values.Length);
+        foreach (var value in values)
+        {
+            writer.Write(value);
+        }
+    };
+
+    public static Action<BinaryWriter> Strings(params string[] values) => writer =>
+    {
+        writer.Write(34);
+        writer.Write(values.Length);
+        foreach (var value in values)
+        {
+            WriteString(writer, value);
+        }
+    };
+
+    public static Action<BinaryWriter> Int64(long value) => writer =>
+    {
+        writer.Write(40);
+        writer.Write(value);
+    };
+
+    public static Action<BinaryWriter> Color(float r, float g, float b, float a) => writer =>
+    {
+        writer.Write(20);
+        writer.Write(r);
+        writer.Write(g);
+        writer.Write(b);
+        writer.Write(a);
+    };
+
+    /// <summary>An axis-aligned box: its lowest corner, then its size.</summary>
+    public static Action<BinaryWriter> Aabb(Vector3 position, Vector3 size) => writer =>
+    {
+        writer.Write(15);
+        foreach (var vector in new[] { position, size })
+        {
+            writer.Write(vector.X);
+            writer.Write(vector.Y);
+            writer.Write(vector.Z);
+        }
+    };
+
     public static Action<BinaryWriter> Array(params Action<BinaryWriter>[] items) => writer =>
     {
         writer.Write(30);

@@ -22,9 +22,12 @@ internal sealed class LiarsBarProfile : IImportGameProfile
     public GameMatch Detect(ExplorerTarget target)
     {
         var dataDirectory = UnityGameFolder.FindDataDirectory(target.FullPath);
-        return dataDirectory is not null &&
-            string.Equals(Path.GetFileName(dataDirectory), _productName + "_Data", StringComparison.OrdinalIgnoreCase)
-            ? GameMatch.Exact
-            : GameMatch.None;
+        return dataDirectory is not null && IsDataDirectory(dataDirectory) ? GameMatch.Exact : GameMatch.None;
+    }
+
+    /// <summary>Whether <paramref name="dataDirectory"/> is Liar's Bar's <c>_Data</c> folder.</summary>
+    public static bool IsDataDirectory(string dataDirectory)
+    {
+        return string.Equals(Path.GetFileName(Path.TrimEndingDirectorySeparator(dataDirectory)), _productName + "_Data", StringComparison.OrdinalIgnoreCase);
     }
 }

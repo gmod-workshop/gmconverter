@@ -19,6 +19,7 @@ public sealed class SourceFacingTests
         // The front of the model (-Y) ends up at +X, and its normal turns with it.
         AssertNear(Vector3.UnitX, turned.Meshes[0].Vertices[0].Position);
         AssertNear(Vector3.UnitX, turned.Meshes[0].Vertices[0].Normal);
+        AssertNear(Vector3.UnitX, turned.Meshes[0].MorphTargets![0].Deltas[0].Position);
         // The root bone turns; its child keeps its bone-relative pose.
         AssertNear(new Vector3(2, 0, 0), turned.Skeleton!.Bones[0].LocalBindPose.Translation);
         Assert.Equal(model.Skeleton!.Bones[1], turned.Skeleton.Bones[1]);
@@ -67,7 +68,10 @@ public sealed class SourceFacingTests
 
     private static Model CreateModel(Vector3? forward)
     {
-        var mesh = new Mesh([new Vertex(new Vector3(0, -1, 0), new Vector3(0, -1, 0), Vector2.Zero)], [new Submesh("m", [])]);
+        var mesh = new Mesh(
+            [new Vertex(new Vector3(0, -1, 0), new Vector3(0, -1, 0), Vector2.Zero)],
+            [new Submesh("m", [])],
+            MorphTargets: [new MorphTarget("m", [new MorphTargetDelta(0, new Vector3(0, -1, 0), Vector3.Zero)])]);
         var skeleton = new Skeleton(
         [
             new Bone(0, "root", -1, new Transform(new Vector3(0, -2, 0), Quaternion.Identity, Vector3.One)),

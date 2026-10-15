@@ -7,7 +7,7 @@ namespace GMConverter.SourceEngine.Exporters;
 /// <summary>
 /// Turns a model to face +X, the direction Source models face: NPCs move and turn along their +X,
 /// so a character facing anywhere else would walk sideways. Everything in model space turns with it
-/// (vertices, root bones and their animation, attachments without a bone); what is relative to a
+/// (vertices and morph targets, root bones and their animation, attachments without a bone); what is relative to a
 /// bone follows that bone.
 /// </summary>
 internal static class SourceFacing
@@ -70,6 +70,16 @@ internal static class SourceFacing
                     Position = Vector3.Transform(vertex.Position, rotation),
                     Normal = Vector3.Transform(vertex.Normal, rotation),
                 })],
+                MorphTargets = mesh.MorphTargets is { } morphs
+                    ? [.. morphs.Select(morph => morph with
+                    {
+                        Deltas = [.. morph.Deltas.Select(delta => delta with
+                        {
+                            Position = Vector3.Transform(delta.Position, rotation),
+                            Normal = Vector3.Transform(delta.Normal, rotation),
+                        })],
+                    })]
+                    : null,
             })],
             Skeleton = model.Skeleton is { } skeleton
                 ? skeleton with

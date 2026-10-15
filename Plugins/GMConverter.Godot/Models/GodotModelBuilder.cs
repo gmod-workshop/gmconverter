@@ -1,10 +1,12 @@
 using System.Globalization;
 using System.Numerics;
+using GMConverter.Godot.Animation;
 using GMConverter.Godot.Geometry;
 using GMConverter.Godot.Materials;
 using GMConverter.Godot.Packs;
 using GMConverter.Godot.Resources;
 using GMConverter.Godot.Scenes;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Textures;
 
@@ -14,7 +16,8 @@ namespace GMConverter.Godot.Models;
 /// Builds SDK models from an instantiated Godot scene: every <c>MeshInstance3D</c> under the
 /// root. Skinned meshes are posed by their skeleton's saved pose, so the mesh matches the
 /// skeleton's bind pose; static meshes are placed where the scene puts them, on a bone of their
-/// own when the model has a skeleton.
+/// own when the model has a skeleton. The scene's animation players' animations become the
+/// model's clips, when they move or show part of it.
 /// </summary>
 internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFactory textureFactory)
 {
@@ -27,16 +30,30 @@ internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFact
     /// <summary>Meshes left out, such as the primitive shapes Godot generates at run time.</summary>
     public List<string> SkippedMeshes { get; } = [];
 
-    public Model Build(GodotSceneNode root, string name, bool includeHidden)
+    public Model Build(GodotSceneNode root, string name, bool includeHidden, bool includeAnimations)
     {
+        var animations = includeAnimations ? GodotAnimationPlayers.Find(loader, root) : [];
+        var targets = animations
+            .SelectMany(played => played.Animation.Tracks.Select(track => (Track: track, Key: GodotAnimationBuilder.Target(played, track, BonesOf))))
+            .Where(target => target.Key is not null)
+            .ToArray();
+        HashSet<GodotBoneKey> moved = [.. targets.Where(target => GodotAnimationBuilder.Moves(target.Track)).Select(target => target.Key!.Value)];
+        HashSet<GodotSceneNode> toggled = [.. targets.Where(target => GodotAnimationBuilder.Toggles(target.Track)).Select(target => target.Key!.Value.Node)];
+
         var instances = root.Descendants()
-            .Where(node => node.Type == "MeshInstance3D" && (includeHidden || node.IsVisible))
+            .Where(node => node.Type == "MeshInstance3D" && (includeHidden || IsShown(node, toggled)))
             .Select(node => (Node: node, Mesh: ReadMesh(node)))
             .Where(instance => instance.Mesh is not null)
             .ToArray();
 
+        // Animated nodes that hold meshes, or have meshes below them, need bones of their own.
+        HashSet<GodotSceneNode> drawn = [.. instances.SelectMany(instance => instance.Node.Ancestors().Prepend(instance.Node))];
         var skinned = instances.Where(instance => instance.Mesh!.Any(surface => surface.IsSkinned) && FindSkeleton(instance.Node) is not null).ToArray();
-        var skeleton = skinned.Length > 0 ? BuildSkeleton(root, instances.Select(instance => instance.Node), skinned.Select(instance => FindSkeleton(instance.Node)!)) : null;
+        var animated = moved.Any(key => key.SkeletonBone < 0 ? drawn.Contains(key.Node) : skinned.Any(instance => FindSkeleton(instance.Node)!.Node == key.Node)) ||
+            toggled.Any(drawn.Contains);
+        var skeleton = skinned.Length > 0 || animated
+            ? BuildSkeleton(root, instances.Select(instance => instance.Node), skinned.Select(instance => FindSkeleton(instance.Node)!), toggled)
+            : null;
 
         List<Mesh> meshes = [];
         foreach (var (node, surfaces) in instances)
@@ -52,7 +69,44 @@ internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFact
             meshes,
             [.. _materials.Converted.Select(material => material.Material)],
             skeleton?.Skeleton,
+            skeleton is null ? null : BuildAnimations(animations, skeleton),
             Forward: GodotSpace.Forward);
+    }
+
+    // Each animation that moves or toggles part of the model, named as its player plays it. Two
+    // players can each have an animation of the same name; later ones get a number. Godot's
+    // RESET animations only hold the saved pose, for the editor to return to.
+    private List<AnimationClip>? BuildAnimations(IReadOnlyList<GodotPlayedAnimation> animations, GodotSkeleton skeleton)
+    {
+        var builder = new GodotAnimationBuilder(skeleton, BonesOf);
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        List<AnimationClip> clips = [];
+        foreach (var played in animations.Where(played => played.Animation.Name != "RESET"))
+        {
+            if (builder.Build(played, played.Animation.Name) is { } clip)
+            {
+                clips.Add(clip with { Name = UniqueName(names, clip.Name) });
+            }
+        }
+
+        return clips.Count > 0 ? clips : null;
+    }
+
+    // Whether the node is drawn, or every hidden node above it is one an animation shows.
+    private static bool IsShown(GodotSceneNode node, HashSet<GodotSceneNode> toggled)
+    {
+        return node.Ancestors().Prepend(node).All(current => current["visible"] is not false || toggled.Contains(current));
+    }
+
+    private GodotSkeletonBones BonesOf(GodotSceneNode skeletonNode)
+    {
+        if (!_skeletons.TryGetValue(skeletonNode, out var bones))
+        {
+            bones = new GodotSkeletonBones(skeletonNode);
+            _skeletons[skeletonNode] = bones;
+        }
+
+        return bones;
     }
 
     private GodotSurface[]? ReadMesh(GodotSceneNode node)
@@ -77,33 +131,27 @@ internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFact
     private GodotSkeletonBones? FindSkeleton(GodotSceneNode node)
     {
         var path = node["skeleton"] is GodotNodePath saved ? saved.Names : [".."];
-        if (node.Find(path) is not { Type: "Skeleton3D" } skeletonNode)
-        {
-            return null;
-        }
-
-        if (!_skeletons.TryGetValue(skeletonNode, out var bones))
-        {
-            bones = new GodotSkeletonBones(skeletonNode);
-            _skeletons[skeletonNode] = bones;
-        }
-
-        return bones;
+        return node.Find(path) is { Type: "Skeleton3D" } skeletonNode ? BonesOf(skeletonNode) : null;
     }
 
     // Keeps every scene node that holds a mesh or a skeleton, with the nodes above it, and every
-    // bone of the skeletons used, so each bone's parent is its parent in the scene.
-    private GodotSkeleton BuildSkeleton(GodotSceneNode root, IEnumerable<GodotSceneNode> meshNodes, IEnumerable<GodotSkeletonBones> skeletons)
+    // bone of the skeletons used (by skinned meshes or bone attachments), so each bone's parent
+    // is its parent in the scene. Hidden nodes an animation shows start hidden.
+    private GodotSkeleton BuildSkeleton(GodotSceneNode root, IEnumerable<GodotSceneNode> meshNodes, IEnumerable<GodotSkeletonBones> skeletons, HashSet<GodotSceneNode> toggled)
     {
-        var usedSkeletons = skeletons.Distinct().ToArray();
         HashSet<GodotSceneNode> usedNodes = [root];
-        foreach (var node in meshNodes.Concat(usedSkeletons.Select(bones => bones.Node)))
+        foreach (var node in meshNodes.Concat(skeletons.Select(bones => bones.Node)))
         {
             usedNodes.Add(node);
             usedNodes.UnionWith(node.Ancestors());
         }
 
-        List<(GodotBoneKey Key, GodotBoneKey? Parent, Matrix4x4 Local, string Name)> ordered = [];
+        var usedSkeletons = skeletons
+            .Concat(usedNodes.Select(AttachedBone).OfType<(GodotSkeletonBones Bones, int Bone)>().Select(attached => attached.Bones))
+            .Distinct()
+            .ToArray();
+
+        List<(GodotBoneKey Key, GodotBoneKey? Parent, Matrix4x4 Local, string Name, bool Hidden)> ordered = [];
         foreach (var node in root.Descendants().Where(usedNodes.Contains))
         {
             if (AttachedBone(node) is not null)
@@ -111,13 +159,14 @@ internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFact
                 continue; // a bone attachment is the bone it follows
             }
 
-            ordered.Add((new GodotBoneKey(node), node.Parent is { } parent ? ParentKey(parent) : null, node.Local, node.Name));
+            var hidden = node["visible"] is false && toggled.Contains(node);
+            ordered.Add((new GodotBoneKey(node), node.Parent is { } parent ? ParentKey(parent) : null, node.Local, node.Name, hidden));
             if (usedSkeletons.FirstOrDefault(bones => bones.Node == node) is { } skeletonBones)
             {
                 for (var bone = 0; bone < skeletonBones.Count; bone++)
                 {
                     var parentKey = skeletonBones.Parents[bone] >= 0 ? new GodotBoneKey(node, skeletonBones.Parents[bone]) : new GodotBoneKey(node);
-                    ordered.Add((new GodotBoneKey(node, bone), parentKey, skeletonBones.Poses[bone], skeletonBones.Names[bone]));
+                    ordered.Add((new GodotBoneKey(node, bone), parentKey, skeletonBones.Poses[bone], skeletonBones.Names[bone], false));
                 }
             }
         }
@@ -128,9 +177,10 @@ internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFact
                 index,
                 UniqueName(names, entry.Name),
                 entry.Parent is { } parent && indices.TryGetValue(parent, out var parentIndex) ? parentIndex : -1,
-                ToTransform(entry.Local)))
+                ToTransform(entry.Local),
+                HiddenAtRest: entry.Hidden))
             .ToArray();
-        return new GodotSkeleton(new Skeleton(bonesList), indices);
+        return new GodotSkeleton(new Skeleton(bonesList), indices, [.. ordered.Select(entry => entry.Local)]);
     }
 
     // The bone a node's children hang from: a bone attachment's bone, or the node itself.
@@ -147,12 +197,7 @@ internal sealed class GodotModelBuilder(GodotResourceLoader loader, ITextureFact
             return null;
         }
 
-        if (!_skeletons.TryGetValue(skeletonNode, out var bones))
-        {
-            bones = new GodotSkeletonBones(skeletonNode);
-            _skeletons[skeletonNode] = bones;
-        }
-
+        var bones = BonesOf(skeletonNode);
         var bone = node["bone_name"] is string boneName ? bones.IndexOf(boneName) : node["bone_idx"] is long index ? (int)index : -1;
         return bone >= 0 && bone < bones.Count ? (bones, bone) : null;
     }

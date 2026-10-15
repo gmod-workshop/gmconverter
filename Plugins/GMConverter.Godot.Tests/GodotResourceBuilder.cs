@@ -133,6 +133,16 @@ internal sealed class GodotResourceBuilder
         }
     };
 
+    public static Action<BinaryWriter> Float32s(params float[] values) => writer =>
+    {
+        writer.Write(33);
+        writer.Write(values.Length);
+        foreach (var value in values)
+        {
+            writer.Write(value);
+        }
+    };
+
     public static Action<BinaryWriter> Strings(params string[] values) => writer =>
     {
         writer.Write(34);

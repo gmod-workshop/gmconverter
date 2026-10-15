@@ -31,6 +31,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `WAV` | Yes | Yes* | Writes Source-ready WAVs plus sound definitions for the target game. |
 | Wwise events (`AKEVENT`) | Yes* | No | Exported from Unreal Engine 4/5 archives by the Explorer. |
 | Wwise media (`WEM`) | Yes* | No | Decoded with vgmstream. |
+| Godot audio streams (`OGGVORBISSTR`, `SAMPLE`) | Yes* | No | Exported from Godot 4 games by the Explorer. |
 
 ## CLI
 
@@ -213,7 +214,7 @@ physics-mass = 100
 
 ## Plugins
 
-Unreal Engine, Unity, Source Engine, Men of War and X-Wing Alliance support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
+Unreal Engine, Unity, Godot, Source Engine, Men of War and X-Wing Alliance support ship as plugins. Each plugin lives in its own directory under `plugins/` beside the executable, with a `plugin.json` manifest, its entry assembly, and runtime dependencies. Both the GUI and CLI load plugins at startup; restart the application after installing a plugin.
 
 Each plugin declares its own options; see [Format Options](#format-options).
 
@@ -308,6 +309,15 @@ The Explorer lists three kinds of model, the game's animations and its sounds:
 Hidden parts (disabled renderers and inactive objects, often alternative outfits or held items) are left out unless `--unity-import-includeInactive true` is set.
 
 Materials read the HDRP Lit and Unlit, URP and built-in shader properties: the base colour map and tint, normal map, HDRP mask map (metallic and smoothness), emission, alpha clipping and transparency. Custom shaders fall back to their main texture. Crunch-compressed textures, such as Liar's Bar's bar and rooms, are unpacked; mobile formats (ETC, ASTC, PVRTC) are skipped with a warning. Texture tiling and offset are applied to the model's texture coordinates. Prefabs and scene objects bring the clips their Animator controllers play. Humanoid clips, which Unity stores as muscle values, are turned into bone rotations through the character's avatar, so a clip made for one humanoid character plays on any other. Props a clip moves or switches on and off get a bone of their own; objects a clip switches on are included even when saved switched off, and in MDL output a switched-off object drops out of sight below the model. Clips that change blend shapes or materials, or use legacy animation, are not converted. Blend shapes are not imported yet. Liar's Bar opens its characters' mouths in code as they talk; that open mouth is imported as a mouth-open shape, a `jaw_drop` flex in MDL output.
+
+</details>
+
+<details>
+<summary>Godot Games</summary>
+
+The Explorer can browse games made with Godot 4.0 to 4.3. Select the game's install folder, its executable, or its `.pck` file; the game's files can be in a `.pck` beside the executable or inside the executable itself. Encrypted packs are not read.
+
+The Explorer lists the game's sounds under `Sounds/`, by the path they had in the game's project. Ogg Vorbis sounds and 16-bit and 8-bit WAV sounds convert; compressed WAV sounds (IMA ADPCM, QOA) do not. Each becomes one sound with no events; a sound set to loop keeps its loop.
 
 </details>
 
@@ -450,3 +460,5 @@ Generate a [CoACD](https://colin97.github.io/CoACD/) based collision mesh:
 - [colin97/CoACD](https://github.com/colin97/CoACD) - Convex decomposition
 - [nesrak1/AssetsTools.NET](https://github.com/nesrak1/AssetsTools.NET) and [UABEA](https://github.com/nesrak1/UABEA) - Unity asset reading and class database
 - [AssetRipper/TextureDecoder](https://github.com/AssetRipper/TextureDecoder) - Unity texture decoding
+- [NVorbis](https://github.com/NVorbis/NVorbis) - Ogg Vorbis decoding for Godot games
+- [ZstdSharp](https://github.com/oleg-st/ZstdSharp) - Zstandard decompression for Godot resources

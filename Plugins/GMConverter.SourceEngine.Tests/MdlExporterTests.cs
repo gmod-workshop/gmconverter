@@ -77,6 +77,51 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void MorphTargetsBecomeFlexesWithControllers()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var mesh = model.Meshes[0] with
+        {
+            MorphTargets =
+            [
+                new MorphTarget("Mouth Open", [new MorphTargetDelta(2, new Vector3(0, 0, -0.1f), Vector3.Zero)], MorphTargetRole.MouthOpen),
+                new MorphTarget("Smile-L", [new MorphTargetDelta(1, new Vector3(0, 0.1f, 0), Vector3.Zero)]),
+                new MorphTarget("unused", []),
+            ],
+        };
+
+        var output = ExportWithStubCompiler(model with { Meshes = [mesh] });
+
+        var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        Assert.DoesNotContain("$body", qc);
+        Assert.Contains("$model \"body\" \"triangle.smd\"", qc);
+        Assert.Contains("flexfile \"triangle.vta\"", qc);
+        Assert.Contains("flex \"jaw_drop\" frame 1", qc);
+        Assert.Contains("flex \"smile_l\" frame 2", qc);
+        Assert.Contains("flexcontroller mouth range 0 1 \"jaw_drop\"", qc);
+        Assert.Contains("%smile_l = smile_l", qc);
+        Assert.DoesNotContain("unused", qc);
+
+        // Frame 0 holds every vertex at rest; each flex frame only the vertices it moves, in Source units.
+        var vta = File.ReadAllLines(Directory.GetFiles(output, "triangle.vta", SearchOption.AllDirectories).Single());
+        var frames = vta.SkipWhile(line => line != "vertexanimation").Skip(1).TakeWhile(line => line != "end").ToArray();
+        Assert.Equal(["time 0", "0", "1", "2", "time 1", "2", "time 2", "1"], frames.Select(line => line.StartsWith("time", StringComparison.Ordinal) ? line : line.Split(' ')[0]));
+        var jaw = frames[5].Split(' ').Skip(1).Take(3).Select(value => float.Parse(value, CultureInfo.InvariantCulture)).ToArray();
+        Assert.Equal(0.2f * 39.3700787f, jaw[2], 3);
+        Assert.Equal(2, vta.Count(line => line.StartsWith("time 1", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void ModelsWithoutMorphTargetsKeepAPlainBody()
+    {
+        var output = ExportWithStubCompiler(CreateSkinnedTriangle(Quaternion.Identity));
+
+        var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single());
+        Assert.Contains("$body \"body\" \"triangle.smd\"", qc);
+        Assert.Empty(Directory.GetFiles(output, "*.vta", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public void LayeredClipsBecomeDeltaSequencesAgainstTheirBasePose()
     {
         var basePose = new AnimationPose("idle_0", new Dictionary<int, Transform> { [0] = Transform.Identity });

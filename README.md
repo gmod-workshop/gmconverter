@@ -19,7 +19,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | `UE4` / `UE5` archives | Yes* | No | Read       | Read*                | Read            | - |
 | `MOW` (`DEF` / `MDL`) | Yes* | No | Read | Read* | Read* | Read* |
 | Unity player builds | Yes* | No | Read | Read* | Read | Read* |
-| Godot 4 games | Yes* | No | Read | Read* | Read | - |
+| Godot 4 games | Yes* | No | Read | Read* | Read | Read* |
 | `OBJ` / `MTL`         | No | Yes | Write      | Write                | -               | - |
 | `glTF` / `GLB`        | No | Yes | Write      | Write                | Write           | Write |
 
@@ -324,7 +324,9 @@ The Explorer lists, by the path each had in the game's project:
 * **Scenes** (`Scenes/...`): the game's own scenes (`.tscn`), such as an item put together from several models. Scenes they instance are brought in. Whole levels can be very large.
 * **Sounds** (`Sounds/...`): every sound the project imported. Ogg Vorbis sounds and 16-bit and 8-bit WAV sounds convert; compressed WAV sounds (IMA ADPCM, QOA) do not. Each becomes one sound with no events; a sound set to loop keeps its loop.
 
-Hidden meshes are left out unless `--godot-import-includeHidden true` is set. Materials read `StandardMaterial3D` and `ORMMaterial3D`: the albedo texture and colour, normal map, roughness and metallic, emission, transparency and texture scale. Unshaded materials glow with their own colour. Custom shaders fall back to a plain material, and primitive meshes Godot generates at run time (boxes, planes, cylinders) are skipped with a warning. Animations are not converted yet.
+Hidden meshes are left out unless `--godot-import-includeHidden true` is set. Materials read `StandardMaterial3D` and `ORMMaterial3D`: the albedo texture and colour, normal map, roughness and metallic, emission, transparency and texture scale. Unshaded materials glow with their own colour. Custom shaders fall back to a plain material, and primitive meshes Godot generates at run time (boxes, planes, cylinders) are skipped with a warning.
+
+The animations of the scene's `AnimationPlayer` nodes become the model's sequences, each named as the game plays it, when they move or show part of the model. They can move `Skeleton3D` bones and plain nodes, such as rigs built from nodes or a prop that slides out, and show or hide nodes; a hidden mesh an animation shows is kept, hidden until the animation shows it. Animations of camera, light, material and other properties, method and audio tracks, and Bezier curves are left out. Set `--godot-import-animations false` for the model alone.
 
 </details>
 

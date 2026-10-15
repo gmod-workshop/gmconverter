@@ -8,13 +8,16 @@ using GMConverter.SDK.Explorer;
 namespace GMConverter.Godot.Explorer;
 
 /// <summary>
-/// Browses a Godot 4 game's resource pack. Lists every sound the project imported, under the path
-/// it had in the project.
+/// Browses a Godot 4 game's resource pack, listing assets under the paths they had in the
+/// project: every model the project imported (<c>.glb</c>, <c>.fbx</c> and other scenes), the
+/// game's own scenes, which put models together, and every sound it imported.
 /// </summary>
 public sealed class GodotExplorer : IExplorer
 {
     private const string _extractionFolder = "__godot";
     private const string _soundFormat = "godotaudio";
+    private const string _modelFormat = "godot";
+    private const string _sceneImporter = "scene";
 
     private static readonly Dictionary<string, string> _soundImporters = new(StringComparer.Ordinal)
     {
@@ -40,6 +43,25 @@ public sealed class GodotExplorer : IExplorer
 
         foreach (var remap in pack.Remaps)
         {
+            if (remap.TargetPath is { } scenePath && pack.Find(scenePath) is not null && IsScene(remap))
+            {
+                var imported = remap.Importer == _sceneImporter;
+                var folder = imported ? "Models" : "Scenes";
+                var sceneDetails = $"{(imported ? "Imported model" : "Scene")} | {remap.SourcePath} | Godot {pack.EngineVersion}";
+                entries.Add(new ExplorerFileEntry(
+                    $"{folder}/{DisplayPath(remap.SourcePath)}",
+                    packPath,
+                    _modelFormat,
+                    Path.GetDirectoryName(packPath) ?? packPath,
+                    packPath,
+                    packPath,
+                    remap.SourcePath,
+                    Id,
+                    sceneDetails,
+                    AssetClass: imported ? "Model" : "PackedScene"));
+                continue;
+            }
+
             if (!_soundImporters.TryGetValue(remap.Importer, out var kind) ||
                 remap.TargetPath is not { } targetPath ||
                 pack.Find(targetPath) is null)
@@ -78,6 +100,14 @@ public sealed class GodotExplorer : IExplorer
         var directory = Path.Join(ExplorerFileSystem.GetExtractionRoot(packPath), _extractionFolder, hash);
         Directory.CreateDirectory(directory);
 
+        if (fileEntry.Kind == ExplorerEntryKind.Model)
+        {
+            // Models are read from the pack by the importer; it gets a pointer to the scene.
+            var referencePath = Path.Join(directory, Sanitize(Path.GetFileNameWithoutExtension(fileEntry.DisplayPath)) + GodotAssetReference.FileExtension);
+            new GodotAssetReference(packPath, targetPath).Write(referencePath);
+            return new ExplorerResolvedEntry(referencePath, directory, fileEntry.Details);
+        }
+
         // Named after the source file, with the imported file's extension for the importer to match.
         var name = Path.GetFileNameWithoutExtension(fileEntry.DisplayPath);
         var extension = targetPath.EndsWith(GodotAudio.SampleExtension, StringComparison.Ordinal) ? GodotAudio.SampleExtension : GodotAudio.OggExtension;
@@ -89,6 +119,13 @@ public sealed class GodotExplorer : IExplorer
     public void ClearCaches()
     {
         GodotPack.ClearAll();
+    }
+
+    // An imported model, or a scene of the game's own (saved as .tscn or .scn, remapped on export).
+    private static bool IsScene(GodotRemap remap)
+    {
+        return remap.Importer == _sceneImporter ||
+            (remap.Importer.Length == 0 && (remap.SourcePath.EndsWith(".tscn", StringComparison.Ordinal) || remap.SourcePath.EndsWith(".scn", StringComparison.Ordinal)));
     }
 
     // The project path without "res://", folder by folder.

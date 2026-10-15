@@ -8,7 +8,7 @@ namespace GMConverter.Godot;
 
 /// <summary>
 /// Plugin entry point for games made with Godot 4. Registers the explorer that browses a game's
-/// resource pack and the importer for the sounds it picks.
+/// resource pack and the importers for the models and sounds it picks.
 /// </summary>
 public sealed class GodotPlugin : IPlugin
 {
@@ -18,6 +18,7 @@ public sealed class GodotPlugin : IPlugin
 
     public void OnLoad(IPluginContext context)
     {
+        context.RegisterImporter<GodotImporter>();
         context.RegisterImporter<GodotSoundImporter>();
         context.RegisterExplorer<GodotExplorer>();
     }

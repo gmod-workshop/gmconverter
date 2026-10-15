@@ -1,0 +1,11 @@
+{
+  "id": "gmconverter.godot",
+  "version": "0.1.0",
+  "displayName": "Godot",
+  "entry": "GMConverter.Godot.dll",
+  "sdkVersion": "1.0",
+  "capabilities": [
+    "importer:godot",
+    "explorer:godot"
+  ]
+}

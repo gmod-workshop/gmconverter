@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using AssetRipper.TextureDecoder.Bc;
 using AssetRipper.TextureDecoder.Rgb.Formats;
 using GMConverter.Unity.Assets;
+using Texture2DDecoder;
 
 namespace GMConverter.Unity.Textures;
 
@@ -11,7 +12,7 @@ namespace GMConverter.Unity.Textures;
 /// </summary>
 internal static class UnityTextureReader
 {
-    /// <summary>The decoded texture, or null when its format is not supported (such as Crunch).</summary>
+    /// <summary>The decoded texture, or null when its format is not supported.</summary>
     public static UnityTextureImage? Read(UnityAssetLibrary library, UnityObject texture)
     {
         var width = texture["m_Width"].AsInt;
@@ -23,7 +24,8 @@ internal static class UnityTextureReader
 
         var format = (UnityTextureFormat)texture["m_TextureFormat"].AsInt;
         var data = library.ReadStreamedData(texture["m_StreamData"], texture["image data"].AsByteArray);
-        var rgba = Decode(data, width, height, format);
+        var blocks = Uncrunch(data, format, texture.File.file.Metadata.UnityVersion);
+        var rgba = blocks is { Length: > 0 } ? Decode(blocks, width, height, format) : null;
         if (rgba is null)
         {
             return null;
@@ -39,9 +41,11 @@ internal static class UnityTextureReader
         switch (format)
         {
             case UnityTextureFormat.DXT1:
+            case UnityTextureFormat.DXT1Crunched:
                 Bc1.Decompress<ColorRGBA<byte>, byte>(data, width, height, out output);
                 return output;
             case UnityTextureFormat.DXT5:
+            case UnityTextureFormat.DXT5Crunched:
                 Bc3.Decompress<ColorRGBA<byte>, byte>(data, width, height, out output);
                 return output;
             case UnityTextureFormat.BC4:
@@ -56,12 +60,28 @@ internal static class UnityTextureReader
             case UnityTextureFormat.BC7:
                 Bc7.Decompress<ColorRGBA<byte>, byte>(data, width, height, out output);
                 return output;
-            case UnityTextureFormat.DXT1Crunched:
-            case UnityTextureFormat.DXT5Crunched:
-                return null;
             default:
                 return DecodeUncompressed(data, width, height, format);
         }
+    }
+
+    // Crunch packs DXT blocks further; unpacking gives back the top level's DXT data. Unity 2017.3
+    // changed the format to its own variant of Crunch.
+    private static byte[]? Uncrunch(byte[] data, UnityTextureFormat format, string unityVersion)
+    {
+        if (format is not (UnityTextureFormat.DXT1Crunched or UnityTextureFormat.DXT5Crunched))
+        {
+            return data;
+        }
+
+        return UsesUnityCrunch(unityVersion) ? TextureDecoder.UnpackUnityCrunch(data) : TextureDecoder.UnpackCrunch(data);
+    }
+
+    internal static bool UsesUnityCrunch(string unityVersion)
+    {
+        var parts = unityVersion.Split('.');
+        return parts.Length < 2 || !int.TryParse(parts[0], out var major) || !int.TryParse(parts[1], out var minor) ||
+            major > 2017 || (major == 2017 && minor >= 3);
     }
 
     private static byte[]? DecodeUncompressed(byte[] data, int width, int height, UnityTextureFormat format)

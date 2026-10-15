@@ -16,6 +16,10 @@
     <ItemGroup>
         <PackageReference Include="AssetRipper.TextureDecoder" Version="2.6.3" />
         <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
+        <PackageReference Include="Kyaru.Texture2DDecoder" Version="0.17.1" />
+        <PackageReference Include="Kyaru.Texture2DDecoder.Linux" Version="0.2.0" />
+        <PackageReference Include="Kyaru.Texture2DDecoder.macOS" Version="0.2.0" />
+        <PackageReference Include="Kyaru.Texture2DDecoder.Windows" Version="0.2.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     </ItemGroup>
 

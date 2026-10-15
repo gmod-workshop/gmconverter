@@ -38,7 +38,7 @@ internal sealed class UnityMaterialBuilder(UnityAssetLibrary library, ITextureFa
     /// <summary>Every material converted so far, in the order first used.</summary>
     public IReadOnlyList<UnityMaterial> Converted => _converted;
 
-    /// <summary>Textures whose format could not be decoded, such as Crunch-compressed ones.</summary>
+    /// <summary>Textures whose format could not be decoded, such as mobile ETC and ASTC ones.</summary>
     public List<string> SkippedTextures { get; } = [];
 
     /// <summary>The converted material, or a plain default one for a missing material.</summary>

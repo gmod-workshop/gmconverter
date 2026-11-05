@@ -282,6 +282,8 @@ Exporting a skeletal mesh brings along:
 * The animation sets in the same package whose bones the mesh has. Animation sets from other packages (such as the first-person arm animations for a weapon) can be added with **Add Animations**.
 * Its sockets, as MDL `$attachment`s.
 
+CrossFire HD weapons also get a **Viewmodel** entry: the first-person arms model the weapon's arm animations were made for, with the weapon held on the arms' weapon bone, and one sequence per action in which the arms and the weapon move together. A weapon skin uses the base weapon's animations plus the ones the skin changes, which replace the base versions. Swimming and additive layer animations are left out.
+
 Textures that repeat mirrored, as weapon skins often do so that one painted half covers both sides, are unfolded into the mesh's UVs, since Source can only repeat textures. Animation sets that use Unreal's rotation-only mode keep the mesh's own bone offsets, so first-person arm animations fit the arms model they are added to. Only the most detailed LOD is exported, and static meshes aren't listed yet.
 
 </details>

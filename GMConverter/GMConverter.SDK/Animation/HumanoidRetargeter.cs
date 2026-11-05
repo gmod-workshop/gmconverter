@@ -24,8 +24,6 @@ public static class HumanoidRetargeter
     private static readonly HashSet<HumanoidBone> _anchors =
     [
         HumanoidBone.Chest,
-        HumanoidBone.LeftClavicle,
-        HumanoidBone.RightClavicle,
         HumanoidBone.LeftUpperArm,
         HumanoidBone.RightUpperArm,
     ];
@@ -82,6 +80,16 @@ public static class HumanoidRetargeter
             }
         }
 
+        // Hands differ in size more than arms do (CrossFire HD's are large for its arms), so held
+        // items are resized to the target's hand: their offset from the hand and their geometry scale
+        // by the ratio of palm lengths, which keeps the grip in the target's fingers.
+        var handScale = new Dictionary<HumanoidBone, float>
+        {
+            [HumanoidBone.LeftHand] = PalmLength(targetBind, targetRoles, "Left") / PalmLength(scaledSourceBind, sourceRoles, "Left"),
+            [HumanoidBone.RightHand] = PalmLength(targetBind, targetRoles, "Right") / PalmLength(scaledSourceBind, sourceRoles, "Right"),
+        };
+        var heldScale = heldSide.ToDictionary(pair => pair.Key, pair => float.IsFinite(handScale[pair.Value]) && handScale[pair.Value] > 0 ? handScale[pair.Value] : 1f);
+
         var sourceToOutput = keptSource.Select((index, order) => (index, order)).ToDictionary(pair => pair.index, pair => target.Bones.Count + pair.order);
         var targetRestFrames = Frames(index => Position(targetBind, targetRoles, index));
         var sourceBindFrames = Frames(index => Position(scaledSourceBind, sourceRoles, index));
@@ -89,7 +97,7 @@ public static class HumanoidRetargeter
         // Bind pose: the target's rest, with held items kept where they sit relative to their hand.
         var outputBindWorld = new Matrix4x4[target.Bones.Count + keptSource.Count];
         Array.Copy(targetBind, outputBindWorld, targetBind.Length);
-        PlaceHeld(keptSource, heldSide, scaledSourceBind, sourceBindFrames, sourceRoles, outputBindWorld, targetRestFrames, targetRoles);
+        PlaceHeld(keptSource, heldSide, heldScale, scaledSourceBind, sourceBindFrames, sourceRoles, outputBindWorld, targetRestFrames, targetRoles);
 
         List<Bone> bones = [.. target.Bones.Select(bone => bone with { Shared = true })];
         foreach (var index in keptSource)
@@ -106,20 +114,23 @@ public static class HumanoidRetargeter
         }
 
         var skeleton = new Skeleton(bones);
-        var meshes = KeepHeldGeometry(source, keptSource, sourceToOutput, scale, scaledSourceBind, outputBindWorld);
+        var meshes = KeepHeldGeometry(source, keptSource, sourceToOutput, scale, heldScale, scaledSourceBind, outputBindWorld);
         var usedMaterials = meshes.SelectMany(mesh => mesh.Submeshes).Select(submesh => submesh.MaterialName).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return source with
         {
             Skeleton = skeleton,
             Meshes = meshes,
             Materials = [.. source.Materials.Where(material => usedMaterials.Contains(material.Name))],
-            Animations = source.Animations?.Select(clip => RetargetClip(clip, sourceSkeleton, sourceRoles, target, targetRoles, scale, keptSource, sourceToOutput, heldSide, skeleton)).ToArray(),
+            Animations = source.Animations?.Select(clip => RetargetClip(clip, sourceSkeleton, sourceRoles, target, targetRoles, scale, keptSource, sourceToOutput, heldSide, heldScale, skeleton)).ToArray(),
             Attachments = source.Attachments?
                 .Where(attachment => attachment.BoneIndex is null || sourceToOutput.ContainsKey(attachment.BoneIndex.Value))
                 .Select(attachment => attachment with
                 {
                     BoneIndex = attachment.BoneIndex is { } bone ? sourceToOutput[bone] : null,
-                    LocalTransform = attachment.LocalTransform with { Translation = attachment.LocalTransform.Translation * scale },
+                    LocalTransform = attachment.LocalTransform with
+                    {
+                        Translation = attachment.LocalTransform.Translation * scale * (attachment.BoneIndex is { } held ? heldScale[held] : 1f),
+                    },
                 })
                 .ToArray(),
             Physics = null,
@@ -137,6 +148,7 @@ public static class HumanoidRetargeter
         List<int> keptSource,
         Dictionary<int, int> sourceToOutput,
         Dictionary<int, HumanoidBone> heldSide,
+        Dictionary<int, float> heldScale,
         Skeleton output)
     {
         var tracks = clip.Tracks.OfType<BoneTransformTrack>().ToDictionary(track => track.BoneIndex);
@@ -167,6 +179,21 @@ public static class HumanoidRetargeter
                 if (bone.Humanoid is { } role && sourceFrames(role) is { } sourceFrame && targetRestFrames(role) is { } restFrame)
                 {
                     var rotation = Rotation(targetBind[index]) * Inverse(restFrame) * sourceFrame;
+
+                    // A clavicle sits back from the source's shoulder along its own direction, at its
+                    // own length, so the shoulder lands in place without stretching the clavicle.
+                    var shoulderRole = role switch
+                    {
+                        HumanoidBone.LeftClavicle => HumanoidBone.LeftUpperArm,
+                        HumanoidBone.RightClavicle => HumanoidBone.RightUpperArm,
+                        _ => (HumanoidBone?)null,
+                    };
+                    if (shoulderRole is { } shoulder && sourceRoles.TryGetValue(shoulder, out var sourceShoulder) &&
+                        target.Bones.FirstOrDefault(child => child.ParentIndex == index && child.Humanoid == shoulder) is { } upperArm)
+                    {
+                        position = sourceWorld[sourceShoulder].Translation - Vector3.TransformNormal(upperArm.LocalBindPose.Translation, rotation);
+                    }
+
                     world[index] = rotation with { M41 = position.X, M42 = position.Y, M43 = position.Z };
                 }
                 else
@@ -175,7 +202,7 @@ public static class HumanoidRetargeter
                 }
             }
 
-            PlaceHeld(keptSource, heldSide, sourceWorld, sourceFrames, sourceRoles, world, Frames(index => Position(world, targetRoles, index)), targetRoles);
+            PlaceHeld(keptSource, heldSide, heldScale, sourceWorld, sourceFrames, sourceRoles, world, Frames(index => Position(world, targetRoles, index)), targetRoles);
             for (var index = 0; index < output.Bones.Count; index++)
             {
                 var parent = output.Bones[index].ParentIndex;
@@ -191,6 +218,7 @@ public static class HumanoidRetargeter
     private static void PlaceHeld(
         List<int> keptSource,
         Dictionary<int, HumanoidBone> heldSide,
+        Dictionary<int, float> heldScale,
         Matrix4x4[] sourceWorld,
         Func<HumanoidBone, Matrix4x4?> sourceFrames,
         Dictionary<HumanoidBone, int> sourceRoles,
@@ -210,7 +238,9 @@ public static class HumanoidRetargeter
             var sourceHandFrame = sourceHand with { M41 = sourceWorld[sourceRoles[hand]].M41, M42 = sourceWorld[sourceRoles[hand]].M42, M43 = sourceWorld[sourceRoles[hand]].M43 };
             var targetHandPosition = outputWorld[targetRoles[hand]].Translation;
             var targetHandFrame = targetHand with { M41 = targetHandPosition.X, M42 = targetHandPosition.Y, M43 = targetHandPosition.Z };
-            outputWorld[outputWorld.Length - keptSource.Count + order] = sourceWorld[index] * Inverse(sourceHandFrame) * targetHandFrame;
+            var relative = sourceWorld[index] * Inverse(sourceHandFrame);
+            relative.Translation *= heldScale[index];
+            outputWorld[outputWorld.Length - keptSource.Count + order] = relative * targetHandFrame;
         }
     }
 
@@ -219,6 +249,7 @@ public static class HumanoidRetargeter
         List<int> keptSource,
         Dictionary<int, int> sourceToOutput,
         float scale,
+        Dictionary<int, float> heldScale,
         Matrix4x4[] scaledSourceBind,
         Matrix4x4[] outputBindWorld)
     {
@@ -242,7 +273,8 @@ public static class HumanoidRetargeter
                 foreach (var weight in vertex.BoneWeights!)
                 {
                     var move = Inverse(scaledSourceBind[weight.BoneIndex]) * outputBindWorld[sourceToOutput[weight.BoneIndex]];
-                    position += Vector3.Transform(vertex.Position * scale, move) * weight.Weight;
+                    var boneLocal = Vector3.Transform(vertex.Position * scale, Inverse(scaledSourceBind[weight.BoneIndex])) * heldScale[weight.BoneIndex];
+                    position += Vector3.Transform(boneLocal, outputBindWorld[sourceToOutput[weight.BoneIndex]]) * weight.Weight;
                     normal += Vector3.TransformNormal(vertex.Normal, move) * weight.Weight;
                 }
 
@@ -364,6 +396,21 @@ public static class HumanoidRetargeter
             Vector3.Distance(world[roles[fore]].Translation, world[roles[hand]].Translation);
         return (Side(HumanoidBone.LeftUpperArm, HumanoidBone.LeftForearm, HumanoidBone.LeftHand) +
             Side(HumanoidBone.RightUpperArm, HumanoidBone.RightForearm, HumanoidBone.RightHand)) / 2;
+    }
+
+    // Wrist to the middle knuckle (or the index one): the hand's size, for fitting what it holds.
+    private static float PalmLength(Matrix4x4[] world, Dictionary<HumanoidBone, int> roles, string side)
+    {
+        var hand = world[roles[Enum.Parse<HumanoidBone>(side + "Hand")]].Translation;
+        foreach (var knuckle in new[] { "Middle1", "Index1" })
+        {
+            if (roles.TryGetValue(Enum.Parse<HumanoidBone>(side + knuckle), out var index))
+            {
+                return Vector3.Distance(hand, world[index].Translation);
+            }
+        }
+
+        return float.NaN;
     }
 
     private static Dictionary<HumanoidBone, int> RoleIndex(Skeleton skeleton)

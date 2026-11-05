@@ -24,6 +24,8 @@ internal sealed class GarrysModParticleProfile : ISourceParticleProfile
 
     public OptionSchema OptionSchema => OptionSchema.Empty;
 
+    public bool DrawsMeshEmitters => true;
+
     public GameMatch Detect(ExplorerTarget target) => _game.Detect(target);
 
     public (string? RelativePath, string Contents) WriteLoader(string pcfPath, IReadOnlyList<string> systems, string name)

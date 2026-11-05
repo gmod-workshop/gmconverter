@@ -4,6 +4,7 @@ using GMConverter.SDK.Exporters;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Particles;
+using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Particles;
 using GMConverter.SourceEngine.Profiles;
 
@@ -12,13 +13,17 @@ namespace GMConverter.SourceEngine.Exporters;
 /// <summary>
 /// Writes a particle effect for Source: its systems in <c>particles/&lt;name&gt;.pcf</c>, each
 /// emitter's texture as a SpriteCard material (flipbooks as VTF sprite sheets), and whatever the
-/// target game needs to load the file (see <see cref="ISourceParticleProfile"/>).
+/// target game needs to load the file (see <see cref="ISourceParticleProfile"/>). Games that run
+/// Lua (Garry's Mod) also get mesh emitters, which Source particles can't draw: each mesh compiles to
+/// an MDL and a Lua effect draws it (see <see cref="GarrysModEffectsLua"/>).
 /// </summary>
-internal sealed class PCFExporter : IParticleExporter
+internal sealed class PCFExporter(ITextureFactory textureFactory) : IParticleExporter
 {
     public const string MaterialPathOption = "materialPath";
     public const string MaxTextureSizeOption = "maxTextureSize";
     public const string ViewModelOption = "viewModel";
+    public const string StudioMdlPathOption = "studioMdlPath";
+    public const string VtfCmdPathOption = "vtfCmdPath";
 
     private static readonly UTF8Encoding _utf8NoBom = new(false);
 
@@ -45,6 +50,19 @@ internal sealed class PCFExporter : IParticleExporter
                 Description = "Draw the effect with the view model, over it and at its field of view, for effects a first-person model's animations start.",
             },
         ]),
+        new OptionGroup("tools", "Tools",
+        [
+            new OptionDescriptor(StudioMdlPathOption, OptionType.Path, "StudioMDL override")
+            {
+                Description = "StudioMDL-CE for compiling mesh emitters' models (Garry's Mod). Auto-downloads to tools/ when omitted.",
+                DefaultValueFactory = () => Tools.SourceToolPaths.TryFindLocalDefaults().StudioMdl,
+            },
+            new OptionDescriptor(VtfCmdPathOption, OptionType.Path, "VTFCmd override")
+            {
+                Description = "VTFCmd for the mesh models' textures. Auto-downloads to tools/ when omitted.",
+                DefaultValueFactory = () => Tools.SourceToolPaths.TryFindLocalDefaults().VtfCmd,
+            },
+        ]),
     ]);
 
     public ExportResult Export(ParticleEffect effect, ExportContext context)
@@ -55,6 +73,8 @@ internal sealed class PCFExporter : IParticleExporter
         var materialDirectory = Path.Join(context.OutputDirectory, "materials", materialPath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(materialDirectory);
         List<string> warnings = [];
+        var profile = SourceParticleProfiles.Find(context.TargetGameId) ?? SourceParticleProfiles.Find("source")!;
+        List<GarrysModEffectsLua.MeshEmitter> meshEmitters = [];
 
         Dictionary<ParticleEmitter, (string Material, SpriteSheetPlan? Sheet)> materials = new(ReferenceEqualityComparer.Instance);
         HashSet<string> taken = new(StringComparer.OrdinalIgnoreCase);
@@ -62,8 +82,17 @@ internal sealed class PCFExporter : IParticleExporter
         {
             var file = Unique(NameHelpers.SanitizeMaterialName($"{effect.Name}_{emitter.Name}"), taken);
             var sheet = emitter.Sheet is { } flipbook ? SpriteSheetPlan.Create(flipbook) : null;
-            // Mesh emitters aren't written (see PcfSystemBuilder), so they need no sprite.
-            if (emitter.Mesh is null)
+            if (emitter.Mesh is { } mesh && profile.DrawsMeshEmitters)
+            {
+                WriteTexture(Path.Join(materialDirectory, file + ".vtf"), emitter, null, maxTextureSize, warnings);
+                File.WriteAllText(Path.Join(materialDirectory, file + ".vmt"), MeshMaterial($"{materialPath}/{file}", emitter.Material), _utf8NoBom);
+                var modelPath = $"gmconverter/particles/{name}/{file}.mdl";
+                warnings.AddRange(CompileMesh(mesh with { Name = file }, modelPath, context).Warnings);
+                meshEmitters.Add(new GarrysModEffectsLua.MeshEmitter(emitter, $"models/{modelPath}", $"{materialPath}/{file}", PcfSystemBuilder.Brightness(emitter)));
+            }
+
+            // Mesh emitters Source particles can't draw (see PcfSystemBuilder) need no sprite.
+            else if (emitter.Mesh is null)
             {
                 WriteTexture(Path.Join(materialDirectory, file + ".vtf"), emitter, sheet, maxTextureSize, warnings);
                 File.WriteAllText(Path.Join(materialDirectory, file + ".vmt"), SpriteCard($"{materialPath}/{file}", emitter.Material), _utf8NoBom);
@@ -72,7 +101,8 @@ internal sealed class PCFExporter : IParticleExporter
             materials[emitter] = ($"{materialPath}/{file}.vmt", sheet);
         }
 
-        var builder = new PcfSystemBuilder(context.Options.GetBool(ViewModelOption, defaultValue: false));
+        var drawnByLua = meshEmitters.Select(mesh => mesh.Emitter).ToHashSet(ReferenceEqualityComparer.Instance);
+        var builder = new PcfSystemBuilder(context.Options.GetBool(ViewModelOption, defaultValue: false), drawnByLua.Contains);
         var root = builder.Build(effect, emitter => materials[emitter].Material, emitter => materials[emitter].Sheet);
         warnings.AddRange(builder.Warnings);
 
@@ -86,7 +116,12 @@ internal sealed class PCFExporter : IParticleExporter
 
         var systems = ((IReadOnlyList<DmxElement>)root.Get("particleSystemDefinitions")!).Select(system => system.Name).ToArray();
         List<string> files = [pcfPath];
-        var profile = SourceParticleProfiles.Find(context.TargetGameId) ?? SourceParticleProfiles.Find("source")!;
+        if (meshEmitters.Count > 0)
+        {
+            files.Add(WriteText(context.OutputDirectory, GarrysModEffectsLua.RuntimePath, GarrysModEffectsLua.Runtime));
+            files.Add(WriteText(context.OutputDirectory, Path.Join("lua", "autorun", "client", $"{name}_effects.lua"), GarrysModEffectsLua.Effect(effect.Name, meshEmitters)));
+        }
+
         var (loaderPath, contents) = profile.WriteLoader($"particles/{name}.pcf", systems, name);
         if (loaderPath is null)
         {
@@ -101,6 +136,35 @@ internal sealed class PCFExporter : IParticleExporter
         }
 
         return new ExportResult(files) { Warnings = warnings };
+    }
+
+    private ExportResult CompileMesh(SDK.Geometry.Model mesh, string modelPath, ExportContext context)
+    {
+        var exporter = new MDLExporter(textureFactory);
+        var options = exporter.OptionSchema.AllOptions.ToDictionary(option => option.Key, option => option.ResolveDefault());
+        options["modelPath"] = modelPath;
+        options["studioMdlPath"] = context.Options.GetString(StudioMdlPathOption) ?? options.GetValueOrDefault("studioMdlPath");
+        options["vtfCmdPath"] = context.Options.GetString(VtfCmdPathOption) ?? options.GetValueOrDefault("vtfCmdPath");
+        return exporter.Export(mesh, new ExportContext(context.OutputDirectory, mesh.Name, new OptionValues(options)) { TargetGameId = context.TargetGameId });
+    }
+
+    private static string WriteText(string directory, string relativePath, string contents)
+    {
+        var path = Path.Join(directory, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, contents, _utf8NoBom);
+        return path;
+    }
+
+    // A mesh emitter's material: unlit, both sides, its texture slid each frame by the Lua effect.
+    private static string MeshMaterial(string texturePath, Material material)
+    {
+        var text = new StringBuilder("\"UnlitGeneric\"\n{\n");
+        text.Append(System.Globalization.CultureInfo.InvariantCulture, $"\t\"$basetexture\" \"{texturePath}\"\n");
+        text.Append("\t\"$nocull\" \"1\"\n");
+        text.Append(material.BlendMode == MaterialBlendMode.Additive ? "\t\"$additive\" \"1\"\n" : "\t\"$translucent\" \"1\"\n");
+        text.Append("}\n");
+        return text.ToString();
     }
 
     private static void WriteTexture(string path, ParticleEmitter emitter, SpriteSheetPlan? sheet, int maxTextureSize, List<string> warnings)

@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added Lua-drawn mesh particles for Garry's Mod. Mesh emitters compile to MDLs and register with a client runtime (`lua/autorun/client/gmconverter_effects.lua`) that starts them when a view model's animation reaches their event, draws them with the view model, and slides their texture over each particle's life, so effects such as CrossFire HD's glow travelling along the kukri's blade play as in the game.
 - Added mesh emitters to UE3 particle systems: each brings its static mesh and mesh material, and a material that slides its texture by the particle's dynamic parameter is baked in texture space with the slide kept over each particle's life (the SDK's `ParticleEmitter.UvOffsetOverLife`).
 - Added Unreal Engine 3 static meshes to the Explorer. A `StaticMesh` converts like any model, as a single-bone mesh with its materials; the reader handles every static mesh layout in CrossFire HD's packages.
 - Added Unreal Engine 3 particle systems. The Explorer lists Cascade `ParticleSystem`s and exports each with its emitters' materials baked to textures, read by the new `ue3fx` importer, and particle notifies in UE3 animations become particle events, so converted view models start their effects. The UE3 material bake now handles particle materials (vertex colour, sub-UV samples, dynamic parameters, depth-biased alpha, emissive-only unlit materials).

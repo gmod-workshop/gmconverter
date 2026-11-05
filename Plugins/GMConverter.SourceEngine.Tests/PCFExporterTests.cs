@@ -97,7 +97,7 @@ public sealed class PCFExporterTests
         var output = Path.Join(Path.GetTempPath(), "GMConverter.PCFTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
         var options = new OptionValues(new Dictionary<string, object?> { [PCFExporter.ViewModelOption] = true });
-        new PCFExporter().Export(Glow(), new ExportContext(output, "fx", options) { TargetGameId = "garrysmod" });
+        new PCFExporter(new DefaultTextureFactory()).Export(Glow(), new ExportContext(output, "fx", options) { TargetGameId = "garrysmod" });
 
         var systems = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions");
         Assert.All(systems, system => Assert.True(system.Get<bool>("view model effect")));
@@ -148,7 +148,7 @@ public sealed class PCFExporterTests
     {
         var output = Path.Join(Path.GetTempPath(), "GMConverter.PCFTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
-        var result = new PCFExporter().Export(effect, new ExportContext(output, "fx", OptionValues.Empty) { TargetGameId = target });
+        var result = new PCFExporter(new DefaultTextureFactory()).Export(effect, new ExportContext(output, "fx", OptionValues.Empty) { TargetGameId = target });
         return (output, result);
     }
 

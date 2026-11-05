@@ -9,7 +9,7 @@ namespace GMConverter.SourceEngine.Particles;
 /// start time. What Source's operators can't express is approximated or left out, and listed in
 /// <see cref="Warnings"/>.
 /// </summary>
-internal sealed class PcfSystemBuilder(bool viewModel = false)
+internal sealed class PcfSystemBuilder(bool viewModel = false, Func<ParticleEmitter, bool>? drawnElsewhere = null)
 {
     private const float _inchesPerMetre = 39.3701f;
     private const int _defaultMaxParticles = 64;
@@ -62,6 +62,11 @@ internal sealed class PcfSystemBuilder(bool viewModel = false)
     {
         var name = SystemName(effect, emitter);
         void Warn(string message) => _warnings.Add($"{name}: {message}");
+
+        if (drawnElsewhere?.Invoke(emitter) == true)
+        {
+            return null;
+        }
 
         if (emitter.Mesh is not null)
         {

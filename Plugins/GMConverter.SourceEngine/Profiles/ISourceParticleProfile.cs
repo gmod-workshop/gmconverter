@@ -9,6 +9,9 @@ namespace GMConverter.SourceEngine.Profiles;
 /// </summary>
 internal interface ISourceParticleProfile : IExportGameProfile
 {
+    /// <summary>Whether the game can run the Lua that draws mesh emitters (see <see cref="Particles.GarrysModEffectsLua"/>).</summary>
+    bool DrawsMeshEmitters => false;
+
     /// <summary>
     /// The file that loads <paramref name="pcfPath"/> (relative to the game directory) and its
     /// systems, relative to the output directory, with its contents; or null with the step the user

@@ -1,5 +1,6 @@
 using System.Numerics;
 using GMConverter.SDK.Common;
+using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Formats.UE3.Animations;
 using GMConverter.UnrealEngine.Formats.UE3.Meshes;
@@ -32,7 +33,7 @@ internal static class UE3MeshExporter
         {
             var animSet = UE3AnimSet.Read(package, setExport);
             if (animSet.TrackBones.Count > 0 && animSet.TrackBones.All(boneNames.Contains) &&
-                TryExportAnimSet(package, setExport, animSet, outputDirectory) is { } path)
+                TryExportAnimSet(content, package, setExport, animSet, outputDirectory) is { } path)
             {
                 animations.Add(path);
             }
@@ -42,16 +43,16 @@ internal static class UE3MeshExporter
     }
 
     /// <summary>Writes one AnimSet's sequences to a PSA.</summary>
-    public static UE3ExportResult ExportAnimSet(UE3Package package, UE3PackageExport export, string outputDirectory)
+    public static UE3ExportResult ExportAnimSet(UE3GameContent content, UE3Package package, UE3PackageExport export, string outputDirectory)
     {
         Directory.CreateDirectory(outputDirectory);
         var animSet = UE3AnimSet.Read(package, export);
-        var path = TryExportAnimSet(package, export, animSet, outputDirectory)
+        var path = TryExportAnimSet(content, package, export, animSet, outputDirectory)
             ?? throw new GMConverterException($"UE3 AnimSet {export.ObjectName} has no sequences that could be read.");
         return new UE3ExportResult(null, [path]);
     }
 
-    private static string? TryExportAnimSet(UE3Package package, UE3PackageExport export, UE3AnimSet animSet, string outputDirectory)
+    private static string? TryExportAnimSet(UE3GameContent content, UE3Package package, UE3PackageExport export, UE3AnimSet animSet, string outputDirectory)
     {
         List<UE3AnimSequence> sequences = [];
         foreach (var index in animSet.Sequences)
@@ -77,7 +78,12 @@ internal static class UE3MeshExporter
         }
 
         var path = Path.Combine(outputDirectory, export.ObjectName + ".psa");
-        UE3PsaWriter.Write(path, animSet, sequences);
+        var events = new UE3AnimationEvents(content);
+        UE3PsaWriter.Write(path, animSet, sequences, sequences
+            .Select(sequence => (sequence.Name, Events: events.Read(package, sequence)))
+            .Where(pair => pair.Events.Count > 0)
+            .DistinctBy(pair => pair.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(pair => pair.Name, pair => (IReadOnlyList<PSAClipEvent>)pair.Events, StringComparer.OrdinalIgnoreCase));
         return path;
     }
 

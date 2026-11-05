@@ -12,7 +12,11 @@ namespace GMConverter.UnrealEngine.Formats.UE3.Exporters;
 /// </summary>
 internal static class UE3PsaWriter
 {
-    public static void Write(string path, UE3AnimSet animSet, IReadOnlyList<UE3AnimSequence> sequences)
+    public static void Write(
+        string path,
+        UE3AnimSet animSet,
+        IReadOnlyList<UE3AnimSequence> sequences,
+        IReadOnlyDictionary<string, IReadOnlyList<PSAClipEvent>>? events = null)
     {
         var bones = animSet.TrackBones;
         var translated = new HashSet<string>(animSet.TranslatedBones, StringComparer.OrdinalIgnoreCase);
@@ -90,9 +94,14 @@ internal static class UE3PsaWriter
             }
         }
 
-        if (meshTranslation.Count > 0)
+        var sidecar = new PSAClipSidecar(
+            false,
+            false,
+            MeshTranslationBones: meshTranslation.Count > 0 ? [.. bones.Where(meshTranslation.Contains)] : null,
+            SequenceEvents: events is { Count: > 0 } ? events : null);
+        if (sidecar.HasData)
         {
-            new PSAClipSidecar(false, false, MeshTranslationBones: [.. bones.Where(meshTranslation.Contains)]).Write(path);
+            sidecar.Write(path);
         }
     }
 

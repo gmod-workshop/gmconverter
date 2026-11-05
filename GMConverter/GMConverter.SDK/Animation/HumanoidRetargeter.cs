@@ -8,24 +8,31 @@ namespace GMConverter.SDK.Animation;
 /// <see cref="HumanoidBone"/> role. Built for view models whose arms another model supplies (Garry's
 /// Mod's player hands), so the result keeps only what the arms hold.
 /// <para>
-/// The source is first scaled about the camera (the model's origin) so its arms are as long as the
-/// target's; scaling about the eye leaves the picture unchanged. Each target bone then points the way
-/// its source bone does, judged from joint positions rather than bone axes (bones run toward their
-/// child, elbows bend in the arm's plane, hands lie across their knuckles), so skeletons with
-/// different bone axes and bind poses line up. The torso and shoulders take the source's positions;
-/// from the shoulder out, target bones keep their own lengths, and held items stay where they were
-/// relative to their hand.
+/// The source is first scaled about the camera (the model's origin) so its hands are the target's
+/// size (by arm length when either lacks fingers); scaling about the eye leaves the picture
+/// unchanged, so the target's hands are drawn as big, and where, the source's were. The target's
+/// arms then reach those hands from the source's shoulders with their own lengths, the elbows bending
+/// in the source arm's plane. Each target bone points the way its source bone does, judged from joint
+/// positions rather than bone axes (bones run toward their child, elbows bend in the arm's plane,
+/// hands lie across their knuckles), so skeletons with different bone axes and bind poses line up.
+/// Held items stay where they were relative to their hand.
 /// </para>
 /// </summary>
 public static class HumanoidRetargeter
 {
     private const float _degenerate = 1e-8f;
+    private static readonly string[] _sides = ["Left", "Right"];
+    private static readonly string[] _knuckles = ["Middle1", "Index1"];
 
     private static readonly HashSet<HumanoidBone> _anchors =
     [
         HumanoidBone.Chest,
         HumanoidBone.LeftUpperArm,
         HumanoidBone.RightUpperArm,
+        HumanoidBone.LeftForearm,
+        HumanoidBone.RightForearm,
+        HumanoidBone.LeftHand,
+        HumanoidBone.RightHand,
     ];
 
     private static readonly HumanoidBone[][] _fingers =
@@ -62,7 +69,7 @@ public static class HumanoidRetargeter
 
         var sourceBind = World(sourceSkeleton, index => sourceSkeleton.Bones[index].LocalBindPose);
         var targetBind = World(target, index => target.Bones[index].LocalBindPose);
-        var scale = ArmLength(targetBind, targetRoles) / ArmLength(sourceBind, sourceRoles);
+        var scale = HandScale(sourceBind, sourceRoles, targetBind, targetRoles) ?? ArmLength(targetBind, targetRoles) / ArmLength(sourceBind, sourceRoles);
         var scaledSourceBind = sourceBind.Select(matrix => Scaled(matrix, scale)).ToArray();
 
         // Held items: the bones under each held-item bone, re-hung under the target's hand.
@@ -80,9 +87,8 @@ public static class HumanoidRetargeter
             }
         }
 
-        // Hands differ in size more than arms do (CrossFire HD's are large for its arms), so held
-        // items are resized to the target's hand: their offset from the hand and their geometry scale
-        // by the ratio of palm lengths, which keeps the grip in the target's fingers.
+        // Held items are fitted to the target's hand by the ratio of palm lengths (offset and
+        // geometry); with the scene scaled by hand size this is one, unless the hands differ in shape.
         var handScale = new Dictionary<HumanoidBone, float>
         {
             [HumanoidBone.LeftHand] = PalmLength(targetBind, targetRoles, "Left") / PalmLength(scaledSourceBind, sourceRoles, "Left"),
@@ -162,7 +168,11 @@ public static class HumanoidRetargeter
             var sourceWorld = World(sourceSkeleton, index => tracks.TryGetValue(index, out var track) ? Sample(track, time) : sourceSkeleton.Bones[index].LocalBindPose)
                 .Select(matrix => Scaled(matrix, scale))
                 .ToArray();
-            var sourceFrames = Frames(index => Position(sourceWorld, sourceRoles, index));
+            // The target's arms reach the source's hands from the source's shoulders with their own
+            // lengths, the elbow bending in the source arm's plane.
+            var posed = ReachHands(sourceWorld, sourceRoles, targetBind, targetRoles);
+            Vector3? Posed(HumanoidBone role) => posed.TryGetValue(role, out var position) ? position : Position(sourceWorld, sourceRoles, role);
+            var sourceFrames = Frames(Posed);
             var world = new Matrix4x4[output.Bones.Count];
 
             // Target arms: each bone's rest orientation, turned the way its role's frame has turned.
@@ -173,8 +183,8 @@ public static class HumanoidRetargeter
                 var local = Local(bone.LocalBindPose);
                 // The torso and shoulders sit where the source's do, so the arms hang from the same
                 // place on screen; from the shoulder out, the target's own bone lengths take over.
-                var position = bone.Humanoid is { } anchorRole && _anchors.Contains(anchorRole) && sourceRoles.TryGetValue(anchorRole, out var sourceAnchor)
-                    ? sourceWorld[sourceAnchor].Translation
+                var position = bone.Humanoid is { } anchorRole && _anchors.Contains(anchorRole) && Posed(anchorRole) is { } anchored
+                    ? anchored
                     : bone.ParentIndex >= 0 ? Vector3.Transform(bone.LocalBindPose.Translation, parentWorld) : local.Translation;
                 if (bone.Humanoid is { } role && sourceFrames(role) is { } sourceFrame && targetRestFrames(role) is { } restFrame)
                 {
@@ -398,11 +408,62 @@ public static class HumanoidRetargeter
             Side(HumanoidBone.RightUpperArm, HumanoidBone.RightForearm, HumanoidBone.RightHand)) / 2;
     }
 
+    // How much bigger the target's hands are than the source's (by palm length), so the scaled
+    // source hands come out the target's size; null when either skeleton lacks knuckles.
+    private static float? HandScale(Matrix4x4[] sourceBind, Dictionary<HumanoidBone, int> sourceRoles, Matrix4x4[] targetBind, Dictionary<HumanoidBone, int> targetRoles)
+    {
+        var ratios = _sides
+            .Select(side => PalmLength(targetBind, targetRoles, side) / PalmLength(sourceBind, sourceRoles, side))
+            .Where(ratio => float.IsFinite(ratio) && ratio > 0)
+            .ToArray();
+        return ratios.Length == 0 ? null : ratios.Average();
+    }
+
+    // Two-bone reach: each target arm hangs from the source's shoulder and puts its hand on the
+    // source's hand (or as close as its length allows), the elbow on the side the source's bends to.
+    private static Dictionary<HumanoidBone, Vector3> ReachHands(
+        Matrix4x4[] sourceWorld,
+        Dictionary<HumanoidBone, int> sourceRoles,
+        Matrix4x4[] targetBind,
+        Dictionary<HumanoidBone, int> targetRoles)
+    {
+        Dictionary<HumanoidBone, Vector3> posed = [];
+        foreach (var side in _sides)
+        {
+            var (upper, fore, hand) = (Enum.Parse<HumanoidBone>(side + "UpperArm"), Enum.Parse<HumanoidBone>(side + "Forearm"), Enum.Parse<HumanoidBone>(side + "Hand"));
+            var shoulder = sourceWorld[sourceRoles[upper]].Translation;
+            var sourceElbow = sourceWorld[sourceRoles[fore]].Translation;
+            var reach = sourceWorld[sourceRoles[hand]].Translation - shoulder;
+            var upperLength = Vector3.Distance(targetBind[targetRoles[upper]].Translation, targetBind[targetRoles[fore]].Translation);
+            var foreLength = Vector3.Distance(targetBind[targetRoles[fore]].Translation, targetBind[targetRoles[hand]].Translation);
+            var distance = Math.Clamp(reach.Length(), MathF.Abs(upperLength - foreLength) + 1e-4f, (upperLength + foreLength) * 0.9999f);
+            if (reach.LengthSquared() < _degenerate)
+            {
+                continue;
+            }
+
+            var along = Vector3.Normalize(reach);
+            var bendSide = sourceElbow - shoulder - along * Vector3.Dot(sourceElbow - shoulder, along);
+            if (bendSide.LengthSquared() < _degenerate)
+            {
+                bendSide = Vector3.Cross(along, Vector3.UnitZ);
+                bendSide = bendSide.LengthSquared() < _degenerate ? Vector3.Cross(along, Vector3.UnitX) : bendSide;
+            }
+
+            var toElbow = (upperLength * upperLength - foreLength * foreLength + distance * distance) / (2 * distance);
+            var height = MathF.Sqrt(MathF.Max(upperLength * upperLength - toElbow * toElbow, 0));
+            posed[fore] = shoulder + along * toElbow + Vector3.Normalize(bendSide) * height;
+            posed[hand] = shoulder + along * distance;
+        }
+
+        return posed;
+    }
+
     // Wrist to the middle knuckle (or the index one): the hand's size, for fitting what it holds.
     private static float PalmLength(Matrix4x4[] world, Dictionary<HumanoidBone, int> roles, string side)
     {
         var hand = world[roles[Enum.Parse<HumanoidBone>(side + "Hand")]].Translation;
-        foreach (var knuckle in new[] { "Middle1", "Index1" })
+        foreach (var knuckle in _knuckles)
         {
             if (roles.TryGetValue(Enum.Parse<HumanoidBone>(side + knuckle), out var index))
             {

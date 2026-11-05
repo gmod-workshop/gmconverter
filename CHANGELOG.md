@@ -84,6 +84,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Fixed converted weapon sounds cutting each other off in Source games. They were written on `CHAN_WEAPON`, where each sound stops the last on the same entity (a view model's inspect lost its long swish at the next click); they now play on `CHAN_AUTO`, overlapping as in the original game.
 - Fixed the Explorer naming most UE3 sound packages after one package, because every one has a `Cue` group; packages are now named by the full paths of the objects other packages import from them.
 - Fixed the PSK importer writing a `<material>.resolve.log` debug file next to every mesh it imported, including into folders of user files.
 - Fixed MDL compiles failing with `Duplicate sequence name` when a model has an animation called `Idle` (or two animations whose names differ only in case). studiomdl compares sequence names without case, and the bind pose is already the `idle` sequence, so clashing animations now get a `_2` suffix.

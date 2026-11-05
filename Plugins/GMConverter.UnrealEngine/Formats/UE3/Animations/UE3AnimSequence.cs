@@ -7,7 +7,8 @@ namespace GMConverter.UnrealEngine.Formats.UE3.Animations;
 /// <summary>
 /// A UE3 AnimSequence decoded into per-track keys, one track per entry of its AnimSet's
 /// <c>TrackBoneNames</c>. <c>FrameCount</c> includes both the first and the last frame.
-/// <c>IsAdditive</c> sequences are layers meant to be added on top of another pose.
+/// <c>IsAdditive</c> sequences are layers meant to be added on top of another pose. <c>Notifies</c>
+/// are the objects the sequence fires at times (in seconds), as package indexes.
 /// </summary>
 internal sealed record UE3AnimSequence(
     string Name,
@@ -15,7 +16,8 @@ internal sealed record UE3AnimSequence(
     float Length,
     float RateScale,
     IReadOnlyList<UE3AnimTrack> Tracks,
-    bool IsAdditive = false)
+    bool IsAdditive = false,
+    IReadOnlyList<(float Time, int Notify)>? Notifies = null)
 {
     private const int _identity = -1;
 
@@ -58,7 +60,11 @@ internal sealed record UE3AnimSequence(
             throw new GMConverterException($"UE3 animation {name} has {tracks.Count} tracks; its AnimSet names {trackCount} bones.");
         }
 
-        return new UE3AnimSequence(name, Math.Max(frameCount, 1), length, rateScale, tracks, properties.GetBool("bIsAdditive") ?? false);
+        var notifies = properties.GetStructArray("Notifies", version)
+            .Where(notify => notify.GetObject("Notify") != 0)
+            .Select(notify => (notify.GetFloat("Time") ?? 0f, notify.GetObject("Notify")))
+            .ToArray();
+        return new UE3AnimSequence(name, Math.Max(frameCount, 1), length, rateScale, tracks, properties.GetBool("bIsAdditive") ?? false, notifies);
     }
 
     private static UE3AnimTrack ReadRawTrack(UE3Archive archive, int version)

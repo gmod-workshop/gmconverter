@@ -49,7 +49,7 @@ These apply to every input and output format.
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
-| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent` or `wem` for sounds. | `--input-format psk` | Required |
+| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent`, `wem` or `ue3cue` for sounds. | `--input-format psk` | Required |
 | `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
@@ -264,6 +264,8 @@ Additive animations (layers such as aim poses, flinches and hit reactions that t
 Animations that use Unreal's root motion (the character travels or turns with its root bone, as walk cycles, starts, stops and turns usually do) carry that movement in MDL output, so Garry's Mod moves NPCs and players at the speed their feet step. Animations Unreal marks as looping, such as idles and walk cycles, loop in MDL output.
 
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
+
+Unreal Engine 3 games list their sound cues (`SoundCue`) in the Explorer. Exporting one writes the audio of each wave it plays and a `.ue3cue` file, and converts it with the `ue3cue` importer, decoding the audio with vgmstream. A cue that plays several sounds at once (a mixer) becomes one sound event per layer, named `<cue>`, `<cue>_2` and so on; random choices keep their weights, modulators their pitch and volume ranges, and attenuation how far the sound carries. Animation notifies that play a cue (including CrossFire HD's) become `AE_CL_PLAYSOUND` events for each layer, after the cue's delay; variants that only play underwater are left out.
 
 Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it, and picks between its media at random. Localised voice lines keep their English recording.
 

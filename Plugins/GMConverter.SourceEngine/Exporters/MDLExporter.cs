@@ -662,6 +662,13 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             writer.WriteLine("$staticprop");
         }
 
+        // Bones other models follow by name (player hands on a c_ view model) have no vertices of
+        // their own here; $bonemerge stops studiomdl optimising them away.
+        foreach (var bone in model.Skeleton?.Bones.Where(bone => bone.Shared) ?? [])
+        {
+            writer.WriteLine(FormattableString.Invariant($"$bonemerge \"{EscapeQcString(bone.Name)}\""));
+        }
+
         writer.WriteLine("$surfaceprop \"metal\"");
         WriteTextureGroup(writer, model);
         WriteAttachments(writer, model);

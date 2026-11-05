@@ -430,6 +430,19 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void SharedBonesAreKeptWithBonemerge()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var hand = new Bone(1, "ValveBiped.Bip01_R_Hand", 0, Transform.Identity, HumanoidBone.RightHand, Shared: true);
+        model = model with { Skeleton = new Skeleton([model.Skeleton!.Bones[0], hand]) };
+
+        var qc = File.ReadAllText(Directory.GetFiles(ExportWithStubCompiler(model), "triangle.qc", SearchOption.AllDirectories).Single());
+
+        Assert.Contains("$bonemerge \"ValveBiped.Bip01_R_Hand\"", qc);
+        Assert.DoesNotContain("$bonemerge \"root\"", qc);
+    }
+
+    [Fact]
     public void SequenceNamesAreUniqueIgnoringCase()
     {
         // studiomdl rejects names that differ only in case, and "idle" is already the bind pose.

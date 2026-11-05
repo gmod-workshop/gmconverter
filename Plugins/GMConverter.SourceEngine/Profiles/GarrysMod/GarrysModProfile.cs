@@ -21,6 +21,9 @@ internal sealed class GarrysModProfile : ISourceProfile
     public const string NpcUse = "npc";
     public const string PlayerUse = "player";
     public const string BothUses = "both";
+    public const string HandsOption = "hands";
+    public const string ModelHands = "model";
+    public const string PlayerHands = "player";
 
     // When a clip needs both sets, its own sequence keeps the NPC activity and a copy with this
     // suffix carries the player one.
@@ -43,6 +46,12 @@ internal sealed class GarrysModProfile : ISourceProfile
                 DefaultValue = NpcUse,
                 Choices = [NpcUse, PlayerUse, BothUses],
                 Description = "Which activities animations get: NPC activities (ACT_IDLE, ACT_RUN, …), player-model activities (ACT_HL2MP_*), or both, with a copy of each sequence for the player set.",
+            },
+            new OptionDescriptor(HandsOption, OptionType.Enum, "View model hands")
+            {
+                DefaultValue = ModelHands,
+                Choices = [ModelHands, PlayerHands],
+                Description = "For first-person view models: keep the model's own arms (a v_ model, SWEP.UseHands = false), or move its animations onto the player's hands and keep only what they hold (a c_ model, SWEP.UseHands = true).",
             },
             new OptionDescriptor(EyesOption, OptionType.Bool, "Eyes")
             {
@@ -77,7 +86,7 @@ internal sealed class GarrysModProfile : ISourceProfile
         // A view model is the player's own arms: NPC eyes and held-item hand attachments don't apply.
         if (model.FirstPerson)
         {
-            return model;
+            return options.GetString(HandsOption) == PlayerHands ? HumanoidRetargeter.RetargetArms(model, GarrysModHands.Skeleton) : model;
         }
 
         if (options.GetBool(HandAttachmentsOption, defaultValue: true))

@@ -12,13 +12,23 @@ namespace GMConverter.SDK.Animation;
 /// target's; scaling about the eye leaves the picture unchanged. Each target bone then points the way
 /// its source bone does, judged from joint positions rather than bone axes (bones run toward their
 /// child, elbows bend in the arm's plane, hands lie across their knuckles), so skeletons with
-/// different bone axes and bind poses line up. Target bones keep their own lengths, and held items
-/// stay where they were relative to their hand.
+/// different bone axes and bind poses line up. The torso and shoulders take the source's positions;
+/// from the shoulder out, target bones keep their own lengths, and held items stay where they were
+/// relative to their hand.
 /// </para>
 /// </summary>
 public static class HumanoidRetargeter
 {
     private const float _degenerate = 1e-8f;
+
+    private static readonly HashSet<HumanoidBone> _anchors =
+    [
+        HumanoidBone.Chest,
+        HumanoidBone.LeftClavicle,
+        HumanoidBone.RightClavicle,
+        HumanoidBone.LeftUpperArm,
+        HumanoidBone.RightUpperArm,
+    ];
 
     private static readonly HumanoidBone[][] _fingers =
     [
@@ -149,9 +159,11 @@ public static class HumanoidRetargeter
                 var bone = target.Bones[index];
                 var parentWorld = bone.ParentIndex >= 0 ? world[bone.ParentIndex] : Matrix4x4.Identity;
                 var local = Local(bone.LocalBindPose);
-                var position = bone.ParentIndex >= 0
-                    ? Vector3.Transform(bone.LocalBindPose.Translation, parentWorld)
-                    : bone.Humanoid is { } rootRole && sourceRoles.TryGetValue(rootRole, out var sourceRoot) ? sourceWorld[sourceRoot].Translation : local.Translation;
+                // The torso and shoulders sit where the source's do, so the arms hang from the same
+                // place on screen; from the shoulder out, the target's own bone lengths take over.
+                var position = bone.Humanoid is { } anchorRole && _anchors.Contains(anchorRole) && sourceRoles.TryGetValue(anchorRole, out var sourceAnchor)
+                    ? sourceWorld[sourceAnchor].Translation
+                    : bone.ParentIndex >= 0 ? Vector3.Transform(bone.LocalBindPose.Translation, parentWorld) : local.Translation;
                 if (bone.Humanoid is { } role && sourceFrames(role) is { } sourceFrame && targetRestFrames(role) is { } restFrame)
                 {
                     var rotation = Rotation(targetBind[index]) * Inverse(restFrame) * sourceFrame;

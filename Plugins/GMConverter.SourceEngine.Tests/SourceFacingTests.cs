@@ -32,6 +32,21 @@ public sealed class SourceFacingTests
     }
 
     [Fact]
+    public void ViewModelsAreLaidOutForStudiomdlsQuarterTurn()
+    {
+        // studiomdl turns compiled animations a quarter turn counter-clockwise, so a view model
+        // facing +Y is written facing -Y to be drawn facing +X.
+        var model = CreateModel(Vector3.UnitY) with { FirstPerson = true };
+
+        var turned = SourceFacing.FaceForward(model);
+
+        Assert.Equal(-Vector3.UnitY, turned.Forward);
+        // Facing +Y to facing -Y is a half turn, so the clip's step back along -Y now goes along +Y.
+        var root = Assert.IsType<BoneTransformTrack>(turned.Animations![0].Tracks[0]);
+        AssertNear(new Vector3(0, 3, 0), root.Keyframes[1].Transform.Translation);
+    }
+
+    [Fact]
     public void LayerBasePosesTurnOnceAndStayShared()
     {
         var basePose = new AnimationPose("ref", new Dictionary<int, Transform>

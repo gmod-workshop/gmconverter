@@ -44,6 +44,24 @@ public sealed class HumanoidRetargeterTests
     }
 
     [Fact]
+    public void HeldItemsBecomeAModelHangingFromTheHand()
+    {
+        var retargeted = HumanoidRetargeter.RetargetArms(SourceModel(Quaternion.Identity), TargetSkeleton());
+
+        var held = HumanoidRetargeter.ExtractHeld(retargeted, HumanoidBone.RightHand);
+
+        Assert.Equal(["R_Hand", "Held", "Knife"], held.Skeleton!.Bones.Select(bone => bone.Name));
+        Assert.Equal([-1, 0, 1], held.Skeleton.Bones.Select(bone => bone.ParentIndex));
+        Assert.True(held.Skeleton.Bones[0].Shared);
+        Assert.Null(held.Animations);
+        Assert.False(held.FirstPerson);
+        // The knife keeps its place: same vertex, now weighted to the knife's new index.
+        var vertex = Assert.Single(Assert.Single(held.Meshes).Vertices);
+        AssertNear(Assert.Single(retargeted.Meshes).Vertices[0].Position, vertex.Position);
+        Assert.Equal(2, vertex.BoneWeights![0].BoneIndex);
+    }
+
+    [Fact]
     public void GarrysModHandsCoverEveryArmRole()
     {
         var roles = GarrysModHands.Skeleton.Bones.Select(bone => bone.Humanoid).ToHashSet();

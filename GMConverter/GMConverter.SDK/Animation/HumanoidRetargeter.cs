@@ -144,6 +144,55 @@ public static class HumanoidRetargeter
         };
     }
 
+    /// <summary>
+    /// What one hand holds, as a model of its own hanging from that hand's bone: the world model a
+    /// game attaches to a character's hand. Takes a model from <see cref="RetargetArms"/>, so the item
+    /// sits in the target skeleton's hand; the hand bone is kept (<see cref="Bone.Shared"/>) for the
+    /// game to match against the character's, and the arms and their animations are dropped.
+    /// </summary>
+    public static Model ExtractHeld(Model retargeted, HumanoidBone hand)
+    {
+        var skeleton = retargeted.Skeleton ?? throw new InvalidOperationException($"{retargeted.Name} has no skeleton.");
+        var handBone = skeleton.Bones.FirstOrDefault(bone => bone.Humanoid == hand)
+            ?? throw new InvalidOperationException($"{retargeted.Name} has no {hand} bone.");
+        var bind = World(skeleton, index => skeleton.Bones[index].LocalBindPose);
+
+        // The hand, then everything under it that isn't part of the arm (the held item's bones).
+        List<Bone> kept = [handBone with { ParentIndex = -1, LocalBindPose = ToTransform(bind[handBone.Index]), Shared = true }];
+        var held = Subtree(skeleton, handBone.Index).Skip(1).Where(index => !skeleton.Bones[index].Shared).ToArray();
+        kept.AddRange(held.Select(index => skeleton.Bones[index]));
+        var remap = kept.Select((bone, order) => (bone.Index, order)).ToDictionary(pair => pair.Index, pair => pair.order);
+        var bones = kept.Select(bone => bone with
+        {
+            Index = remap[bone.Index],
+            ParentIndex = bone.ParentIndex >= 0 && remap.TryGetValue(bone.ParentIndex, out var parent) ? parent : -1,
+        }).ToList();
+        bones[0] = bones[0] with { ParentIndex = -1 };
+
+        var meshes = retargeted.Meshes
+            .Select(mesh => mesh with
+            {
+                Vertices = [.. mesh.Vertices.Select(vertex => vertex with
+                {
+                    BoneWeights = vertex.BoneWeights?.Select(weight => weight with { BoneIndex = remap.TryGetValue(weight.BoneIndex, out var index) ? index : 0 }).ToArray(),
+                })],
+            })
+            .ToList();
+        return retargeted with
+        {
+            Skeleton = new Skeleton(bones),
+            Meshes = meshes,
+            Animations = null,
+            Attachments = retargeted.Attachments?
+                .Where(attachment => attachment.BoneIndex is { } bone && remap.ContainsKey(bone))
+                .Select(attachment => attachment with { BoneIndex = remap[attachment.BoneIndex!.Value] })
+                .ToArray(),
+            BlendSpaces = null,
+            Forward = null,
+            FirstPerson = false,
+        };
+    }
+
     private static AnimationClip RetargetClip(
         AnimationClip clip,
         Skeleton sourceSkeleton,

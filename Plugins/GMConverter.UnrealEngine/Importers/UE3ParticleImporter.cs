@@ -44,11 +44,17 @@ internal sealed class UE3ParticleImporter(ITextureFactory textureFactory) : IPar
 
         return new ParticleEffect(sidecar.Name, [.. sidecar.Emitters.Select(emitter => emitter.Settings with
         {
-            Material = new Material(emitter.Settings.Name, diffuseTexture: Load(emitter.Texture), blendMode: emitter.Blend),
-            // Static meshes aren't read yet, so a mesh emitter carries an empty model under its mesh's name.
-            Mesh = emitter.Mesh is { } mesh ? new Model(mesh, [], []) : null,
+            Material = new Material(
+                emitter.Settings.Name,
+                diffuseTexture: Load(emitter.Texture),
+                blendMode: emitter.Blend,
+                uvTransform: emitter.UvScale is { } scale ? new MaterialUvTransform { Scale = scale } : null),
+            Mesh = emitter.Mesh is { } mesh ? LoadMesh(Path.Join(directory, mesh)) : null,
         })]);
     }
+
+    private Model LoadMesh(string path) =>
+        new PSKImporter(textureFactory).Import(new ModelImportContext(path)) with { Name = Path.GetFileNameWithoutExtension(path) };
 
     public object Summarize(string inputPath)
     {

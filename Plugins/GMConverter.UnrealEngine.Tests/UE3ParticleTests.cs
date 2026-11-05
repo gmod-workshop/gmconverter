@@ -57,11 +57,13 @@ public sealed class UE3ParticleTests
             Sheet = new ParticleSheet(2, 2, null),
             StartSize = ParticleVector.Range(new Vector3(0.06f), new Vector3(0.125f)),
         };
+        var (psk, _) = PskFixtures.WriteFixture();
+        File.Copy(psk, Path.Join(directory, "SM_Arc.psk"));
         var path = Path.Join(directory, "P_Flare" + UE3ParticleSidecar.Extension);
         new UE3ParticleSidecar("P_Flare",
         [
             new UE3ParticleSidecar.Emitter(settings, "flare.png", MaterialBlendMode.Additive, null),
-            new UE3ParticleSidecar.Emitter(settings with { Name = "arc" }, null, MaterialBlendMode.AlphaBlend, "SM_Arc"),
+            new UE3ParticleSidecar.Emitter(settings with { Name = "arc" }, null, MaterialBlendMode.AlphaBlend, "SM_Arc.psk") { UvScale = new Vector2(1f, 3f) },
         ]).Write(path);
 
         var effect = new UE3ParticleImporter(new DefaultTextureFactory()).Import(new ParticleImportContext(path));
@@ -74,6 +76,9 @@ public sealed class UE3ParticleTests
         Assert.Equal(4, core.Sheet?.FrameCount);
         Assert.Equal(new Vector3(0.125f), core.StartSize.Evaluate(0f, Vector3.One));
         Assert.Null(core.Mesh);
-        Assert.Equal("SM_Arc", effect.Emitters[1].Mesh?.Name);
+        var arc = effect.Emitters[1];
+        Assert.Equal("SM_Arc", arc.Mesh?.Name);
+        Assert.NotEmpty(arc.Mesh!.Meshes);
+        Assert.Equal(new Vector2(1f, 3f), arc.Material.UvTransform?.Scale);
     }
 }

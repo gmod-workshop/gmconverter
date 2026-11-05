@@ -21,7 +21,7 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
     // Modules that change only how Unreal draws or culls a particle, which nothing downstream uses.
     private static readonly HashSet<string> _ignored = new(StringComparer.Ordinal)
     {
-        "ParticleModuleEventGenerator", "ParticleModuleCameraOffset", "ParticleModuleMeshMaterial", "ParticleModuleTypeDataMesh",
+        "ParticleModuleEventGenerator", "ParticleModuleCameraOffset", "ParticleModuleTypeDataMesh",
     };
 
     public static UE3ParticleSystem Read(UE3GameContent content, UE3Package package, UE3PackageExport export)
@@ -86,7 +86,9 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
         var required = package.GetExport(lod.GetObject("RequiredModule")) is { } requiredExport ? package.OpenObject(requiredExport).Properties : null;
         var emitter = new ParticleEmitter(name, new Material(name));
         UE3ObjectReference? material = null;
-        string? mesh = null;
+        UE3ObjectReference? mesh = null;
+        UE3ObjectReference? meshMaterial = null;
+        var dynamicParameters = new ParticleFloat?[4];
 
         if (required is not null)
         {
@@ -110,7 +112,9 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
 
         if (package.GetExport(lod.GetObject("TypeDataModule")) is { } typeData && package.GetClassName(typeData) == "ParticleModuleTypeDataMesh")
         {
-            mesh = package.GetObjectName(package.OpenObject(typeData).Properties.GetObject("Mesh"));
+            mesh = content.Resolve(package, package.OpenObject(typeData).Properties.GetObject("Mesh")) is { } meshExport
+                ? new UE3ObjectReference(meshExport.Package, meshExport.Export)
+                : null;
         }
 
         if (package.GetExport(lod.GetObject("SpawnModule")) is { } spawnExport)
@@ -154,8 +158,9 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
                 case "ParticleModuleLifetime":
                     emitter = emitter with { Lifetime = Float("Lifetime") ?? emitter.Lifetime };
                     break;
+                // A mesh particle's size scales its mesh; a sprite's is a length.
                 case "ParticleModuleSize":
-                    emitter = emitter with { StartSize = Map(Plain("StartSize"), value => value * _metresPerUnit) ?? emitter.StartSize };
+                    emitter = emitter with { StartSize = Map(Plain("StartSize"), value => mesh is null ? value * _metresPerUnit : value) ?? emitter.StartSize };
                     break;
                 case "ParticleModuleSizeMultiplyLife":
                 case "ParticleModuleSizeScale":
@@ -218,6 +223,22 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
                     }
 
                     break;
+                case "ParticleModuleMeshMaterial":
+                    if (module.GetObjectArray("MeshMaterials") is { Count: > 0 } meshMaterials && content.Resolve(package, meshMaterials[0]) is { } meshMaterialExport)
+                    {
+                        meshMaterial = new UE3ObjectReference(meshMaterialExport.Package, meshMaterialExport.Export);
+                    }
+
+                    break;
+                // Four values per particle that its material reads, usually over its life.
+                case "ParticleModuleParameterDynamic":
+                    var parameters = module.GetStructArray("DynamicParams", package.Summary.FileVersion);
+                    for (var channel = 0; channel < Math.Min(4, parameters.Count); channel++)
+                    {
+                        dynamicParameters[channel] = UE3Distribution.ReadFloat(package, parameters[channel], "ParamValue");
+                    }
+
+                    break;
                 default:
                     if (!_ignored.Contains(className))
                     {
@@ -228,7 +249,7 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
             }
         }
 
-        return new UE3ParticleEmitter(emitter, material, mesh);
+        return new UE3ParticleEmitter(emitter, meshMaterial ?? material, mesh) { DynamicParameters = dynamicParameters };
     }
 
     private static Vector3 ToMetres(Vector3 value) => new Vector3(value.X, -value.Y, value.Z) * _metresPerUnit;

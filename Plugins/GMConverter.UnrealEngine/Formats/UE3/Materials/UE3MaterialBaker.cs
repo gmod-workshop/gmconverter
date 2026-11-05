@@ -22,7 +22,8 @@ internal static class UE3MaterialBaker
         UE3GameContent content,
         UE3ObjectReference material,
         int maximumSize,
-        Dictionary<string, UE3MaterialTexture?> textureCache)
+        Dictionary<string, UE3MaterialTexture?> textureCache,
+        bool particleTextureSpace = false)
     {
         var parameters = UE3MaterialParameters.Collect(content, material);
         var name = material.Export.ObjectName;
@@ -31,7 +32,7 @@ internal static class UE3MaterialBaker
             return Fallback(content, name, parameters);
         }
 
-        var graph = new UE3MaterialGraph(content, parameters, baseMaterial, textureCache);
+        var graph = new UE3MaterialGraph(content, parameters, baseMaterial, textureCache, particleTextureSpace);
         var diffuseOutput = graph.CompileOutput("DiffuseColor");
         var normalOutput = graph.CompileOutput("Normal");
         var emissiveOutput = graph.CompileOutput("EmissiveColor");
@@ -101,7 +102,10 @@ internal static class UE3MaterialBaker
             blend,
             alphaCutoff,
             baseTexture?.AddressX ?? UE3TextureAddress.Wrap,
-            baseTexture?.AddressY ?? UE3TextureAddress.Wrap);
+            baseTexture?.AddressY ?? UE3TextureAddress.Wrap)
+        {
+            ParticleUv = graph.ParticleUv,
+        };
     }
 
     private static UE3MaterialOutput[] Combine(UE3MaterialOutput color, UE3MaterialOutput? opacity)

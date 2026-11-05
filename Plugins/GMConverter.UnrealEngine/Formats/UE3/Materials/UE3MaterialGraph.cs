@@ -24,13 +24,22 @@ internal sealed class UE3MaterialGraph
     private readonly Dictionary<int, Compiled?> _nodes = [];
     private readonly HashSet<int> _compiling = [];
     private List<UE3MaterialTexture> _sampled = [];
+    private readonly bool _particleTextureSpace;
+    private bool _underParticlePanner;
 
+    /// <summary>
+    /// Compiles a material's graph. With <c>particleTextureSpace</c>, a particle material bakes in its
+    /// texture's own space: a panner driven by a particle's dynamic parameter leaves its coordinate at
+    /// rest (and untiled), recorded in <see cref="ParticleUv"/> for the effect to animate.
+    /// </summary>
     public UE3MaterialGraph(
         UE3GameContent content,
         UE3MaterialParameters parameters,
         UE3ObjectReference baseMaterial,
-        Dictionary<string, UE3MaterialTexture?> textureCache)
+        Dictionary<string, UE3MaterialTexture?> textureCache,
+        bool particleTextureSpace = false)
     {
+        _particleTextureSpace = particleTextureSpace;
         _content = content;
         _parameters = parameters;
         _package = baseMaterial.Package;
@@ -39,6 +48,9 @@ internal sealed class UE3MaterialGraph
     }
 
     public delegate UE3MaterialValue Evaluator(Vector2 uv);
+
+    /// <summary>The texture slide a particle's dynamic parameter drives, once an output using it is compiled in particle texture space.</summary>
+    public UE3ParticleUvAnimation? ParticleUv { get; private set; }
 
     /// <summary>The material's own properties, such as its blend mode.</summary>
     public UE3Properties Material { get; }
@@ -192,7 +204,25 @@ internal sealed class UE3MaterialGraph
                 }
 
                 var tiling = new Vector2(Float("UTiling", 1), Float("VTiling", 1));
+                if (_underParticlePanner && ParticleUv is { } panned)
+                {
+                    ParticleUv = panned with { Tiling = tiling };
+                    return new Compiled(uv => new UE3MaterialValue(new Vector4(uv, 0, 0), 2), true);
+                }
+
                 return new Compiled(uv => new UE3MaterialValue(new Vector4(uv * tiling, 0, 0), 2), true);
+            case "Panner" when _particleTextureSpace && ParticleParameterChannel(node) is { } channel:
+                ParticleUv ??= new UE3ParticleUvAnimation(Vector2.One, new Vector2(Float("SpeedX", 0), Float("SpeedY", 0)), channel);
+                _underParticlePanner = true;
+                try
+                {
+                    return Input("Coordinate") ?? new Compiled(uv => new UE3MaterialValue(new Vector4(uv, 0, 0), 2), true);
+                }
+                finally
+                {
+                    _underParticlePanner = false;
+                }
+
             case "BumpOffset":
             case "Panner":
             case "Rotator":
@@ -271,8 +301,10 @@ internal sealed class UE3MaterialGraph
             // Particle and vertex colour are multiplied in when drawn, so the bake takes them as white;
             // a dynamic parameter takes its default.
             case "VertexColor":
+            case "MeshEmitterVertexColor":
                 return Constant(new UE3MaterialValue(Vector4.One, 4));
             case "DynamicParameter":
+            case "MeshEmitterDynamicParameter":
                 return Constant(new UE3MaterialValue(Vector4.One, 4));
             // Depth fades soften where a sprite meets geometry; the bake keeps the alpha they fade.
             case "DepthBiasedAlpha":
@@ -280,6 +312,24 @@ internal sealed class UE3MaterialGraph
             default:
                 return null;
         }
+    }
+
+    // The dynamic parameter channel a panner's time reads, when it reads one.
+    private int? ParticleParameterChannel(UE3Properties panner)
+    {
+        if (panner.Find("Time") is not { Type: "StructProperty" } time)
+        {
+            return null;
+        }
+
+        var input = _package.ReadStruct(time);
+        if (_package.GetExport(input.GetObject("Expression")) is not { } source ||
+            _package.GetClassName(source) is not ("MaterialExpressionMeshEmitterDynamicParameter" or "MaterialExpressionDynamicParameter"))
+        {
+            return null;
+        }
+
+        return input.GetInt("Mask") is 1 ? Math.Max(0, Array.FindIndex(_inputMasks, mask => input.GetInt(mask) is 1)) : 0;
     }
 
     private Compiled? CompileTextureSample(UE3Properties node, bool isNormal, Compiled? coordinates)

@@ -79,6 +79,12 @@ internal sealed record UE3ParticleSidecar(string Name, IReadOnlyList<UE3Particle
         public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) => writer.WriteNullValue();
     }
 
-    /// <summary>An emitter's settings, its texture file (relative to the sidecar) and blend, and its mesh's name for mesh emitters.</summary>
-    public sealed record Emitter(ParticleEmitter Settings, string? Texture, MaterialBlendMode Blend, string? Mesh);
+    /// <summary>
+    /// An emitter's settings, its texture file (relative to the sidecar), blend and texture tiling, and
+    /// for mesh emitters the mesh's PSK file (relative to the sidecar).
+    /// </summary>
+    public sealed record Emitter(ParticleEmitter Settings, string? Texture, MaterialBlendMode Blend, string? Mesh)
+    {
+        public System.Numerics.Vector2? UvScale { get; init; }
+    }
 }

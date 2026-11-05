@@ -71,8 +71,14 @@ internal sealed class PcfSystemBuilder
 
         if (emitter.DeathSpawn is { } deathSpawn)
         {
-            Warn($"spawns where {deathSpawn.Emitter}'s particles die, which Source particle systems can't do; left out.");
-            return null;
+            if (DeathSchedule(effect, emitter, deathSpawn) is not { } scheduled)
+            {
+                Warn($"spawns where {deathSpawn.Emitter}'s particles die, which Source particle systems can't do; left out.");
+                return null;
+            }
+
+            Warn($"spawns where {deathSpawn.Emitter}'s particles die, which Source can't do; written as emission on {deathSpawn.Emitter}'s schedule, delayed by its particles' lifetime, from where they start.");
+            emitter = scheduled;
         }
 
         var emitters = Emitters(emitter, Warn);
@@ -99,6 +105,37 @@ internal sealed class PcfSystemBuilder
         }
 
         return system;
+    }
+
+    // Particles released where another emitter's die follow that emitter's releases, one average
+    // lifetime later, from where its particles start (exact when they don't move far).
+    private static ParticleEmitter? DeathSchedule(ParticleEffect effect, ParticleEmitter emitter, ParticleDeathSpawn deathSpawn)
+    {
+        var parent = effect.Emitters.FirstOrDefault(other => other.Name == deathSpawn.Emitter);
+        if (parent is null || parent.DeathSpawn is not null)
+        {
+            return null;
+        }
+
+        var count = deathSpawn.Count.Bounds();
+        var perDeath = (count.Min + count.Max) / 2f;
+        var (lifeMin, lifeMax) = parent.Lifetime.Bounds();
+        return emitter with
+        {
+            DeathSpawn = null,
+            DelaySeconds = parent.DelaySeconds + ((lifeMin + lifeMax) / 2f),
+            DurationSeconds = parent.DurationSeconds,
+            Cycles = parent.Cycles,
+            SpawnRate = parent.SpawnRate is { } rate ? new ParticleFloat(
+                [.. rate.Min.Select(key => key with { Value = key.Value * perDeath })],
+                [.. rate.Max.Select(key => key with { Value = key.Value * perDeath })]) : null,
+            Bursts = [.. parent.Bursts.Select(burst => burst with
+            {
+                MinCount = (int)MathF.Round(burst.MinCount * count.Min),
+                MaxCount = (int)MathF.Round(burst.MaxCount * count.Max),
+            })],
+            StartLocation = emitter.StartLocation ?? parent.StartLocation,
+        };
     }
 
     private static DmxElement System(string name, string material, int maxParticles)
@@ -235,12 +272,13 @@ internal sealed class PcfSystemBuilder
         var color = emitter.ColorOverLife is { } colorOverLife ? AtStart(colorOverLife) : VectorBounds(emitter.StartColor);
         if (Math.Max(Math.Max(color.Max.X, color.Max.Y), color.Max.Z) > 1.001f)
         {
-            warn("colour is brighter than white; clamped.");
+            warn("colour is brighter than white; scaled down to white's brightness, keeping its hue.");
         }
 
+        var (low, high) = (InRange(color.Min), InRange(color.Max));
         initializers.Add(Operator("Color Random")
-            .SetColor("color1", Srgb(color.Min.X), Srgb(color.Min.Y), Srgb(color.Min.Z), 255)
-            .SetColor("color2", Srgb(color.Max.X), Srgb(color.Max.Y), Srgb(color.Max.Z), 255));
+            .SetColor("color1", Srgb(low.X), Srgb(low.Y), Srgb(low.Z), 255)
+            .SetColor("color2", Srgb(high.X), Srgb(high.Y), Srgb(high.Z), 255));
 
         var (alphaMin, alphaMax) = emitter.AlphaOverLife is { } alphaOverLife
             ? (alphaOverLife.Bounds().Max, alphaOverLife.Bounds().Max)
@@ -319,7 +357,7 @@ internal sealed class PcfSystemBuilder
                 warn($"colour over life has {keys} keys; written as a fade from the first to the last.");
             }
 
-            var end = color.Evaluate(1f, new Vector3(0.5f));
+            var end = InRange(color.Evaluate(1f, new Vector3(0.5f)));
             operators.Add(Operator("Color Fade")
                 .SetColor("color_fade", Srgb(end.X), Srgb(end.Y), Srgb(end.Z), 255)
                 .Set("fade_start_time", color.Min[0].Time)
@@ -464,6 +502,13 @@ internal sealed class PcfSystemBuilder
     private static Vector3 Inches(Vector3 metres) => metres * _inchesPerMetre;
 
     private static float Degrees(float radians) => radians * 180f / MathF.PI;
+
+    // Source's particle colours stop at white, so a brighter colour keeps its hue at full brightness.
+    private static Vector3 InRange(Vector3 color)
+    {
+        var brightest = MathF.Max(color.X, MathF.Max(color.Y, color.Z));
+        return brightest > 1f ? color / brightest : color;
+    }
 
     private static byte Srgb(float linear)
     {

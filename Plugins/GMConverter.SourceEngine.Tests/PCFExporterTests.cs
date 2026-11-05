@@ -18,9 +18,8 @@ public sealed class PCFExporterTests
         var (header, root) = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf"));
         Assert.Equal("<!-- dmx encoding binary 2 format pcf 1 -->\n", header);
         var systems = root.Children("particleSystemDefinitions");
-        // Sparks spawn on the core's deaths, which Source can't do, so only the core is written.
-        Assert.Equal(["P_Glow", "P_Glow_core"], systems.Select(system => system.Name));
-        Assert.Equal(["P_Glow_core"], systems[0].Children("children").Select(child => child.Get<DmxTestReader.Element>("child").Name));
+        Assert.Equal(["P_Glow", "P_Glow_core", "P_Glow_sparks"], systems.Select(system => system.Name));
+        Assert.Equal(["P_Glow_core", "P_Glow_sparks"], systems[0].Children("children").Select(child => child.Get<DmxTestReader.Element>("child").Name));
         Assert.Contains(Path.Join(output, "lua", "autorun", "fx_particles.lua"), result.Files);
     }
 
@@ -64,11 +63,36 @@ public sealed class PCFExporterTests
     }
 
     [Fact]
+    public void DeathSpawnsFollowTheirSourcesScheduleOneLifetimeLater()
+    {
+        var (output, result) = Export(Glow(), "garrysmod");
+        var sparks = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions")[2];
+
+        // The core bursts 3 at 0.25 s and lives 0.5-1 s; each death releases 2 sparks.
+        var burst = sparks.Function("emitters", "emit_instantaneously");
+        Assert.Equal(0.25f + 0.75f, burst.Get<float>("emission_start_time"), 4);
+        Assert.Equal(6, burst.Get<int>("num_to_emit"));
+        Assert.Contains(result.Warnings, warning => warning.StartsWith("P_Glow_sparks: spawns where core's particles die", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BrighterThanWhiteKeepsItsHue()
+    {
+        var effect = Glow();
+        var bright = effect with { Emitters = [effect.Emitters[0] with { StartColor = ParticleVector.Constant(new Vector3(25f, 10f, 2f)) }] };
+        var (output, _) = Export(bright, "garrysmod");
+
+        var color = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions")[0]
+            .Function("initializers", "Color Random").Get<byte[]>("color1");
+        // (1, 0.4, 0.08) in sRGB.
+        Assert.Equal([255, 170, 80, 255], color);
+    }
+
+    [Fact]
     public void WhatSourceCantDoIsReported()
     {
         var (_, result) = Export(Glow(), "source");
 
-        Assert.Contains(result.Warnings, warning => warning.StartsWith("P_Glow_sparks: spawns where core", StringComparison.Ordinal));
         Assert.Contains(result.Warnings, warning => warning.Contains("particles_manifest.txt", StringComparison.Ordinal));
     }
 

@@ -389,7 +389,7 @@ PCF export writes the effect to `particles/<name>.pcf`. Each emitter becomes a p
 - **Garry's Mod** (the default target): `lua/autorun/<name>_particles.lua` adds it with `game.AddParticles` and precaches its systems.
 - **Other Source games** (`--target source`): list `particles/<name>.pcf` in the game's `particles/particles_manifest.txt`.
 
-Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Some are left out: emitters that spawn where another emitter's particles die, particles drawn as meshes, velocity over life and orbit rotation. The converter lists each approximation and omission as a warning.
+Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Emitters that spawn where another emitter's particles die emit on that emitter's schedule instead, one particle lifetime later, from where its particles start; colours brighter than white keep their hue at full brightness. Some features are left out: particles drawn as meshes, velocity over life and orbit rotation. The converter lists each approximation and omission as a warning.
 
 Models whose animations start particle effects get `AE_CL_CREATE_PARTICLE_EFFECT` events that follow the bone or socket the effect starts at (an attachment is added for a bone that has none).
 

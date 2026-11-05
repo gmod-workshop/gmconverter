@@ -7,7 +7,9 @@ namespace GMConverter.UnrealEngine.Formats.UE3.Meshes;
 
 /// <summary>
 /// A UE3 SkeletalMesh's reference skeleton, materials, sockets and most detailed LOD, read from
-/// its GPU skin vertex buffer.
+/// its GPU skin vertex buffer. <c>Forward</c> is the way the mesh faces in its own space: the game
+/// turns it by its RotOrigin to face along X, so a mesh modelled facing Y (as CrossFire HD's
+/// first-person arms are) says so.
 /// </summary>
 internal sealed record UE3SkeletalMesh(
     string Name,
@@ -16,7 +18,8 @@ internal sealed record UE3SkeletalMesh(
     IReadOnlyList<UE3MeshSection> Sections,
     IReadOnlyList<int> Indices,
     IReadOnlyList<UE3MeshVertex> Vertices,
-    IReadOnlyList<UE3MeshSocket> Sockets)
+    IReadOnlyList<UE3MeshSocket> Sockets,
+    Vector3? Forward = null)
 {
     // GPU skin vertices and chunk-based render data settled at version 493.
     private const int _minimumVersion = 493;
@@ -33,7 +36,10 @@ internal sealed record UE3SkeletalMesh(
         var (archive, properties) = package.OpenObject(export);
         archive.Skip(28); // bounds: origin, box extent, sphere radius
         var materials = archive.ReadArray(item => item.ReadInt32());
-        archive.Skip(12 + 12); // mesh origin, rotation origin
+        archive.Skip(12); // mesh origin
+        archive.ReadInt32(); // rotation origin pitch
+        var yaw = archive.ReadInt32() * (MathF.Tau / 65536f);
+        archive.ReadInt32(); // rotation origin roll
         // UE3 stores every reference bone but the root with its rotation's W negated relative to the
         // animation keys; flip it back so mesh and animations share one convention.
         var bones = archive.ReadArray(item => ReadBone(item, version))
@@ -47,7 +53,9 @@ internal sealed record UE3SkeletalMesh(
 
         var (sections, indices, chunks, vertices) = ReadLod(archive, version, export.ObjectName);
         var mapped = MapBones(vertices, chunks, bones.Count);
-        return new UE3SkeletalMesh(export.ObjectName, bones, materials, sections, indices, mapped, ReadSockets(package, properties));
+        // RotOrigin's yaw turns the mesh to face +X, so the mesh itself faces +X turned back by it.
+        var forward = new Vector3(MathF.Cos(-yaw), MathF.Sin(-yaw), 0);
+        return new UE3SkeletalMesh(export.ObjectName, bones, materials, sections, indices, mapped, ReadSockets(package, properties), forward);
     }
 
     private static UE3MeshBone ReadBone(UE3Archive archive, int version)

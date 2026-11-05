@@ -12,6 +12,8 @@ namespace GMConverter.SDK.Geometry;
 /// attachments, physics and blend spaces. Model space is Z-up. <c>Forward</c> is the direction the
 /// model faces in that space (a character's front), when the importer knows it; exporters for
 /// engines with a facing convention turn the model about Z to match, and null leaves it as is.
+/// <c>FirstPerson</c> marks a view model: the player's own arms and held weapon, drawn from the
+/// camera, which sits at the model's origin looking along <c>Forward</c>.
 /// </summary>
 public sealed record Model(
     string Name,
@@ -23,7 +25,8 @@ public sealed record Model(
     IReadOnlyList<Attachment>? Attachments = null,
     ModelPhysics? Physics = null,
     IReadOnlyList<AnimationBlendSpace>? BlendSpaces = null,
-    Vector3? Forward = null)
+    Vector3? Forward = null,
+    bool FirstPerson = false)
     : IAsset
 {
     AssetKind IAsset.Kind => AssetKind.Model;

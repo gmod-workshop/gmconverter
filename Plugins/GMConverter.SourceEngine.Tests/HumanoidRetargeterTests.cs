@@ -55,10 +55,73 @@ public sealed class HumanoidRetargeterTests
         Assert.True(held.Skeleton.Bones[0].Shared);
         Assert.Null(held.Animations);
         Assert.False(held.FirstPerson);
-        // The knife keeps its place: same vertex, now weighted to the knife's new index.
+        // With no idle clip, the first clip's grip places the knife against the hand's bind pose;
+        // the vertex is now weighted to the knife's new index.
         var vertex = Assert.Single(Assert.Single(held.Meshes).Vertices);
-        AssertNear(Assert.Single(retargeted.Meshes).Vertices[0].Position, vertex.Position);
+        var bind = Pose(retargeted, new AnimationClip("bind", 30f, 0f, []));
+        var grip = Pose(retargeted, retargeted.Animations![0]);
+        var (hand, knife) = (8, 10);
+        Assert.True(Matrix4x4.Invert(bind[knife], out var unbind));
+        Assert.True(Matrix4x4.Invert(grip[hand], out var ungrip));
+        var expected = Vector3.Transform(Assert.Single(retargeted.Meshes).Vertices[0].Position, unbind * grip[knife] * ungrip * bind[hand]);
+        AssertNear(expected, vertex.Position);
         Assert.Equal(2, vertex.BoneWeights![0].BoneIndex);
+    }
+
+    [Fact]
+    public void HeldItemsSitWhereTheIdleClipHoldsThem()
+    {
+        Bone B(int index, string name, int parent, Vector3 offset, HumanoidBone? role) =>
+            new(index, name, parent, new Transform(offset, Quaternion.Identity, Vector3.One), role);
+        var skeleton = new Skeleton(
+        [
+            B(0, "R_Hand", -1, new Vector3(1, 0, 0), HumanoidBone.RightHand),
+            B(1, "Held", 0, new Vector3(0.05f, 0, 0), HumanoidBone.RightHeldItem),
+            B(2, "Knife", 1, new Vector3(0, 0, 0.1f), null),
+        ]);
+        var mesh = new Mesh(
+            [new Vertex(new Vector3(1.05f, 0, 0.1f), Vector3.UnitX, Vector2.Zero, [new VertexBoneWeight(2, 1f)])],
+            [new Submesh("knife", [new Triangle(0, 0, 0)])]);
+        // Idle holds the item 2 cm up the palm, turned a quarter about Z; the attack clip listed
+        // first holds it elsewhere and must not be used.
+        var grip = new Transform(new Vector3(0.02f, 0.01f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2), Vector3.One);
+        AnimationClip Clip(string name, AnimationAction action, Transform held) =>
+            new(name, 30f, 0f, [new BoneTransformTrack(1, [new TransformKeyframe(0f, held)])], Role: new AnimationRole(action));
+        var model = new Model("view", [mesh], [new Material("knife")], skeleton,
+            [Clip("fire", AnimationAction.Attack, grip with { Translation = new Vector3(0.5f, 0, 0) }), Clip("idle", AnimationAction.Idle, grip)]);
+
+        var held = HumanoidRetargeter.ExtractHeld(model, HumanoidBone.RightHand);
+
+        AssertNear(grip.Translation, held.Skeleton!.Bones[1].LocalBindPose.Translation);
+        var vertex = Assert.Single(Assert.Single(held.Meshes).Vertices);
+        // Knife origin: hand (1, 0, 0) + grip offset; its 0.1 Z offset is unaffected by the Z turn.
+        AssertNear(new Vector3(1.02f, 0.01f, 0.1f), vertex.Position);
+        AssertNear(Vector3.UnitY, vertex.Normal);
+    }
+
+    [Fact]
+    public void HeldItemsMoveOntoTheGamesHandle()
+    {
+        Bone B(int index, string name, int parent, Vector3 offset, HumanoidBone? role) =>
+            new(index, name, parent, new Transform(offset, Quaternion.Identity, Vector3.One), role);
+        var skeleton = new Skeleton(
+        [
+            B(0, "R_Hand", -1, Vector3.Zero, HumanoidBone.RightHand),
+            B(1, "R_Index1", 0, new Vector3(0.1f, 0, 0.01f), HumanoidBone.RightIndex1),
+            B(2, "R_Pinky1", 0, new Vector3(0.1f, 0, -0.01f), HumanoidBone.RightPinky1),
+            B(3, "Held", 0, Vector3.Zero, HumanoidBone.RightHeldItem),
+        ]);
+        // A stick along Z through the middle of the palm, 5 cm from the wrist.
+        Vertex V(float z) => new(new Vector3(0.05f, 0, z), Vector3.UnitX, Vector2.Zero, [new VertexBoneWeight(3, 1f)]);
+        var model = new Model("view", [new Mesh([V(-0.1f), V(0.2f)], [new Submesh("stick", [new Triangle(0, 1, 1)])])], [new Material("stick")], skeleton);
+
+        var held = HumanoidRetargeter.ExtractHeld(model, HumanoidBone.RightHand, new Vector3(0.09f, -0.02f, 0));
+
+        // Slid under the knuckles, still along Z.
+        var vertices = Assert.Single(held.Meshes).Vertices;
+        AssertNear(new Vector3(0.09f, -0.02f, -0.1f), vertices[0].Position);
+        AssertNear(new Vector3(0.09f, -0.02f, 0.2f), vertices[1].Position);
+        AssertNear(new Vector3(0.04f, -0.02f, 0), held.Skeleton!.Bones.Single(bone => bone.Name == "Held").LocalBindPose.Translation);
     }
 
     [Fact]

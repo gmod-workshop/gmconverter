@@ -13,6 +13,14 @@ internal static class GarrysModHands
 {
     private const float _metersPerInch = 0.0254f;
 
+    /// <summary>
+    /// Where a player model's right hand closes around a handle in third person, in
+    /// <c>ValveBiped.Bip01_R_Hand</c>'s space: the point where the handles of the stock one-handed
+    /// world models (<c>w_crowbar</c>, <c>w_knife_t</c>, <c>w_knife_ct</c>) cross the line from the
+    /// wrist to the knuckles, averaged. Player models and <c>c_arms</c> share these hand bones.
+    /// </summary>
+    public static Vector3 RightHandle { get; } = new Vector3(3.64f, -1.32f, -0.13f) * _metersPerInch;
+
     public static Skeleton Skeleton { get; } = Create(
     [
         Bone("ValveBiped.Bip01_Spine4", -1, HumanoidBone.Chest, 0.000006f, 0.000000f, 0.000000f, -0.704280f, 0.063165f, -0.704280f, 0.063166f),

@@ -8,6 +8,15 @@ namespace GMConverter.SourceEngine.Tests;
 
 public sealed class WAVExporterTests
 {
+    [Theory]
+    [InlineData(SoundCategory.Weapon, "CHAN_AUTO")]
+    [InlineData(SoundCategory.Voice, "CHAN_VOICE")]
+    public void WeaponSoundsPlayOverEachOther(SoundCategory category, string channel)
+    {
+        // CHAN_WEAPON would cut an inspect's long swish off at its next click.
+        Assert.Equal(channel, SourceSoundDefinitions.Channel(category));
+    }
+
     [Fact]
     public void GarrysModGetsSoundAddCallsNamedAfterTheEvents()
     {

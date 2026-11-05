@@ -47,9 +47,11 @@ internal static class SourceSoundDefinitions
         return definitions;
     }
 
+    // A sound replaces whatever its entity is playing on the same channel. Games converted from
+    // play a weapon's sounds over each other (an inspect's clicks over its long swish), so weapon
+    // sounds take a free channel rather than CHAN_WEAPON; one voice line still cuts off the last.
     public static string Channel(SoundCategory category) => category switch
     {
-        SoundCategory.Weapon => "CHAN_WEAPON",
         SoundCategory.Voice => "CHAN_VOICE",
         SoundCategory.Footstep or SoundCategory.Movement => "CHAN_BODY",
         SoundCategory.Ambient or SoundCategory.Music or SoundCategory.UI => "CHAN_STATIC",

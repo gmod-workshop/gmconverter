@@ -31,6 +31,10 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | Wwise events (`AKEVENT`) | Yes* | No | Exported from Unreal Engine 4/5 archives by the Explorer. |
 | Wwise media (`WEM`) | Yes* | No | Decoded with vgmstream. |
 
+| Particle format | Read | Write | Notes |
+|---|---|---|---|
+| Source particles (`PCF`) | No | Yes* | Writes a particle file, sprite materials and what the target game needs to load it. |
+
 ## CLI
 
 ```powershell
@@ -50,7 +54,7 @@ These apply to every input and output format.
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
 | `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent`, `wem` or `ue3cue` for sounds. | `--input-format psk` | Required |
-| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds. | `--output-format mdl` | Required |
+| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds; `pcf` for particle effects. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
 | `--name <base-name>` | Override generated file names. | `--name bacta_dispenser` | Input file name |
@@ -147,6 +151,16 @@ These use the `--glb-` prefix for both `glb` and `gltf` output. Binary or text o
 | `--wav-soundPath <path>` | Folder for the WAVs under the game's `sound` directory. | `gmconverter/<name>` |
 | `--wav-sampleRate <rate>` | `auto`, `44100`, `22050` or `11025`. `auto` keeps a rate Source plays and otherwise resamples to the nearest one above it, up to 44100 Hz. | `auto` |
 | `--wav-channels <mode>` | `auto`, `mono` or `keep`. `auto` makes sounds heard from a place in the world mono, because Source only positions mono sounds, and keeps the rest as recorded. | `auto` |
+
+</details>
+
+<details>
+<summary>PCF Export Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--pcf-materialPath <path>` | Folder for the effect's materials under the game's `materials` directory. | `particle/gmconverter/<name>` |
+| `--pcf-maxTextureSize <pixels>` | Particle textures larger than this are scaled down. | `512` |
 
 </details>
 
@@ -364,6 +378,20 @@ Source picks each play's sound uniformly at random, so weighted choices are writ
   --input-path "beep.wav" `
   --output-path "out\beep"
 ```
+
+</details>
+
+<details>
+<summary>PCF</summary>
+
+PCF export writes the effect to `particles/<name>.pcf`. Each emitter becomes a particle system of its own, which the effect's system starts as a child, so the effect plays by its source-game name and animation particle events start it. Each emitter's texture becomes a SpriteCard material under `materials/<material path>/`, and flipbooks become sprite sheets in the VTF. To load the file:
+
+- **Garry's Mod** (the default target): `lua/autorun/<name>_particles.lua` adds it with `game.AddParticles` and precaches its systems.
+- **Other Source games** (`--target source`): list `particles/<name>.pcf` in the game's `particles/particles_manifest.txt`.
+
+Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Some are left out: emitters that spawn where another emitter's particles die, particles drawn as meshes, velocity over life and orbit rotation. The converter lists each approximation and omission as a warning.
+
+Models whose animations start particle effects get `AE_CL_CREATE_PARTICLE_EFFECT` events that follow the bone or socket the effect starts at (an attachment is added for a bone that has none).
 
 </details>
 

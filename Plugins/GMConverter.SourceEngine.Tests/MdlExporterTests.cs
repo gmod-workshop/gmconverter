@@ -363,6 +363,30 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void ParticleEventsFollowAnAttachmentAddedForTheirBone()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var bone = model.Skeleton!.Bones[0].Name;
+        var swing = new AnimationClip(
+            "swing",
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            Events:
+            [
+                new AnimationEvent(0.5f, AnimationEventKind.ParticleEffect, Bone: bone, Effect: "P_Glow"),
+                new AnimationEvent(0.6f, AnimationEventKind.ParticleEffect, Effect: "P_Dust"),
+            ]);
+
+        var qc = File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model with { Animations = [swing] }, targetGameId: "garrysmod"), "*.qc", SearchOption.AllDirectories).Single());
+
+        Assert.Contains($"{{ event AE_CL_CREATE_PARTICLE_EFFECT 15 \"P_Glow follow_attachment {bone}\" }}", qc);
+        Assert.Contains("{ event AE_CL_CREATE_PARTICLE_EFFECT 18 \"P_Dust follow_origin\" }", qc);
+        Assert.Contains($"$attachment \"{bone}\" \"{bone}\" 0 0 0 rotate 0 0 0", qc);
+    }
+
+    [Fact]
     public void AnimationEventsBecomeQcEvents()
     {
         var walk = new AnimationClip(

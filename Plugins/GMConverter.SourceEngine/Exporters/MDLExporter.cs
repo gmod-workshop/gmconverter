@@ -1211,7 +1211,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
     // placement is resolved through the original skeleton and re-expressed in the Source bone.
     private static void WriteAttachments(StreamWriter writer, Model model)
     {
-        if (model.Attachments is not { Count: > 0 } attachments)
+        var attachments = WithEffectAttachments(model);
+        if (attachments.Count == 0)
         {
             return;
         }
@@ -1245,6 +1246,32 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant(
                 $"$attachment \"{EscapeQcString(attachment.Name)}\" \"{EscapeQcString(boneName)}\" {Clean(position.X, 4)} {Clean(position.Y, 4)} {Clean(position.Z, 4)} rotate {Clean(angles.Y, 3)} {Clean(angles.Z, 3)} {Clean(angles.X, 3)}"));
         }
+    }
+
+    // Particle events follow an attachment, so a bone they name that no attachment does gets one at its origin.
+    private static List<Attachment> WithEffectAttachments(Model model)
+    {
+        List<Attachment> attachments = [.. model.Attachments ?? []];
+        if (model.Skeleton is not { } skeleton)
+        {
+            return attachments;
+        }
+
+        var bones = model.Animations?
+            .SelectMany(clip => clip.Events ?? [])
+            .Where(animationEvent => animationEvent.Kind == AnimationEventKind.ParticleEffect && !string.IsNullOrWhiteSpace(animationEvent.Bone))
+            .Select(animationEvent => animationEvent.Bone!)
+            .Distinct(StringComparer.OrdinalIgnoreCase) ?? [];
+        foreach (var name in bones)
+        {
+            if (!attachments.Any(attachment => string.Equals(attachment.Name, name, StringComparison.OrdinalIgnoreCase)) &&
+                skeleton.Bones.FirstOrDefault(bone => string.Equals(bone.Name, name, StringComparison.OrdinalIgnoreCase)) is { } bone)
+            {
+                attachments.Add(new Attachment(name, bone.Index, Transform.Identity));
+            }
+        }
+
+        return attachments;
     }
 
     // Game code places an NPC's view at $eyeposition, so it follows the model's eyes attachment

@@ -1071,38 +1071,6 @@ internal sealed class PSKImporter : IModelImporter
                     TryLoadTextureByName(references, ["emiss", "sfx", "glow"], hasAlpha: false), null);
             }
 
-            // Diagnostic: dump every material resolution so we can verify, when something looks wrong
-            // in the glb, whether PSKImporter actually picked what its sidecar said. Writes alongside
-            // the mesh PSK file so the log lives in the same temp tree as the source data.
-            try
-            {
-                var logDir = System.IO.Path.GetDirectoryName(meshPath);
-                if (!string.IsNullOrWhiteSpace(logDir))
-                {
-                    var logPath = System.IO.Path.Combine(logDir, $"{NameHelpers.SanitizeMaterialName(material.Name)}.resolve.log");
-                    var inv = System.Globalization.CultureInfo.InvariantCulture;
-                    var sb = new System.Text.StringBuilder();
-                    sb.Append("materialName=").AppendLine(material.Name);
-                    sb.Append("meshName=").AppendLine(meshName);
-                    sb.Append("meshPath=").AppendLine(meshPath);
-                    sb.Append("usesCueMaterial=").AppendLine(usesCueMaterial.ToString(inv));
-                    sb.Append("diffuse=").AppendLine(diffuseTexture?.Name ?? "<null>");
-                    sb.Append("normal=").AppendLine(normalTexture?.Name ?? "<null>");
-                    sb.Append("specular=").AppendLine(specularTexture?.Name ?? "<null>");
-                    sb.Append("emissive=").AppendLine(emissiveTexture?.Name ?? "<null>");
-                    sb.Append("references.Count=").AppendLine(references.Count.ToString(inv));
-                    foreach (var (k, v) in references)
-                    {
-                        sb.Append("  '").Append(k).Append("' = '").Append(v).AppendLine("'");
-                    }
-                    System.IO.File.WriteAllText(logPath, sb.ToString());
-                }
-            }
-            catch
-            {
-                // diagnostics must not fail the import
-            }
-
             return new Material(
                 effectiveName,
                 diffuseTexture: diffuseTexture,

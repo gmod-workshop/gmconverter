@@ -392,6 +392,21 @@ public sealed class MdlExporterTests
         Assert.DoesNotContain("{ event", Qc(null));
     }
 
+    [Fact]
+    public void SequenceNamesAreUniqueIgnoringCase()
+    {
+        // studiomdl rejects names that differ only in case, and "idle" is already the bind pose.
+        AnimationClip Clip(string name) => new(name, 30f, 0f, [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity)])]);
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with { Animations = [Clip("Idle"), Clip("Fire"), Clip("fire")] };
+
+        var qc = File.ReadAllText(Directory.GetFiles(ExportWithStubCompiler(model), "triangle.qc", SearchOption.AllDirectories).Single());
+
+        Assert.Contains("$sequence \"idle\" \"triangle.smd\" fps 1", qc);
+        Assert.Contains("$sequence \"Idle_2\" \"triangle_0_Idle.smd\"", qc);
+        Assert.Contains("$sequence \"Fire\" \"triangle_1_Fire.smd\"", qc);
+        Assert.Contains("$sequence \"fire_2\" \"triangle_2_fire.smd\"", qc);
+    }
+
     // One triangle 1 m across, fully weighted to a single root bone with the given rotation.
     private static Model CreateSkinnedTriangle(Quaternion rootRotation)
     {

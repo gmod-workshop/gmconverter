@@ -670,6 +670,20 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", smdFileName);
 
+        // studiomdl compares sequence names without case, and "idle" is the bind pose above, so a
+        // game clip named "Idle" (or two clips differing only in case) would stop the compile.
+        HashSet<string> sequenceNames = new(StringComparer.OrdinalIgnoreCase) { "idle" };
+        string UniqueSequenceName(string name)
+        {
+            var unique = name;
+            for (var suffix = 2; !sequenceNames.Add(unique); suffix++)
+            {
+                unique = FormattableString.Invariant($"{name}_{suffix}");
+            }
+
+            return unique;
+        }
+
         // Base poses are plain $animations, so they can be subtracted without showing up as sequences.
         foreach (var basePoseSmdPath in basePoseSmdPaths.Values)
         {
@@ -685,13 +699,13 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             var events = getEvents(clip);
             if (activities.Count == 0)
             {
-                WriteSequence(writer, model, clip, animationSmdPath, clip.Name, activity: null, events, basePoseSmdPaths);
+                WriteSequence(writer, model, clip, animationSmdPath, UniqueSequenceName(clip.Name), activity: null, events, basePoseSmdPaths);
                 continue;
             }
 
             foreach (var activity in activities)
             {
-                WriteSequence(writer, model, clip, animationSmdPath, clip.Name + activity.SequenceSuffix, activity.Name, events, basePoseSmdPaths);
+                WriteSequence(writer, model, clip, animationSmdPath, UniqueSequenceName(clip.Name + activity.SequenceSuffix), activity.Name, events, basePoseSmdPaths);
             }
         }
 
@@ -702,7 +716,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             SourceBlendSequences.WritePoseParameters(writer, blendSequences);
             foreach (var blendSequence in blendSequences)
             {
-                SourceBlendSequences.Write(writer, blendSequence, pose => pose is { } basePose
+                SourceBlendSequences.Write(writer, blendSequence with { Name = UniqueSequenceName(blendSequence.Name) }, pose => pose is { } basePose
                     ? GetBasePoseAnimationName(basePoseSmdPaths[basePose])
                     : "idle");
             }

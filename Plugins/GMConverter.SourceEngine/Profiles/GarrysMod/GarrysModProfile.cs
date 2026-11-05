@@ -10,7 +10,8 @@ namespace GMConverter.SourceEngine.Profiles.GarrysMod;
 /// <summary>
 /// Garry's Mod, the MDL exporter's default target. It adds the attachments Garry's Mod code looks
 /// up by name, and gives sequences the NPC activities, the player (<c>ACT_HL2MP_*</c>) activities,
-/// or both, depending on what the model is for.
+/// or both, depending on what the model is for. First-person view models get the view model
+/// (<c>ACT_VM_*</c>) activities instead.
 /// </summary>
 internal sealed class GarrysModProfile : ISourceProfile
 {
@@ -73,6 +74,12 @@ internal sealed class GarrysModProfile : ISourceProfile
 
     public Model Prepare(Model model, OptionValues options)
     {
+        // A view model is the player's own arms: NPC eyes and held-item hand attachments don't apply.
+        if (model.FirstPerson)
+        {
+            return model;
+        }
+
         if (options.GetBool(HandAttachmentsOption, defaultValue: true))
         {
             model = HandAttachments.AddAliases(model);
@@ -81,12 +88,18 @@ internal sealed class GarrysModProfile : ISourceProfile
         return options.GetBool(EyesOption, defaultValue: true) ? EyesAttachment.AddIfMissing(model) : model;
     }
 
-    public IReadOnlyList<SourceActivity> GetActivities(AnimationClip clip, OptionValues options)
+    public IReadOnlyList<SourceActivity> GetActivities(Model model, AnimationClip clip, OptionValues options)
     {
         // Layers are delta sequences played on top of others, never chosen by activity.
         if (clip.Role is not { } role || clip.Layering is not null)
         {
             return [];
+        }
+
+        // Weapon code (SWEPs included) plays a view model's sequences by ACT_VM_* activity.
+        if (model.FirstPerson)
+        {
+            return SourceActivities.ViewModel(role) is { } viewModel ? [new SourceActivity(viewModel)] : [];
         }
 
         var use = options.GetString(CharacterUseOption) ?? NpcUse;

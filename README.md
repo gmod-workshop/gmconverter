@@ -58,7 +58,7 @@ These apply to every input and output format.
 | `--scale <factor>` | Scale exported geometry. | `--scale 0.5` | `1` |
 | `--no-scale` | Compatibility alias for scale `1`. | `--no-scale` | Off |
 | `--axis-mode <mode>` | Input axis convention: `auto`, `z-up`, or `y-up`. | `--axis-mode y-up` | `auto` |
-| `--game <game>` | Game the input comes from. Its naming conventions fill in what each animation is for, which the Garry's Mod and Source targets turn into activities. Unreal games: `swzc`, `fortnite`, or `unreal` for any other. The Explorer sets this automatically in the GUI. | `--game swzc` | None |
+| `--game <game>` | Game the input comes from. Its naming conventions fill in what each animation is for, which the Garry's Mod and Source targets turn into activities. Unreal games: `swzc`, `fortnite`, `crossfirehd`, or `unreal` for any other. The Explorer sets this automatically in the GUI. | `--game swzc` | None |
 | `--role <clip=role>` | Set what an animation is for, replacing the guess from its name. A role is an action (`idle`, `combat-idle`, `walk`, `jog`, `run`, `crouch-idle`, `crouch-walk`, `turn`, `jump`, `fall`, `land`, `attack`, `melee-attack`, `reload`, `flinch`, `stagger`, `death`), optionally followed by a stance and direction (`run,rifle,forward`), or `none` for no role. Repeat for several animations. | `--role A_B1_2HRifle_Jog_F=run` | Guessed |
 | `--target <game>` | Game to export for, for output formats that have several. MDL and WAV: `garrysmod` or `source` (any other Source game). | `--target source` | `garrysmod` |
 
@@ -307,6 +307,8 @@ MDL output targets Garry's Mod by default, which adds the attachments Garry's Mo
 Garry's Mod and other Source games choose animations by *activity*. When the game an animation comes from is known (`--game`, or set from the Explorer in the GUI), GMConverter works out what each animation is for from its name and gives its sequence the matching activity: idles, walks, runs, turns, attacks, flinches and deaths. Unreal names such as `A_B1_2HRifle_Run_F` (a rifle run, forward) are recognised; starts, stops, transitions, aim poses and additive layers get no activity. NPC activities are used by default; set the Garry's Mod character use to `player` or `both` for player models.
 
 Animation notifies come along too. Footsteps become `AE_NPC_LEFTFOOT` / `AE_NPC_RIGHTFOOT` events, which NPC code turns into step sounds for the surface underfoot, and notifies that play a sound (Unreal sounds or Wwise events) become `AE_CL_PLAYSOUND` events naming that sound.
+
+First-person view models, such as the Explorer's CrossFire HD **Viewmodel** entries, get the view model activities weapon code plays instead: `ACT_VM_DRAW`, `ACT_VM_IDLE`, `ACT_VM_PRIMARYATTACK`, `ACT_VM_SECONDARYATTACK`, `ACT_VM_RELOAD`, `ACT_VM_HOLSTER` and `ACT_VM_SPRINT_IDLE`. They are turned to face forward with the eye at the model's origin, as Source draws view models, and get no NPC eyes or hand attachments. Inspect animations have no activity, so play them by sequence name. Set `--model-path weapons/v_<name>.mdl` to put the model where weapons usually look for it. The arms are the game's own, so use the weapon with `SWEP.UseHands = false`.
 
 If a guess is wrong, override it with `--role clip=role` in the CLI, or in the GUI's **Animation roles** table, which lists the animations after you load a preview. Use `--target source`, or choose **Other Source game** as the **Target game** in the GUI, for plain output for other Source games.
 

@@ -2,6 +2,7 @@ using GMConverter.SDK.Plugins;
 using GMConverter.UnrealEngine.Explorer;
 using GMConverter.UnrealEngine.Importers;
 using GMConverter.UnrealEngine.Profiles;
+using GMConverter.UnrealEngine.Profiles.CrossFireHD;
 
 [assembly: Plugin(typeof(GMConverter.UnrealEngine.UnrealEnginePlugin))]
 
@@ -30,6 +31,8 @@ public sealed class UnrealEnginePlugin : IPlugin
         {
             context.RegisterGameProfile(profile);
         }
+
+        context.RegisterGameProfile(new CrossFireHDProfile());
     }
 
     public void OnUnload()

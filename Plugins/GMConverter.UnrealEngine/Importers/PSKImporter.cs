@@ -286,6 +286,7 @@ internal sealed class PSKImporter : IModelImporter
             : [new Material("default")];
 
         var skeleton = BuildSkeleton(psk, options);
+        var facts = PSKModelSidecar.TryRead(inputPath);
 
         return new Model(
             modelName,
@@ -295,7 +296,9 @@ internal sealed class PSKImporter : IModelImporter
             buildAnimations ? BuildAnimations(skeleton, options) : null,
             BuildSkins(distinctMaterials, resolvedMaterials, materialResolver, modelName, inputPath),
             BuildAttachments(inputPath, skeleton, options, sceneTransform),
-            BuildPhysics(inputPath, skeleton, options));
+            BuildPhysics(inputPath, skeleton, options),
+            Forward: facts?.Forward is { } forward ? NormalizeOrZero(TransformNormal(forward, options)) : null,
+            FirstPerson: facts?.FirstPerson ?? false);
     }
 
     // Bodies and joints are relative to their bones, so like bone sockets they need no scene

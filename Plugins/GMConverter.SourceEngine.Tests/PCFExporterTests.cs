@@ -84,8 +84,25 @@ public sealed class PCFExporterTests
 
         var color = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions")[0]
             .Function("initializers", "Color Random").Get<byte[]>("color1");
-        // (1, 0.4, 0.08) in sRGB.
+        // The colour keeps its hue, (1, 0.4, 0.08) in sRGB, and the 25x goes into the texture,
+        // whose 200 (0.58 linear) saturates.
         Assert.Equal([255, 170, 80, 255], color);
+        var vtf = File.ReadAllBytes(Path.Join(output, "materials", "particle", "gmconverter", "fx", "p_glow_core.vtf"));
+        Assert.Equal(255, vtf[^4]);
+    }
+
+    [Fact]
+    public void ViewModelEffectsAreFlaggedToDrawWithTheViewModel()
+    {
+        var output = Path.Join(Path.GetTempPath(), "GMConverter.PCFTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        var options = new OptionValues(new Dictionary<string, object?> { [PCFExporter.ViewModelOption] = true });
+        new PCFExporter().Export(Glow(), new ExportContext(output, "fx", options) { TargetGameId = "garrysmod" });
+
+        var systems = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions");
+        Assert.All(systems, system => Assert.True(system.Get<bool>("view model effect")));
+        Assert.False(DmxTestReader.Read(Path.Join(Export(Glow(), "garrysmod").Output, "particles", "fx.pcf")).Root
+            .Children("particleSystemDefinitions")[0].Get<bool>("view model effect"));
     }
 
     [Fact]

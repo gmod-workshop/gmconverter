@@ -9,7 +9,7 @@ namespace GMConverter.SourceEngine.Particles;
 /// start time. What Source's operators can't express is approximated or left out, and listed in
 /// <see cref="Warnings"/>.
 /// </summary>
-internal sealed class PcfSystemBuilder
+internal sealed class PcfSystemBuilder(bool viewModel = false)
 {
     private const float _inchesPerMetre = 39.3701f;
     private const int _defaultMaxParticles = 64;
@@ -138,9 +138,10 @@ internal sealed class PcfSystemBuilder
         };
     }
 
-    private static DmxElement System(string name, string material, int maxParticles)
+    private DmxElement System(string name, string material, int maxParticles)
     {
         return new DmxElement("DmeParticleSystemDefinition", name)
+            .Set("view model effect", viewModel)
             .Set("preventNameBasedLookup", false)
             .Set("max_particles", maxParticles)
             .Set("initial_particles", 0)
@@ -270,12 +271,8 @@ internal sealed class PcfSystemBuilder
             .Set("radius_max", sizeMax.X * 0.5f * _inchesPerMetre));
 
         var color = emitter.ColorOverLife is { } colorOverLife ? AtStart(colorOverLife) : VectorBounds(emitter.StartColor);
-        if (Math.Max(Math.Max(color.Max.X, color.Max.Y), color.Max.Z) > 1.001f)
-        {
-            warn("colour is brighter than white; scaled down to white's brightness, keeping its hue.");
-        }
-
-        var (low, high) = (InRange(color.Min), InRange(color.Max));
+        var brightness = Brightness(emitter);
+        var (low, high) = (color.Min / brightness, color.Max / brightness);
         initializers.Add(Operator("Color Random")
             .SetColor("color1", Srgb(low.X), Srgb(low.Y), Srgb(low.Z), 255)
             .SetColor("color2", Srgb(high.X), Srgb(high.Y), Srgb(high.Z), 255));
@@ -357,7 +354,7 @@ internal sealed class PcfSystemBuilder
                 warn($"colour over life has {keys} keys; written as a fade from the first to the last.");
             }
 
-            var end = InRange(color.Evaluate(1f, new Vector3(0.5f)));
+            var end = color.Evaluate(1f, new Vector3(0.5f)) / Brightness(emitter);
             operators.Add(Operator("Color Fade")
                 .SetColor("color_fade", Srgb(end.X), Srgb(end.Y), Srgb(end.Z), 255)
                 .Set("fade_start_time", color.Min[0].Time)
@@ -503,11 +500,16 @@ internal sealed class PcfSystemBuilder
 
     private static float Degrees(float radians) => radians * 180f / MathF.PI;
 
-    // Source's particle colours stop at white, so a brighter colour keeps its hue at full brightness.
-    private static Vector3 InRange(Vector3 color)
+    /// <summary>
+    /// How much brighter than white an emitter's colours get (1 when they don't). Source's particle
+    /// colours stop at white, so the exporter multiplies the emitter's texture by this and the colours
+    /// are divided by it: the same product, as additive glows tinted far past white need.
+    /// </summary>
+    public static float Brightness(ParticleEmitter emitter)
     {
-        var brightest = MathF.Max(color.X, MathF.Max(color.Y, color.Z));
-        return brightest > 1f ? color / brightest : color;
+        var keys = emitter.StartColor.Min.Concat(emitter.StartColor.Max)
+            .Concat(emitter.ColorOverLife is { } overLife ? overLife.Min.Concat(overLife.Max) : []);
+        return Math.Max(1f, keys.Max(key => MathF.Max(key.Value.X, MathF.Max(key.Value.Y, key.Value.Z))));
     }
 
     private static byte Srgb(float linear)

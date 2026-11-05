@@ -24,6 +24,7 @@ internal static class UE3MeshExporter
         var meshPath = Path.Combine(outputDirectory, mesh.Name + ".psk");
         UE3PskWriter.Write(meshPath, mesh, [.. slots.Select(slot => slot.Name)], [.. slots.Select(slot => (slot.AddressX, slot.AddressY))]);
         WriteSockets(mesh, meshPath);
+        WriteModel(mesh, meshPath, firstPerson: false);
 
         var boneNames = new HashSet<string>(mesh.Bones.Select(bone => bone.Name), StringComparer.OrdinalIgnoreCase);
         List<string> animations = [];
@@ -78,6 +79,13 @@ internal static class UE3MeshExporter
         var path = Path.Combine(outputDirectory, export.ObjectName + ".psa");
         UE3PsaWriter.Write(path, animSet, sequences);
         return path;
+    }
+
+    /// <summary>Records the mesh's facing (in the PSK's mirrored space) and whether it is a view model.</summary>
+    public static void WriteModel(UE3SkeletalMesh mesh, string meshPath, bool firstPerson)
+    {
+        Vector3? forward = mesh.Forward is { } facing ? new Vector3(facing.X, -facing.Y, facing.Z) : null;
+        new PSKModelSidecar(forward, firstPerson).Write(meshPath);
     }
 
     public static void WriteSockets(UE3SkeletalMesh mesh, string meshPath)

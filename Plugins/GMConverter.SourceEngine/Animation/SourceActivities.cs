@@ -80,6 +80,26 @@ internal static class SourceActivities
         };
     }
 
+    /// <summary>
+    /// The view model activity for <paramref name="role"/>, which weapon code plays on a first-person
+    /// model, or null when weapon code has none (inspecting, for example, is played by name).
+    /// </summary>
+    public static string? ViewModel(AnimationRole role)
+    {
+        return role.Action switch
+        {
+            AnimationAction.Idle or AnimationAction.CombatIdle => "ACT_VM_IDLE",
+            AnimationAction.Draw => "ACT_VM_DRAW",
+            AnimationAction.Holster => "ACT_VM_HOLSTER",
+            AnimationAction.Attack => "ACT_VM_PRIMARYATTACK",
+            AnimationAction.MeleeAttack => "ACT_VM_HITCENTER",
+            AnimationAction.SecondaryAttack => "ACT_VM_SECONDARYATTACK",
+            AnimationAction.Reload => "ACT_VM_RELOAD",
+            AnimationAction.Run => "ACT_VM_SPRINT_IDLE",
+            _ => null,
+        };
+    }
+
     private static bool IsMovement(AnimationAction action) =>
         action is AnimationAction.Walk or AnimationAction.Jog or AnimationAction.Run or AnimationAction.CrouchWalk;
 }

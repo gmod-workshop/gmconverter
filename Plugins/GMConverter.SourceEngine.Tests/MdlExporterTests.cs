@@ -393,6 +393,43 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void FirstPersonModelsGetViewModelActivities()
+    {
+        AnimationClip Clip(string name, AnimationAction action) => new(
+            name,
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            Role: new AnimationRole(action));
+        var model = CreateSkinnedTriangle(Quaternion.Identity) with
+        {
+            FirstPerson = true,
+            Animations =
+            [
+                Clip("puton", AnimationAction.Draw),
+                Clip("fire1", AnimationAction.Attack),
+                Clip("fire2", AnimationAction.SecondaryAttack),
+                Clip("Put_Down", AnimationAction.Holster),
+                Clip("Inspect", AnimationAction.Inspect),
+            ],
+        };
+
+        foreach (var target in new[] { "garrysmod", "source" })
+        {
+            var qc = File.ReadAllText(Directory.GetFiles(ExportWithStubCompiler(model, targetGameId: target), "*.qc", SearchOption.AllDirectories).Single());
+            Assert.Contains("activity ACT_VM_DRAW 1", qc);
+            Assert.Contains("activity ACT_VM_PRIMARYATTACK 1", qc);
+            Assert.Contains("activity ACT_VM_SECONDARYATTACK 1", qc);
+            Assert.Contains("activity ACT_VM_HOLSTER 1", qc);
+            // Inspecting has no view model activity; weapon code plays it by name.
+            Assert.Equal(4, qc.Split("activity ").Length - 1);
+            // The player's own arms get neither NPC eyes nor held-item hand attachments.
+            Assert.DoesNotContain("$eyeposition", qc);
+            Assert.DoesNotContain("anim_attachment", qc);
+        }
+    }
+
+    [Fact]
     public void SequenceNamesAreUniqueIgnoringCase()
     {
         // studiomdl rejects names that differ only in case, and "idle" is already the bind pose.

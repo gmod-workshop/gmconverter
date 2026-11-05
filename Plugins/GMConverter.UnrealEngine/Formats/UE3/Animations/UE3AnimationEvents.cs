@@ -9,7 +9,8 @@ namespace GMConverter.UnrealEngine.Formats.UE3.Animations;
 /// <summary>
 /// Turns a sequence's notifies into animation events. Sound notifies (any notify class with a
 /// <c>SoundCue</c>) play each layer of their cue, offset by the layer's delay, named as the cue's
-/// exported sound events are; variants that only play underwater are left out.
+/// exported sound events are; variants that only play underwater are left out. Particle notifies
+/// (any with a <c>PSTemplate</c>) start that particle system at their socket or bone.
 /// </summary>
 internal sealed class UE3AnimationEvents(UE3GameContent content)
 {
@@ -32,6 +33,15 @@ internal sealed class UE3AnimationEvents(UE3GameContent content)
             }
             catch (GMConverterException)
             {
+                continue;
+            }
+
+            if (properties.GetObject("PSTemplate") is not 0 and var template)
+            {
+                var at = properties.GetName("SocketName") is { Length: > 0 } and not "None" and var socket ? socket
+                    : properties.GetName("BoneName") is { Length: > 0 } and not "None" and var bone ? bone
+                    : null;
+                events.Add(new PSAClipEvent(time, AnimationEventKind.ParticleEffect, Bone: at, Effect: package.GetObjectName(template)));
                 continue;
             }
 

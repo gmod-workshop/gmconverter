@@ -25,6 +25,7 @@ public sealed class UnrealEnginePlugin : IPlugin
         context.RegisterImporter<WwiseEventImporter>();
         context.RegisterImporter<WemImporter>();
         context.RegisterImporter<UE3SoundCueImporter>();
+        context.RegisterImporter<UE3ParticleImporter>();
         context.RegisterExplorer<UE4Explorer>();
         context.RegisterExplorer<UE2Explorer>();
         context.RegisterExplorer<UE3Explorer>();

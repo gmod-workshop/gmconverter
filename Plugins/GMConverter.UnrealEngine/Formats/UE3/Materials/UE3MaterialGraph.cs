@@ -180,6 +180,10 @@ internal sealed class UE3MaterialGraph
             case "TextureSample":
             case "TextureSampleParameter2D":
             case "TextureSampleParameterNormal":
+            // A particle flipbook samples one frame of its texture; the whole sheet is baked and the
+            // frames are picked when the effect is drawn.
+            case "ParticleSubUV":
+            case "TextureSampleParameterSubUV":
                 return CompileTextureSample(node, className.EndsWith("Normal", StringComparison.Ordinal), Input("Coordinates"));
             case "TextureCoordinate":
                 if ((node.GetInt("CoordinateIndex") ?? 0) != 0)
@@ -264,6 +268,15 @@ internal sealed class UE3MaterialGraph
                 });
             case "If":
                 return CompileIf(Input("A"), Input("B"), Input("AGreaterThanB"), Input("AEqualsB"), Input("ALessThanB"));
+            // Particle and vertex colour are multiplied in when drawn, so the bake takes them as white;
+            // a dynamic parameter takes its default.
+            case "VertexColor":
+                return Constant(new UE3MaterialValue(Vector4.One, 4));
+            case "DynamicParameter":
+                return Constant(new UE3MaterialValue(Vector4.One, 4));
+            // Depth fades soften where a sprite meets geometry; the bake keeps the alpha they fade.
+            case "DepthBiasedAlpha":
+                return Input("Alpha");
             default:
                 return null;
         }

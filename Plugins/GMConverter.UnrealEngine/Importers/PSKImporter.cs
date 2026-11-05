@@ -677,7 +677,7 @@ internal sealed class PSKImporter : IModelImporter
                 RootMotion: playback?.RootMotion ?? false,
                 Loops: playback?.Loops ?? false,
                 Events: playback?.EventsFor(sequence.Name) is { Count: > 0 } events
-                    ? [.. events.Select(clipEvent => new AnimationEvent(clipEvent.Time, clipEvent.Kind, clipEvent.Sound, clipEvent.Bone))]
+                    ? [.. events.Select(clipEvent => new AnimationEvent(clipEvent.Time, clipEvent.Kind, clipEvent.Sound, clipEvent.Bone, clipEvent.Effect))]
                     : null));
         }
 

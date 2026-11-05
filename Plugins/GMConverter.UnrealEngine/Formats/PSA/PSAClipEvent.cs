@@ -7,4 +7,5 @@ namespace GMConverter.UnrealEngine.Formats.PSA;
 /// <param name="Kind">What it does.</param>
 /// <param name="Sound">The sound (Wwise event or sound asset) it plays, by name.</param>
 /// <param name="Bone">The socket or bone it names, such as the foot of a footstep.</param>
-internal sealed record PSAClipEvent(float Time, AnimationEventKind Kind, string? Sound = null, string? Bone = null);
+/// <param name="Effect">The particle effect it starts, by name.</param>
+internal sealed record PSAClipEvent(float Time, AnimationEventKind Kind, string? Sound = null, string? Bone = null, string? Effect = null);

@@ -272,6 +272,21 @@ This first version reads which media an event can play, but not how Wwise mixes 
 </details>
 
 <details>
+<summary>Unreal Engine 3 Packages</summary>
+
+The Explorer can read Unreal Engine 3 games' cooked packages directly, without exporting them with UModel first. Select the game's install folder or its content folder. It lists each package's `SkeletalMesh` and `AnimSet` assets, grouped by package. Tested with CrossFire HD, whose packages are LZ4-compressed and named by hash: the Explorer works out each package's real name from the packages that use it, and shows the file name when nothing does.
+
+Exporting a skeletal mesh brings along:
+
+* Its materials, baked into plain textures by evaluating the material's own node graph with the material instance's parameters: the colour (with ambient occlusion and tints applied), a normal map (two-channel normal maps are rebuilt), and a specular mask with metallic and roughness for Source's phong and environment reflections. Effects the bake can't evaluate, such as ones that depend on the camera or time, are left out.
+* The animation sets in the same package whose bones the mesh has. Animation sets from other packages (such as the first-person arm animations for a weapon) can be added with **Add Animations**.
+* Its sockets, as MDL `$attachment`s.
+
+Textures that repeat mirrored, as weapon skins often do so that one painted half covers both sides, are unfolded into the mesh's UVs, since Source can only repeat textures. Animation sets that use Unreal's rotation-only mode keep the mesh's own bone offsets, so first-person arm animations fit the arms model they are added to. Only the most detailed LOD is exported, and static meshes aren't listed yet.
+
+</details>
+
+<details>
 <summary>MDL</summary>
 
 Source MDL files are supported as input and output. MDL read support decompiles reference SMD meshes through MdlCrowbar and currently imports static reference mesh geometry and material references, not full compiled animation data.

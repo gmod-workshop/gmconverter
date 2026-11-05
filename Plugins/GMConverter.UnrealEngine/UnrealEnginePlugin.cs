@@ -8,9 +8,9 @@ using GMConverter.UnrealEngine.Profiles;
 namespace GMConverter.UnrealEngine;
 
 /// <summary>
-/// Plugin entry point for Unreal Engine 4/5 support. Registers the PSK importer (covers UE4/5
+/// Plugin entry point for Unreal Engine support. Registers the PSK importer (covers UE4/5
 /// asset packs exported as PSK/PSKX with optional scene manifests), the Wwise event and media
-/// importers, the UE4 and UE2 archive explorers, and the Unreal games it can detect.
+/// importers, the UE4, UE2 and UE3 archive explorers, and the Unreal games it can detect.
 /// </summary>
 public sealed class UnrealEnginePlugin : IPlugin
 {
@@ -25,6 +25,7 @@ public sealed class UnrealEnginePlugin : IPlugin
         context.RegisterImporter<WemImporter>();
         context.RegisterExplorer<UE4Explorer>();
         context.RegisterExplorer<UE2Explorer>();
+        context.RegisterExplorer<UE3Explorer>();
         foreach (var profile in UnrealProfiles.All)
         {
             context.RegisterGameProfile(profile);

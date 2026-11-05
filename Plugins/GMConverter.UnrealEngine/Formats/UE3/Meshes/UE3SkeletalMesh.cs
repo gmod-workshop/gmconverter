@@ -34,7 +34,11 @@ internal sealed record UE3SkeletalMesh(
         archive.Skip(28); // bounds: origin, box extent, sphere radius
         var materials = archive.ReadArray(item => item.ReadInt32());
         archive.Skip(12 + 12); // mesh origin, rotation origin
-        var bones = archive.ReadArray(item => ReadBone(item, version));
+        // UE3 stores every reference bone but the root with its rotation's W negated relative to the
+        // animation keys; flip it back so mesh and animations share one convention.
+        var bones = archive.ReadArray(item => ReadBone(item, version))
+            .Select((bone, index) => index == 0 ? bone : bone with { Rotation = bone.Rotation with { W = -bone.Rotation.W } })
+            .ToList();
         archive.ReadInt32(); // skeletal depth
         if (archive.ReadCount() == 0)
         {

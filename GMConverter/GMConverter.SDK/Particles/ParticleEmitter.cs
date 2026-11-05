@@ -93,6 +93,13 @@ public sealed record ParticleEmitter(string Name, Material Material)
     /// <summary>How fast each sprite rolls, radians per second, at spawn.</summary>
     public ParticleFloat? RotationRate { get; init; }
 
+    /// <summary>
+    /// Slides the material's texture over each particle's life, in texture widths (X, along U) and
+    /// heights (Y, along V); Z is unused. Applied after the material's own
+    /// <see cref="Material.UvTransform"/>. Effects whose glow travels along a mesh use it.
+    /// </summary>
+    public ParticleVector? UvOffsetOverLife { get; init; }
+
     /// <summary>Moves each particle's drawn position around its real one.</summary>
     public ParticleOrbit? Orbit { get; init; }
 }

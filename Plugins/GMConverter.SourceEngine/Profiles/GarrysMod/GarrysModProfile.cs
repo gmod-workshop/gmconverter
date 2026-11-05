@@ -95,7 +95,7 @@ internal sealed class GarrysModProfile : ISourceProfile
             // A world model is the held item placed in Garry's Mod's hand, as the c_ model holds it.
             if (options.GetBool(WorldModelOption, defaultValue: false))
             {
-                return HumanoidRetargeter.ExtractHeld(HumanoidRetargeter.RetargetArms(model, GarrysModHands.Skeleton), HumanoidBone.RightHand);
+                return HumanoidRetargeter.ExtractHeld(HumanoidRetargeter.RetargetArms(model, GarrysModHands.Skeleton), HumanoidBone.RightHand, GarrysModHands.RightHandle);
             }
 
             return options.GetString(HandsOption) == PlayerHands ? HumanoidRetargeter.RetargetArms(model, GarrysModHands.Skeleton) : model;

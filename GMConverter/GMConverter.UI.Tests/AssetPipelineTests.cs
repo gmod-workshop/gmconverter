@@ -81,6 +81,40 @@ public sealed class AssetPipelineTests
     }
 
     [Fact]
+    public void ParticleEffectsRunThroughTheParticlePipeline()
+    {
+        var output = CreateOutputDirectory();
+        var input = Path.Join(output, "sparks.sampleparticle");
+        File.WriteAllText(input, "");
+        var request = new AssetRequest("sampleparticle", input)
+        {
+            OutputFormat = "sampleparticle",
+            OutputDirectory = output,
+            BaseName = "fx",
+        };
+
+        var result = new AssetJobRunner().Run(new AssetJob(request)).Results.Single();
+
+        Assert.Equal(AssetKind.Particle, FormatCatalog.GetImporter("sampleparticle").Kind);
+        Assert.Equal([Path.Join(Path.GetFullPath(output), "fx.json")], result.Export.Files);
+        Assert.Equal(["sparks: test warning"], result.Export.Warnings);
+        Assert.DoesNotContain(FormatCatalog.ExportsFor(AssetKind.Model), format => format.Format == "sampleparticle");
+    }
+
+    [Fact]
+    public void AParticleEffectCannotBeWrittenByAModelExporter()
+    {
+        var output = CreateOutputDirectory();
+        var input = Path.Join(output, "sparks.sampleparticle");
+        File.WriteAllText(input, "");
+        var request = new AssetRequest("sampleparticle", input) { OutputFormat = "sample", OutputDirectory = output };
+
+        var error = Assert.Throws<GMConverterException>(() => new AssetJobRunner().Run(new AssetJob(request)));
+
+        Assert.Contains("not a Particle", error.Message);
+    }
+
+    [Fact]
     public void ASoundCannotBeWrittenByAModelExporter()
     {
         var output = CreateOutputDirectory();

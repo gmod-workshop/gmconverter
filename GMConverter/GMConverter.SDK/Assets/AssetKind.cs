@@ -11,4 +11,7 @@ public enum AssetKind
 
     /// <summary>A <see cref="Audio.Sound"/>: audio clips and the events that play them.</summary>
     Sound,
+
+    /// <summary>A <see cref="Particles.ParticleEffect"/>: emitters a game plays as one effect.</summary>
+    Particle,
 }

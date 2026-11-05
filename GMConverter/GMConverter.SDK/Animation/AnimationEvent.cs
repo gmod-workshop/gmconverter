@@ -11,4 +11,8 @@ namespace GMConverter.SDK.Animation;
 /// in the source game, which sound exporters keep, so events and exported sounds match.
 /// </param>
 /// <param name="Bone">The bone or socket it happens at (such as the foot for a footstep), when known.</param>
-public sealed record AnimationEvent(float TimeSeconds, AnimationEventKind Kind, string? Sound = null, string? Bone = null);
+/// <param name="Effect">
+/// For <see cref="AnimationEventKind.ParticleEffect"/>, the name of the effect to start, as particle
+/// exporters keep it.
+/// </param>
+public sealed record AnimationEvent(float TimeSeconds, AnimationEventKind Kind, string? Sound = null, string? Bone = null, string? Effect = null);

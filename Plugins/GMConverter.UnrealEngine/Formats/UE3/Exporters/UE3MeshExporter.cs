@@ -80,7 +80,7 @@ internal static class UE3MeshExporter
         return path;
     }
 
-    private static void WriteSockets(UE3SkeletalMesh mesh, string meshPath)
+    public static void WriteSockets(UE3SkeletalMesh mesh, string meshPath)
     {
         if (mesh.Sockets.Count == 0)
         {

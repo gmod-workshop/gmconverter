@@ -24,6 +24,7 @@ internal sealed class GarrysModProfile : ISourceProfile
     public const string HandsOption = "hands";
     public const string ModelHands = "model";
     public const string PlayerHands = "player";
+    public const string WorldModelOption = "worldModel";
 
     // When a clip needs both sets, its own sequence keeps the NPC activity and a copy with this
     // suffix carries the player one.
@@ -52,6 +53,11 @@ internal sealed class GarrysModProfile : ISourceProfile
                 DefaultValue = ModelHands,
                 Choices = [ModelHands, PlayerHands],
                 Description = "For first-person view models: keep the model's own arms (a v_ model, SWEP.UseHands = false), or move its animations onto the player's hands and keep only what they hold (a c_ model, SWEP.UseHands = true).",
+            },
+            new OptionDescriptor(WorldModelOption, OptionType.Bool, "World model")
+            {
+                DefaultValue = false,
+                Description = "For first-person view models: write the world model instead (a w_ model for SWEP.WorldModel): only what the right hand holds, on a ValveBiped.Bip01_R_Hand bone that Garry's Mod matches to the player's hand.",
             },
             new OptionDescriptor(EyesOption, OptionType.Bool, "Eyes")
             {
@@ -86,6 +92,12 @@ internal sealed class GarrysModProfile : ISourceProfile
         // A view model is the player's own arms: NPC eyes and held-item hand attachments don't apply.
         if (model.FirstPerson)
         {
+            // A world model is the held item placed in Garry's Mod's hand, as the c_ model holds it.
+            if (options.GetBool(WorldModelOption, defaultValue: false))
+            {
+                return HumanoidRetargeter.ExtractHeld(HumanoidRetargeter.RetargetArms(model, GarrysModHands.Skeleton), HumanoidBone.RightHand, GarrysModHands.RightHandle);
+            }
+
             return options.GetString(HandsOption) == PlayerHands ? HumanoidRetargeter.RetargetArms(model, GarrysModHands.Skeleton) : model;
         }
 

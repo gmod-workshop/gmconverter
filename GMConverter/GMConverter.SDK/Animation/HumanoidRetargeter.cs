@@ -20,6 +20,8 @@ namespace GMConverter.SDK.Animation;
 /// </summary>
 public static class HumanoidRetargeter
 {
+    private static readonly string[] _knuckleFingers = ["Index1", "Middle1", "Ring1", "Pinky1"];
+
     private const float _degenerate = 1e-8f;
     private static readonly string[] _sides = ["Left", "Right"];
     private static readonly string[] _knuckles = ["Middle1", "Index1"];
@@ -142,6 +144,160 @@ public static class HumanoidRetargeter
             Physics = null,
             BlendSpaces = null,
         };
+    }
+
+    /// <summary>
+    /// What one hand holds, as a model of its own hanging from that hand's bone: the world model a
+    /// game attaches to a character's hand. Takes a model from <see cref="RetargetArms"/>, so the item
+    /// sits in the target skeleton's hand; the hand bone is kept (<see cref="Bone.Shared"/>) for the
+    /// game to match against the character's, and the arms and their animations are dropped.
+    /// </summary>
+    /// <param name="retargeted">A model from <see cref="RetargetArms"/>.</param>
+    /// <param name="hand">The hand whose item to keep.</param>
+    /// <param name="handle">
+    /// Where the game's characters close that hand around a handle, in the hand bone's space: the item
+    /// is moved, keeping its angle, so that its long axis passes there where it passed nearest the
+    /// knuckles. Null keeps the grip the animations give it.
+    /// </param>
+    public static Model ExtractHeld(Model retargeted, HumanoidBone hand, Vector3? handle = null)
+    {
+        var skeleton = retargeted.Skeleton ?? throw new InvalidOperationException($"{retargeted.Name} has no skeleton.");
+        var handBone = skeleton.Bones.FirstOrDefault(bone => bone.Humanoid == hand)
+            ?? throw new InvalidOperationException($"{retargeted.Name} has no {hand} bone.");
+        var bind = World(skeleton, index => skeleton.Bones[index].LocalBindPose);
+        var held = Subtree(skeleton, handBone.Index).Skip(1).Where(index => !skeleton.Bones[index].Shared).ToArray();
+
+        // The item sits in the hand as the idle animation holds it; a bind pose need not have it
+        // in the grip at all. The hand keeps its bind pose and the item moves with it.
+        var placed = (Matrix4x4[])bind.Clone();
+        if (GripClip(retargeted.Animations) is { } gripClip)
+        {
+            var tracks = gripClip.Tracks.OfType<BoneTransformTrack>().ToDictionary(track => track.BoneIndex);
+            var pose = World(skeleton, index => tracks.TryGetValue(index, out var track) ? Sample(track, 0f) : skeleton.Bones[index].LocalBindPose);
+            var handPose = Inverse(pose[handBone.Index]);
+            foreach (var index in held)
+            {
+                placed[index] = pose[index] * handPose * bind[handBone.Index];
+            }
+        }
+
+        var skinning = held.ToDictionary(index => index, index => Inverse(bind[index]) * placed[index]);
+        if (handle is { } target && GripAxis(retargeted, skeleton, bind, hand, held, skinning, bind[handBone.Index]) is { } grip)
+        {
+            var shift = Vector3.TransformNormal(target - grip, bind[handBone.Index]);
+            foreach (var index in held)
+            {
+                placed[index] *= Matrix4x4.CreateTranslation(shift);
+                skinning[index] = Inverse(bind[index]) * placed[index];
+            }
+        }
+
+        // The hand, then everything under it that isn't part of the arm (the held item's bones).
+        List<Bone> kept = [handBone with { ParentIndex = -1, LocalBindPose = ToTransform(bind[handBone.Index]), Shared = true }];
+        kept.AddRange(held.Select(index => skeleton.Bones[index] with
+        {
+            LocalBindPose = ToTransform(placed[index] * Inverse(placed[skeleton.Bones[index].ParentIndex])),
+        }));
+        var remap = kept.Select((bone, order) => (bone.Index, order)).ToDictionary(pair => pair.Index, pair => pair.order);
+        var bones = kept.Select(bone => bone with
+        {
+            Index = remap[bone.Index],
+            ParentIndex = bone.ParentIndex >= 0 && remap.TryGetValue(bone.ParentIndex, out var parent) ? parent : -1,
+        }).ToList();
+        bones[0] = bones[0] with { ParentIndex = -1 };
+
+        var meshes = retargeted.Meshes
+            .Select(mesh => mesh with
+            {
+                Vertices = [.. mesh.Vertices.Select(vertex => Skin(vertex, skinning) with
+                {
+                    BoneWeights = vertex.BoneWeights?.Select(weight => weight with { BoneIndex = remap.TryGetValue(weight.BoneIndex, out var index) ? index : 0 }).ToArray(),
+                })],
+            })
+            .ToList();
+        return retargeted with
+        {
+            Skeleton = new Skeleton(bones),
+            Meshes = meshes,
+            Animations = null,
+            Attachments = retargeted.Attachments?
+                .Where(attachment => attachment.BoneIndex is { } bone && remap.ContainsKey(bone))
+                .Select(attachment => attachment with { BoneIndex = remap[attachment.BoneIndex!.Value] })
+                .ToArray(),
+            BlendSpaces = null,
+            Forward = null,
+            FirstPerson = false,
+        };
+    }
+
+    // Where the held item's long axis passes nearest the hand's knuckles, in the hand bone's space:
+    // the point the fingers close around. Null without knuckle bones or item vertices.
+    private static Vector3? GripAxis(Model model, Skeleton skeleton, Matrix4x4[] bind, HumanoidBone hand, int[] held, Dictionary<int, Matrix4x4> skinning, Matrix4x4 handBind)
+    {
+        var side = hand.ToString()[..^"Hand".Length];
+        var toHand = Inverse(handBind);
+        var knuckles = _knuckleFingers
+            .Select(finger => Enum.TryParse<HumanoidBone>(side + finger, out var role) ? skeleton.Bones.FirstOrDefault(bone => bone.Humanoid == role) : null)
+            .OfType<Bone>()
+            .Select(bone => Vector3.Transform(bind[bone.Index].Translation, toHand))
+            .ToArray();
+        var heldSet = held.ToHashSet();
+        var points = model.Meshes
+            .SelectMany(mesh => mesh.Vertices)
+            .Where(vertex => vertex.BoneWeights?.Any(weight => heldSet.Contains(weight.BoneIndex)) == true)
+            .Select(vertex => Vector3.Transform(Skin(vertex, skinning).Position, toHand))
+            .ToArray();
+        if (knuckles.Length == 0 || points.Length < 2)
+        {
+            return null;
+        }
+
+        var knuckle = knuckles.Aggregate(Vector3.Add) / knuckles.Length;
+        var centre = points.Aggregate(Vector3.Add) / points.Length;
+        var axis = Vector3.Normalize(points[^1] - points[0] + new Vector3(1e-4f, 2e-4f, 3e-4f));
+        for (var iteration = 0; iteration < 64; iteration++)
+        {
+            var next = Vector3.Zero;
+            foreach (var point in points)
+            {
+                next += (point - centre) * Vector3.Dot(point - centre, axis);
+            }
+
+            if (next.LengthSquared() == 0f)
+            {
+                return null;
+            }
+
+            axis = Vector3.Normalize(next);
+        }
+
+        return centre + (axis * Vector3.Dot(knuckle - centre, axis));
+    }
+
+    // The clip whose pose shows how the item is held: idle, else the first clip.
+    private static AnimationClip? GripClip(IReadOnlyList<AnimationClip>? clips) =>
+        clips?.FirstOrDefault(clip => clip.Role?.Action == AnimationAction.Idle) ?? (clips is { Count: > 0 } ? clips[0] : null);
+
+    // A vertex moved by its bones' skinning matrices, blended by weight; bones without one leave it be.
+    private static Vertex Skin(Vertex vertex, Dictionary<int, Matrix4x4> skinning)
+    {
+        if (vertex.BoneWeights is not { Count: > 0 } weights || !weights.Any(weight => skinning.ContainsKey(weight.BoneIndex)))
+        {
+            return vertex;
+        }
+
+        var position = Vector3.Zero;
+        var normal = Vector3.Zero;
+        var total = 0f;
+        foreach (var weight in weights)
+        {
+            var matrix = skinning.TryGetValue(weight.BoneIndex, out var skin) ? skin : Matrix4x4.Identity;
+            position += Vector3.Transform(vertex.Position, matrix) * weight.Weight;
+            normal += Vector3.TransformNormal(vertex.Normal, matrix) * weight.Weight;
+            total += weight.Weight;
+        }
+
+        return total <= 0f ? vertex : vertex with { Position = position / total, Normal = Vector3.Normalize(normal) };
     }
 
     private static AnimationClip RetargetClip(

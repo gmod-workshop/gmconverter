@@ -4,6 +4,7 @@ using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Particles;
 using GMConverter.SDK.Textures;
+using GMConverter.UnrealEngine.Formats.UE3.Materials;
 using GMConverter.UnrealEngine.Formats.UE3.Particles;
 
 namespace GMConverter.UnrealEngine.Importers;
@@ -43,28 +44,7 @@ internal sealed class UE3ParticleImporter(ITextureFactory textureFactory) : IPar
         }
 
         // The graph with its textures loaded; null when it has none or a texture file is missing.
-        MaterialGraph? Graph(UE3ParticleSidecar.GraphFile? file)
-        {
-            if (file is null)
-            {
-                return null;
-            }
-
-            List<MaterialGraphTexture> graphTextures = [];
-            foreach (var texture in file.Textures)
-            {
-                if (Load(texture.File) is not { } loaded)
-                {
-                    return null;
-                }
-
-                graphTextures.Add(new MaterialGraphTexture(loaded, texture.Srgb, texture.ClampU, texture.ClampV));
-            }
-
-            var graph = new MaterialGraph(file.Nodes, graphTextures, file.Emissive, file.Opacity);
-            graph.Validate();
-            return graph;
-        }
+        MaterialGraph? Graph(UE3MaterialGraphFile? file) => file?.ToGraph(Load);
 
         return new ParticleEffect(sidecar.Name, [.. sidecar.Emitters.Select(emitter => emitter.Settings with
         {

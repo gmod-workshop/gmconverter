@@ -3,6 +3,7 @@ using GMConverter.Core.Textures;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Particles;
+using GMConverter.UnrealEngine.Formats.UE3.Materials;
 using GMConverter.UnrealEngine.Formats.UE3.Particles;
 using GMConverter.UnrealEngine.Importers;
 
@@ -110,7 +111,7 @@ public sealed class UE3ParticleTests
         [
             new UE3ParticleSidecar.Emitter(settings, null, MaterialBlendMode.Additive, null)
             {
-                Graph = new UE3ParticleSidecar.GraphFile(nodes, [new UE3ParticleSidecar.GraphTexture("helix.png", Srgb: true, ClampU: false, ClampV: true)], Emissive: 9, Opacity: null),
+                Graph = new UE3MaterialGraphFile(nodes, [new UE3MaterialGraphFile.TextureFile("helix.png", Srgb: true, ClampU: false, ClampV: true)], Emissive: 9, Opacity: null),
             },
         ]).Write(path);
 

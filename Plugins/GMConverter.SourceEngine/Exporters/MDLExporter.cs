@@ -14,6 +14,7 @@ using GMConverter.SourceEngine.Particles;
 using GMConverter.SourceEngine.Physics;
 using GMConverter.SourceEngine.Profiles;
 using GMConverter.SourceEngine.Profiles.GarrysMod;
+using GMConverter.SourceEngine.Shading;
 using GMConverter.SourceEngine.Tools;
 
 namespace GMConverter.SourceEngine.Exporters;
@@ -210,6 +211,11 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
         Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
+        if (target is GarrysModProfile && context.TargetOptions.GetString(GarrysModProfile.MaterialsOption) == GarrysModProfile.GmfxMaterials)
+        {
+            files.AddRange(GarrysModShading.Write(model, modelPath, outputDirectory, context.TargetOptions.GetString(GarrysModProfile.ShaderKitPathOption), warnings));
+        }
+
         return new ExportResult(files) { Warnings = warnings };
     }
 

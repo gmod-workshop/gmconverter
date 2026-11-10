@@ -50,7 +50,7 @@ internal static class MaterialGraphHlsl
         text.AppendLine("float4 main(PS_INPUT In) : COLOR {");
         for (var index = 0; index < graph.Nodes.Count; index++)
         {
-            text.AppendLine(CultureInfo.InvariantCulture, $"    {Type(graph.SizeOf(index))} n{index} = {Expression(graph, index)};");
+            text.AppendLine(Statement(graph, index, ParticleInput));
         }
 
         var emissive = graph.Emissive is { } e ? Cast(graph, e, 3) : "float3(0, 0, 0)";
@@ -64,21 +64,41 @@ internal static class MaterialGraphHlsl
         return text.ToString();
     }
 
-    private static string Expression(MaterialGraph graph, int index)
+    /// <summary>Node <paramref name="index"/> as an HLSL declaration of <c>n&lt;index&gt;</c>, with <paramref name="input"/> giving the shader's own inputs (texture coordinate, time...).</summary>
+    public static string Statement(MaterialGraph graph, int index, Func<MaterialGraphOp, string?> input) =>
+        $"    {Type(graph.SizeOf(index))} n{index} = {Expression(graph, index, input)};";
+
+    /// <summary>A node's value as <paramref name="size"/> components (see <see cref="Cast(MaterialGraph, int, int)"/>).</summary>
+    public static string Value(MaterialGraph graph, int index, int size) => Cast(graph, index, size);
+
+    private static string? ParticleInput(MaterialGraphOp op) => op switch
+    {
+        MaterialGraphOp.TexCoord => "In.uv",
+        MaterialGraphOp.Time => "In.misc.x",
+        MaterialGraphOp.ParticleAge => "In.misc.y",
+        MaterialGraphOp.ParticleColor => "In.color",
+        MaterialGraphOp.ParticleParameters => "In.params",
+        _ => null,
+    };
+
+    private static string Expression(MaterialGraph graph, int index, Func<MaterialGraphOp, string?> input)
     {
         var node = graph.Nodes[index];
+        if (InputCountIsZero(node.Op) && node.Op != MaterialGraphOp.Constant)
+        {
+            return input(node.Op) ?? throw new NotSupportedException($"material graph operation {node.Op} in this shader");
+        }
+
         var size = graph.SizeOf(index);
         string In(int position, int? width = null) => Cast(graph, node.Inputs[position], width ?? size);
         string Ref(int position) => $"n{node.Inputs[position]}";
         return node.Op switch
         {
             MaterialGraphOp.Constant => Vector(node.Value, size),
-            MaterialGraphOp.TexCoord => "In.uv",
-            MaterialGraphOp.Time => "In.misc.x",
-            MaterialGraphOp.ParticleAge => "In.misc.y",
-            MaterialGraphOp.ParticleColor => "In.color",
-            MaterialGraphOp.ParticleParameters => "In.params",
             MaterialGraphOp.TextureSample => $"tex2D(Texture{node.Texture}, {In(0, 2)})",
+            MaterialGraphOp.TangentToWorld => input(MaterialGraphOp.TangentToWorld) is { } transform
+                ? $"{transform}({In(0, 3)})"
+                : throw new NotSupportedException($"material graph operation {node.Op} in this shader"),
             MaterialGraphOp.Swizzle => graph.SizeOf(node.Inputs[0]) == 1
                 ? $"(({Type(size)}){Ref(0)})"
                 : $"{Ref(0)}.{node.Components}",
@@ -105,6 +125,8 @@ internal static class MaterialGraphHlsl
             _ => throw new NotSupportedException($"material graph operation {node.Op}"),
         };
     }
+
+    private static bool InputCountIsZero(MaterialGraphOp op) => MaterialGraph.InputCount(op) == 0;
 
     private static string DotProduct(MaterialGraph graph, MaterialGraphNode node)
     {

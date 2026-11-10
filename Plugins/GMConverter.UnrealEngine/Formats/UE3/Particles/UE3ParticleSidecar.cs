@@ -4,6 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Materials;
 using GMConverter.SDK.Particles;
+using GMConverter.UnrealEngine.Formats.UE3.Materials;
 
 namespace GMConverter.UnrealEngine.Formats.UE3.Particles;
 
@@ -88,12 +89,6 @@ internal sealed record UE3ParticleSidecar(string Name, IReadOnlyList<UE3Particle
         public System.Numerics.Vector2? UvScale { get; init; }
 
         /// <summary>The material's expression graph, when it translates; its textures are files beside the sidecar.</summary>
-        public GraphFile? Graph { get; init; }
+        public UE3MaterialGraphFile? Graph { get; init; }
     }
-
-    /// <summary>A <see cref="MaterialGraph"/> with its textures as file names relative to the sidecar.</summary>
-    public sealed record GraphFile(IReadOnlyList<MaterialGraphNode> Nodes, IReadOnlyList<GraphTexture> Textures, int? Emissive, int? Opacity);
-
-    /// <summary>A graph texture's file (relative to the sidecar) and how it is read.</summary>
-    public sealed record GraphTexture(string File, bool Srgb, bool ClampU, bool ClampV);
 }

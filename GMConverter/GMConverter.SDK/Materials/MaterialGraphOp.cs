@@ -13,6 +13,29 @@ public enum MaterialGraphOp
     /// <summary>The surface's first texture coordinate (2), in image space: U to the right, V down the stored image.</summary>
     TexCoord,
 
+    /// <summary>
+    /// The unit vector from the surface towards the camera (3), in the surface's tangent space:
+    /// x along the texture's U, y along its V, z out of the surface.
+    /// </summary>
+    CameraVector,
+
+    /// <summary>
+    /// The direction the camera's view reflects off the surface (3), in tangent space: the camera
+    /// vector reflected about the surface's normal (<see cref="MaterialGraphSurface.Normal"/>, or the
+    /// geometric normal without one), pointing away from the surface.
+    /// </summary>
+    ReflectionVector,
+
+    /// <summary>Input 0, a tangent-space vector, in world space (3).</summary>
+    TangentToWorld,
+
+    /// <summary>
+    /// The light the scene reflects into the camera off the surface (3, linear, may exceed 1): its
+    /// environment seen along the surface's specular direction and blurred by its roughness, as the
+    /// target engine's reflection probes give it. See <see cref="MaterialGraphSurface.Reflection"/>.
+    /// </summary>
+    SceneReflection,
+
     /// <summary>Seconds of game time (1), for animation that runs regardless of the particle.</summary>
     Time,
 

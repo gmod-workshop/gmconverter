@@ -7,7 +7,6 @@ using GMConverter.UnrealEngine.Formats.UE3.Meshes;
 using GMConverter.UnrealEngine.Formats.UE3.Packages;
 using GMConverter.UnrealEngine.Formats.UE3.Particles;
 using GMConverter.UnrealEngine.Formats.UE3.Textures;
-using GMConverter.UnrealEngine.Materials;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -34,13 +33,13 @@ internal static class UE3ParticleExporter
         Dictionary<string, UE3MaterialTexture?> textureCache = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, (string? Texture, MaterialBlendMode Blend, UE3ParticleUvAnimation? Uv)> baked = new(StringComparer.OrdinalIgnoreCase);
         Dictionary<string, string> meshes = new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, UE3ParticleSidecar.GraphFile?> graphs = new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, UE3ParticleSidecar.GraphTexture> graphTextures = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, UE3MaterialGraphFile?> graphs = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, UE3MaterialGraphFile.TextureFile> graphTextures = new(StringComparer.OrdinalIgnoreCase);
         List<UE3ParticleSidecar.Emitter> emitters = [];
         foreach (var emitter in system.Emitters)
         {
             var (texture, blend, uv) = (default(string), MaterialBlendMode.AlphaBlend, default(UE3ParticleUvAnimation));
-            UE3ParticleSidecar.GraphFile? graph = null;
+            UE3MaterialGraphFile? graph = null;
             if (emitter.Material is { } material)
             {
                 if (!baked.TryGetValue(material.Key, out var known))
@@ -86,67 +85,23 @@ internal static class UE3ParticleExporter
     }
 
     // The material's graph with each texture it samples written once, as stored (not baked); null, logged, when it doesn't translate.
-    private static UE3ParticleSidecar.GraphFile? Translate(
-        UE3GameContent content, UE3ObjectReference material, Dictionary<string, UE3ParticleSidecar.GraphTexture> written, string outputDirectory, string systemName)
+    private static UE3MaterialGraphFile? Translate(
+        UE3GameContent content, UE3ObjectReference material, Dictionary<string, UE3MaterialGraphFile.TextureFile> written, string outputDirectory, string systemName)
     {
-        List<UE3ParticleSidecar.GraphTexture> textures = [];
-        Dictionary<string, int> indices = new(StringComparer.OrdinalIgnoreCase);
-        int TextureIndex(UE3ObjectReference reference)
+        var translated = UE3MaterialTranslator.Translate(content, material, out var failure);
+        if (translated is { Surface: not null })
         {
-            if (indices.TryGetValue(reference.Key, out var index))
-            {
-                return index;
-            }
-
-            if (!written.TryGetValue(reference.Key, out var file))
-            {
-                file = WriteTexture(content, reference, outputDirectory, written.Values);
-                written[reference.Key] = file;
-            }
-
-            textures.Add(file);
-            indices[reference.Key] = textures.Count - 1;
-            return textures.Count - 1;
+            // Particles draw unlit; a lit material keeps its baked texture.
+            (translated, failure) = (null, "it is lit");
         }
 
-        if (UE3MaterialTranslator.Translate(content, material, TextureIndex, out var failure) is not { } translated)
+        if (translated is null)
         {
             PerfTimer.Log("ue3.particles", $"{systemName}: material {material.Export.ObjectName} keeps its baked texture: {failure}");
             return null;
         }
 
-        return new UE3ParticleSidecar.GraphFile(translated.Nodes, textures, translated.Emissive, translated.Opacity);
-    }
-
-    private static UE3ParticleSidecar.GraphTexture WriteTexture(
-        UE3GameContent content, UE3ObjectReference reference, string outputDirectory, IEnumerable<UE3ParticleSidecar.GraphTexture> taken)
-    {
-        var source = UE3Texture2D.Read(reference.Package, reference.Export);
-        var image = UE3TextureDecoder.Decode(reference.Package, source, content.TextureCaches);
-        if (!image.IsValid)
-        {
-            throw new GMConverterException($"UE3 texture {source.Name} could not be decoded.");
-        }
-
-        var stem = NameHelpers.SanitizeFileName(source.Name);
-        var file = stem + ".png";
-        for (var suffix = 2; taken.Any(texture => texture.File.Equals(file, StringComparison.OrdinalIgnoreCase)); suffix++)
-        {
-            file = FormattableString.Invariant($"{stem}_{suffix}.png");
-        }
-
-        if (image.Format == DecodedImagePixelFormat.Bgra8888)
-        {
-            using var bgra = Image.LoadPixelData<Bgra32>(image.Pixels, image.Width, image.Height);
-            bgra.SaveAsPng(Path.Combine(outputDirectory, file));
-        }
-        else
-        {
-            using var rgba = Image.LoadPixelData<Rgba32>(image.Pixels, image.Width, image.Height);
-            rgba.SaveAsPng(Path.Combine(outputDirectory, file));
-        }
-
-        return new UE3ParticleSidecar.GraphTexture(file, source.Srgb, source.AddressX != UE3TextureAddress.Wrap, source.AddressY != UE3TextureAddress.Wrap);
+        return UE3MaterialGraphFile.Export(content, translated, outputDirectory, written);
     }
 
     private static (string? Texture, MaterialBlendMode Blend, UE3ParticleUvAnimation? Uv) Bake(

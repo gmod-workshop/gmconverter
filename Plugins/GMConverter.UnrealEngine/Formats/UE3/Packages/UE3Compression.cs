@@ -143,6 +143,9 @@ internal static class UE3Compression
                 }
 
                 return;
+            case UE3CompressionMethod.Lzo:
+                UE3Lzo.Decompress(source, destination);
+                return;
             default:
                 throw new GMConverterException($"UE3 {method} compression is not supported.");
         }

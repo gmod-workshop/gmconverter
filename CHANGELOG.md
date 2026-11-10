@@ -91,6 +91,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Fixed UE3 packages and bulk data compressed with LZO failing to open ("UE3 Lzo compression is not supported"). They are now decompressed, as zlib and LZ4 already were; CrossFire HD's `RefShaderCache` is one such package.
 - Fixed converted weapon sounds cutting each other off in Source games. They were written on `CHAN_WEAPON`, where each sound stops the last on the same entity (a view model's inspect lost its long swish at the next click); they now play on `CHAN_AUTO`, overlapping as in the original game.
 - Fixed the Explorer naming most UE3 sound packages after one package, because every one has a `Cue` group; packages are now named by the full paths of the objects other packages import from them.
 - Fixed the PSK importer writing a `<material>.resolve.log` debug file next to every mesh it imported, including into folders of user files.

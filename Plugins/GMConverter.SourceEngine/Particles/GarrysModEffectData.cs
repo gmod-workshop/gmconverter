@@ -51,7 +51,12 @@ internal static class GarrysModEffectData
             Field("mesh", Quote(mesh));
         }
 
-        Field("alignment", emitter.Alignment == ParticleAlignment.Velocity ? "1" : "0");
+        Field("alignment", emitter.Alignment switch
+        {
+            ParticleAlignment.Velocity => "1",
+            ParticleAlignment.CameraSquare => "2",
+            _ => "0",
+        });
         Field("localSpace", emitter.LocalSpace ? "true" : "false");
         Field("delay", Number(emitter.DelaySeconds));
         Field("duration", Number(emitter.DurationSeconds));

@@ -102,7 +102,7 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
                 Cycles = required.GetInt("EmitterLoops") ?? 0,
                 DelaySeconds = required.GetFloat("EmitterDelay") ?? 0f,
                 LocalSpace = required.GetBool("bUseLocalSpace") ?? false,
-                Alignment = required.GetName("ScreenAlignment") == "PSA_Velocity" ? ParticleAlignment.Velocity : ParticleAlignment.Camera,
+                Alignment = Alignment(required.GetName("ScreenAlignment"), skipped),
                 MaxParticles = required.GetBool("bUseMaxDrawCount") == true ? required.GetInt("MaxDrawCount") : null,
                 Sheet = columns * rows > 1 ? new ParticleSheet(columns, rows, null) : null,
             };
@@ -255,6 +255,23 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
         }
 
         return new UE3ParticleEmitter(emitter, meshMaterial ?? material, mesh) { DynamicParameters = dynamicParameters };
+    }
+
+    // Square sprites (the default) take their width for their height; rectangles use both.
+    private static ParticleAlignment Alignment(string? screenAlignment, List<string> skipped)
+    {
+        switch (screenAlignment)
+        {
+            case null or "PSA_Square":
+                return ParticleAlignment.CameraSquare;
+            case "PSA_Rectangle":
+                return ParticleAlignment.Camera;
+            case "PSA_Velocity":
+                return ParticleAlignment.Velocity;
+            default:
+                skipped.Add($"ParticleModuleRequired.ScreenAlignment ({screenAlignment})");
+                return ParticleAlignment.Camera;
+        }
     }
 
     // A receiver listens for one event name, from generators raising it at a particle's spawn or

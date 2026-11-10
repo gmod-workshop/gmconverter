@@ -452,6 +452,8 @@ local function drawSprites(instance, emitter, state, time)
 	local ok, err = pcall(function()
 		for _, p in ipairs(particles) do
 			local age, sx, sy, _, r, g, b, a, p1, p2, p3, p4 = particleValues(emitter, p)
+			-- Square sprites are as tall as they are wide.
+			if emitter.alignment == 2 then sy = sx end
 			local center = worldPosition(instance, emitter, p)
 			local orbit = orbitOffset(emitter, p, ang)
 			if orbit then center = center + orbit end

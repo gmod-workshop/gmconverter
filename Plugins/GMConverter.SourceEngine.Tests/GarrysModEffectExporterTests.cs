@@ -25,6 +25,8 @@ public sealed class GarrysModEffectExporterTests
         Assert.Contains("events = { { count = { min = { 0, 2 } }, sources = { { 1, \"spawn\" }, { 2, \"death\" } } } },", lua);
         Assert.Contains("params = { [1] = { min = { 0, -1, 1, 3 } } },", lua);
         Assert.Contains("blend = \"additive\"", lua);
+        // Square sprites take their width for their height.
+        Assert.Contains("alignment = 2,", lua);
         // Five centimetres toward the camera, as CrossFire HD's flares sit in front of the blade.
         Assert.Contains("cameraOffset = { min = { 0, 1.968504 } },", lua);
     }
@@ -73,6 +75,7 @@ public sealed class GarrysModEffectExporterTests
         var material = new Material("glow", diffuseTexture: texture, blendMode: MaterialBlendMode.Additive);
         var core = new ParticleEmitter("core", material)
         {
+            Alignment = ParticleAlignment.CameraSquare,
             DurationSeconds = 0.2f,
             SpawnRate = ParticleFloat.Constant(60f),
             Lifetime = ParticleFloat.Constant(0.1f),

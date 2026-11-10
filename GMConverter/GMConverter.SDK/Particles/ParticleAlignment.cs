@@ -8,4 +8,7 @@ public enum ParticleAlignment
 
     /// <summary>Stretched along its velocity, facing the camera around it.</summary>
     Velocity,
+
+    /// <summary>Square to the camera and as tall as it is wide: its size's X (after scaling over life) sets both.</summary>
+    CameraSquare,
 }

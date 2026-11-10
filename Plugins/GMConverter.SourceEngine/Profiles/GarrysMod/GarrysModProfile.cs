@@ -25,6 +25,9 @@ internal sealed class GarrysModProfile : ISourceProfile
     public const string ModelHands = "model";
     public const string PlayerHands = "player";
     public const string WorldModelOption = "worldModel";
+    public const string ParticleEffectsOption = "particleEffects";
+    public const string PcfEffects = "pcf";
+    public const string GmfxEffects = "gmfx";
 
     // When a clip needs both sets, its own sequence keeps the NPC activity and a copy with this
     // suffix carries the player one.
@@ -58,6 +61,12 @@ internal sealed class GarrysModProfile : ISourceProfile
             {
                 DefaultValue = false,
                 Description = "For first-person view models: write the world model instead (a w_ model for SWEP.WorldModel): only what the right hand holds, on a ValveBiped.Bip01_R_Hand bone that Garry's Mod matches to the player's hand.",
+            },
+            new OptionDescriptor(ParticleEffectsOption, OptionType.Enum, "Particle effects")
+            {
+                DefaultValue = PcfEffects,
+                Choices = [PcfEffects, GmfxEffects],
+                Description = "How the model's animations start their particle effects: as Source particle events for effects exported as pcf, or as a client Lua file that starts effects exported as gmfx (GMConverter's shader effects).",
             },
             new OptionDescriptor(EyesOption, OptionType.Bool, "Eyes")
             {
@@ -138,7 +147,9 @@ internal sealed class GarrysModProfile : ISourceProfile
         return activities;
     }
 
-    public IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip) => SourceAnimationEvents.For(clip);
+    // Effects exported as gmfx are started by the Lua file the MDL exporter writes, not by QC events.
+    public IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip, OptionValues options) =>
+        SourceAnimationEvents.For(clip, includeParticleEffects: options.GetString(ParticleEffectsOption) != GmfxEffects);
 
     public SourcePoseParameter? GetPoseParameter(BlendAxis axis) => SourcePoseParameters.For(axis);
 }

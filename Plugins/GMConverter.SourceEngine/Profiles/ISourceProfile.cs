@@ -22,7 +22,7 @@ internal interface ISourceProfile : IExportGameProfile
     IReadOnlyList<SourceActivity> GetActivities(Model model, AnimationClip clip, OptionValues options);
 
     /// <summary>The QC events to write into a clip's sequences, from its animation events.</summary>
-    IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip);
+    IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip, OptionValues options);
 
     /// <summary>The pose parameter a blend space axis drives in this game, or null when it has none.</summary>
     SourcePoseParameter? GetPoseParameter(BlendAxis axis);

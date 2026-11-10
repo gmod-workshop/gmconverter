@@ -10,7 +10,7 @@ namespace GMConverter.SourceEngine.Animation;
 // or the model's origin. Firing has no event every Source game handles the same way, so it is left out.
 internal static class SourceAnimationEvents
 {
-    public static IReadOnlyList<SourceAnimationEvent> For(AnimationClip clip)
+    public static IReadOnlyList<SourceAnimationEvent> For(AnimationClip clip, bool includeParticleEffects = true)
     {
         if (clip.Events is not { Count: > 0 } events || clip.Layering is not null)
         {
@@ -28,7 +28,7 @@ internal static class SourceAnimationEvents
                 case AnimationEventKind.Sound when !string.IsNullOrWhiteSpace(animationEvent.Sound):
                     written.Add(new SourceAnimationEvent("AE_CL_PLAYSOUND", animationEvent.TimeSeconds, animationEvent.Sound));
                     break;
-                case AnimationEventKind.ParticleEffect when !string.IsNullOrWhiteSpace(animationEvent.Effect):
+                case AnimationEventKind.ParticleEffect when includeParticleEffects && !string.IsNullOrWhiteSpace(animationEvent.Effect):
                     var placement = string.IsNullOrWhiteSpace(animationEvent.Bone) ? "follow_origin" : $"follow_attachment {animationEvent.Bone}";
                     written.Add(new SourceAnimationEvent("AE_CL_CREATE_PARTICLE_EFFECT", animationEvent.TimeSeconds, $"{animationEvent.Effect} {placement}"));
                     break;

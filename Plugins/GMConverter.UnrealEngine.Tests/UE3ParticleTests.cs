@@ -81,4 +81,47 @@ public sealed class UE3ParticleTests
         Assert.NotEmpty(arc.Mesh!.Meshes);
         Assert.Equal(new Vector2(1f, 3f), arc.Material.UvTransform?.Scale);
     }
+
+    [Fact]
+    public void SidecarsCarryMaterialGraphsAndParameters()
+    {
+        var directory = PskFixtures.CreateDirectory();
+        new DefaultTextureFactory().FromRgba("helix", 2, 2, Enumerable.Repeat((byte)128, 16).ToArray(), hasAlpha: true).WritePng(Path.Join(directory, "helix.png"));
+        // The helix glow: texture at UV + parameter.x * (0, -1), tinted by the particle colour.
+        MaterialGraphNode[] nodes =
+        [
+            new(MaterialGraphOp.TexCoord, []),
+            new(MaterialGraphOp.ParticleParameters, []),
+            new(MaterialGraphOp.Swizzle, [1]) { Components = "x" },
+            MaterialGraphNode.Constant(new Vector4(0f, -1f, 0f, 0f), 2),
+            new(MaterialGraphOp.Multiply, [2, 3]),
+            new(MaterialGraphOp.Add, [0, 4]),
+            new(MaterialGraphOp.TextureSample, [5]) { Texture = 0 },
+            new(MaterialGraphOp.ParticleColor, []),
+            new(MaterialGraphOp.Multiply, [6, 7]),
+            new(MaterialGraphOp.Swizzle, [8]) { Components = "xyz" },
+        ];
+        var settings = new ParticleEmitter("helix", new Material("unused"))
+        {
+            Parameters = [ParticleFloat.Curve([new ParticleKey(0f, -1f), new ParticleKey(1f, 3f)])],
+        };
+        var path = Path.Join(directory, "P_Helix" + UE3ParticleSidecar.Extension);
+        new UE3ParticleSidecar("P_Helix",
+        [
+            new UE3ParticleSidecar.Emitter(settings, null, MaterialBlendMode.Additive, null)
+            {
+                Graph = new UE3ParticleSidecar.GraphFile(nodes, [new UE3ParticleSidecar.GraphTexture("helix.png", Srgb: true, ClampU: false, ClampV: true)], Emissive: 9, Opacity: null),
+            },
+        ]).Write(path);
+
+        var emitter = Assert.Single(new UE3ParticleImporter(new DefaultTextureFactory()).Import(new ParticleImportContext(path)).Emitters);
+
+        var graph = emitter.Material.Graph!;
+        Assert.Equal(nodes, graph.Nodes, (a, b) => a.Op == b.Op && a.Inputs.SequenceEqual(b.Inputs) && a.Value == b.Value && a.Size == b.Size && a.Components == b.Components && a.Texture == b.Texture);
+        Assert.Equal(9, graph.Emissive);
+        Assert.Equal(3, graph.SizeOf(9));
+        var texture = Assert.Single(graph.Textures);
+        Assert.Equal((2, true, false, true), (texture.Texture.Width, texture.Srgb, texture.ClampU, texture.ClampV));
+        Assert.Equal(3f, Assert.Single(emitter.Parameters)!.Evaluate(1f));
+    }
 }

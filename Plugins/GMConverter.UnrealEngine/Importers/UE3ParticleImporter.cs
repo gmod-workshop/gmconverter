@@ -42,13 +42,38 @@ internal sealed class UE3ParticleImporter(ITextureFactory textureFactory) : IPar
             return texture;
         }
 
+        // The graph with its textures loaded; null when it has none or a texture file is missing.
+        MaterialGraph? Graph(UE3ParticleSidecar.GraphFile? file)
+        {
+            if (file is null)
+            {
+                return null;
+            }
+
+            List<MaterialGraphTexture> graphTextures = [];
+            foreach (var texture in file.Textures)
+            {
+                if (Load(texture.File) is not { } loaded)
+                {
+                    return null;
+                }
+
+                graphTextures.Add(new MaterialGraphTexture(loaded, texture.Srgb, texture.ClampU, texture.ClampV));
+            }
+
+            var graph = new MaterialGraph(file.Nodes, graphTextures, file.Emissive, file.Opacity);
+            graph.Validate();
+            return graph;
+        }
+
         return new ParticleEffect(sidecar.Name, [.. sidecar.Emitters.Select(emitter => emitter.Settings with
         {
             Material = new Material(
                 emitter.Settings.Name,
                 diffuseTexture: Load(emitter.Texture),
                 blendMode: emitter.Blend,
-                uvTransform: emitter.UvScale is { } scale ? new MaterialUvTransform { Scale = scale } : null),
+                uvTransform: emitter.UvScale is { } scale ? new MaterialUvTransform { Scale = scale } : null,
+                graph: Graph(emitter.Graph)),
             Mesh = emitter.Mesh is { } mesh ? LoadMesh(Path.Join(directory, mesh)) : null,
         })]);
     }

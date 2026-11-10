@@ -7,7 +7,7 @@
 --
 -- Effect space: +X forward, +Y left, +Z up, in Source units, attached to an entity's attachment.
 
-local VERSION = 3
+local VERSION = 4
 
 if GMConverterFX and (GMConverterFX.version or 0) >= VERSION then return end
 
@@ -209,9 +209,10 @@ local function litMaterial(def)
 	return mat
 end
 
--- Source commits a model's lighting only for its own shaders. A hidden bump-mapped VertexLitGeneric
--- model drawn just before, centred where the lit model is, leaves its ambient cube and lights in the
--- shader constants, and its $envmap names the cubemap Source picks there.
+-- Source commits a model's lighting only for its own shaders. A hidden bump-mapped, phong-lit
+-- VertexLitGeneric model drawn just before, centred where the lit model is, leaves its ambient cube
+-- and lights in the shader constants (without phong the light registers aren't filled), and its
+-- $envmap names the cubemap Source picks there.
 local lightingModel, lightingMaterial
 local function commitLighting(center)
 	if not IsValid(lightingModel) then
@@ -221,6 +222,10 @@ local function commitLighting(center)
 		lightingMaterial = CreateMaterial("gmcsh_lighting", "VertexLitGeneric", {
 			["$basetexture"] = "color/white",
 			["$bumpmap"] = "dev/bump_normal",
+			["$phong"] = "1",
+			["$phongexponent"] = "20",
+			["$phongboost"] = "1",
+			["$phongfresnelranges"] = "[0 0.5 1]",
 			["$envmap"] = "env_cubemap",
 		})
 		lightingModel:SetMaterial("!gmcsh_lighting")

@@ -17,7 +17,7 @@ FX.effects = FX.effects or {}
 FX.models = FX.models or {}
 FX.active = FX.active or {}
 
-local random, floor, min, max, sqrt, sin, cos = math.random, math.floor, math.min, math.max, math.sqrt, math.sin, math.cos
+local random, floor, max, sqrt, sin, cos = math.random, math.floor, math.max, math.sqrt, math.sin, math.cos
 
 --- Registers an effect: name -> { emitters = { ... } } as GMConverter writes it.
 function FX.Register(name, definition)
@@ -177,20 +177,45 @@ local function frameOf(instance)
 	return instance.pos or vector_origin, instance.ang or angle_zero
 end
 
+-- Simulation follows Cascade's tick: particles past their life die, the rest age and update, new
+-- ones are released (each already as far into its life as its share of the frame), orbits turn, and
+-- everything moves. Values a particle picks from a random range over its life are picked again each
+-- frame, as Cascade's distributions are.
+
 -- Particles raise events where they are born and die; emitters listening for them release theirs there
--- once every emitter has ticked. An event's position is in its emitter's space.
-local function raise(instance, emitter, kind, p)
+-- once every emitter has ticked. An event keeps its position (in its emitter's space) and its emitter's
+-- time, which the listener's count is looked up by.
+local function raise(instance, emitter, kind, p, emitterTime)
 	local listeners = emitter.listeners and emitter.listeners[kind]
 	if not listeners then return end
 	local queue = instance.events
-	queue[#queue + 1] = { listeners = listeners, x = p.x, y = p.y, z = p.z, localSpace = emitter.localSpace }
+	queue[#queue + 1] = { listeners = listeners, x = p.x, y = p.y, z = p.z, localSpace = emitter.localSpace, time = emitterTime }
 end
 
-local function spawnParticle(instance, state, emitter, emitterTime, origin)
+-- Turns (x, y, z) by Rz(rz)*Ry(ry)*Rx(rx): right-handed, about X first.
+local function rotateXYZ(rx, ry, rz, x, y, z)
+	local c, s = cos(rx), sin(rx)
+	y, z = y * c - z * s, y * s + z * c
+	c, s = cos(ry), sin(ry)
+	x, z = x * c + z * s, z * c - x * s
+	c, s = cos(rz), sin(rz)
+	x, y = x * c - y * s, x * s + y * c
+	return x, y, z
+end
+
+-- An orbit value from its distribution, by the particle's age or the emitter's time.
+local function orbitValue(curve, timing, p, emitterTime)
+	return vectorAt(curve, timing.emitterTime and emitterTime or p.rel, random(), random(), random())
+end
+
+local function spawnParticle(instance, state, emitter, emitterTime, spawnTime, origin)
 	if #state.particles >= emitter.max then return end
 	local life = floatAt(emitter.life, emitterTime, random())
 	if life <= 0 then return end
-	local p = { t = 0, life = life }
+	-- Released part-way through the frame, it is already that far into its life; one that would
+	-- already be past it is never seen.
+	local p = { life = life, rel = spawnTime / life }
+	if p.rel > 1 then return end
 
 	local lx, ly, lz = 0, 0, 0
 	if emitter.location then lx, ly, lz = vectorAt(emitter.location, emitterTime, random(), random(), random()) end
@@ -209,15 +234,19 @@ local function spawnParticle(instance, state, emitter, emitterTime, origin)
 	p.a = floatAt(emitter.alpha, emitterTime, random())
 	p.roll = emitter.rotation and floatAt(emitter.rotation, emitterTime, random()) or 0
 	p.spin = emitter.rotationRate and floatAt(emitter.rotationRate, emitterTime, random()) or 0
-	-- Each particle follows its own point between an over-life curve's min and max.
-	p.rs = { random(), random(), random(), random(), random(), random(), random(), random(), random(), random(), random(), random() }
 	if emitter.sheet and not emitter.sheet.frames then
 		p.frame = floor(random() * emitter.sheet.columns * emitter.sheet.rows)
 	end
-	if emitter.orbit then
-		p.ox, p.oy, p.oz = vectorAt(emitter.orbit.offset, emitterTime, random(), random(), random())
-		p.orx, p.ory, p.orz = vectorAt(emitter.orbit.rotation, emitterTime, random(), random(), random())
-		p.osx, p.osy, p.osz = vectorAt(emitter.orbit.rate, emitterTime, random(), random(), random())
+	local orbit = emitter.orbit
+	if orbit then
+		-- What the spawn picks is the base the per-frame picks add to.
+		local o = { base = { 0, 0, 0 }, rot = { 0, 0, 0 }, baseRate = { 0, 0, 0 }, prev = { 0, 0, 0 } }
+		if orbit.offsetTiming.spawn then o.base = { orbitValue(orbit.offset, orbit.offsetTiming, p, emitterTime) } end
+		if orbit.rotationTiming.spawn then o.rot = { orbitValue(orbit.rotation, orbit.rotationTiming, p, emitterTime) } end
+		if orbit.rateTiming.spawn then o.baseRate = { orbitValue(orbit.rate, orbit.rateTiming, p, emitterTime) } end
+		o.offset = { o.base[1], o.base[2], o.base[3] }
+		o.rate = { o.baseRate[1], o.baseRate[2], o.baseRate[3] }
+		p.orbit = o
 	end
 
 	local pos, ang = frameOf(instance)
@@ -247,20 +276,24 @@ local function spawnParticle(instance, state, emitter, emitterTime, origin)
 		vx, vy, vz = velocity.x, velocity.y, velocity.z
 		p.ang = Angle(ang.p, ang.y, ang.r)
 	end
-	p.x, p.y, p.z, p.vx, p.vy, p.vz = lx, ly, lz, vx, vy, vz
+	-- It has moved for its share of the frame already.
+	p.bvx, p.bvy, p.bvz = vx, vy, vz
+	p.vx, p.vy, p.vz = vx, vy, vz
+	p.x, p.y, p.z = lx + vx * spawnTime, ly + vy * spawnTime, lz + vz * spawnTime
+	p.oldx, p.oldy, p.oldz = lx, ly, lz
 	state.particles[#state.particles + 1] = p
-	raise(instance, emitter, "spawn", p)
+	raise(instance, emitter, "spawn", p, emitterTime)
 end
 
-local function worldPosition(instance, emitter, p)
-	if not emitter.localSpace then return Vector(p.x, p.y, p.z) end
+local function worldPosition(instance, emitter, x, y, z)
+	if not emitter.localSpace then return Vector(x, y, z) end
 	local pos, ang = frameOf(instance)
-	return LocalToWorld(Vector(p.x, p.y, p.z), angle_zero, pos, ang)
+	return LocalToWorld(Vector(x, y, z), angle_zero, pos, ang)
 end
 
-local function spawnAt(instance, emitter, emitterTime, count, origin)
+local function spawnAt(instance, emitter, emitterTime, count, spawnTime, origin)
 	local state = instance.states[emitter.index]
-	for _ = 1, count do spawnParticle(instance, state, emitter, emitterTime, origin) end
+	for _ = 1, count do spawnParticle(instance, state, emitter, emitterTime, spawnTime, origin) end
 end
 
 -- The emitter's cycle and its time within it.
@@ -272,7 +305,7 @@ local function clock(emitter, time)
 	return cycle, emitterTime - cycle * duration
 end
 
--- Advances an emitter's schedule; returns whether it may still release particles.
+-- Releases this frame's particles by rate and burst; returns whether the emitter may release more.
 local function schedule(instance, emitter, state, time, dt)
 	if time < emitter.delay then return true end
 	local duration = emitter.duration
@@ -283,17 +316,21 @@ local function schedule(instance, emitter, state, time, dt)
 		state.cycle = cycle
 		state.fired = {}
 	end
+	-- A burst's particles share one start, a burst-sized slice into the frame.
 	for i, burst in ipairs(emitter.bursts) do
 		if not state.fired[i] and cycleTime >= burst[1] then
 			state.fired[i] = true
-			spawnAt(instance, emitter, cycleTime, random(burst[2], burst[3]))
+			local count = random(burst[2], burst[3])
+			if count > 0 then spawnAt(instance, emitter, cycleTime, count, dt / count) end
 		end
 	end
+	-- By rate, the frame's particles share the start the earliest of them was due.
 	if emitter.rate then
-		state.accumulated = state.accumulated + floatAt(emitter.rate, cycleTime, state.rateRandom) * dt
-		local count = floor(state.accumulated)
-		state.accumulated = state.accumulated - count
-		spawnAt(instance, emitter, cycleTime, count)
+		local rate = max(floatAt(emitter.rate, cycleTime, random()), 0)
+		local owed = state.accumulated + dt * rate
+		local count = floor(owed)
+		if count > 0 then spawnAt(instance, emitter, cycleTime, count, dt + (state.accumulated - 1) / rate) end
+		state.accumulated = owed - count
 	end
 	if duration > 0 or emitter.rate then return true end
 	-- Without a cycle, an emitter that only bursts is done once every burst has fired.
@@ -303,86 +340,117 @@ local function schedule(instance, emitter, state, time, dt)
 	return false
 end
 
+local function tickEmitter(instance, emitter, state, time, dt)
+	local particles = state.particles
+	local _, emitterTime = clock(emitter, time)
+	local i = 1
+	while i <= #particles do
+		local p = particles[i]
+		if p.rel > 1 then
+			raise(instance, emitter, "death", p, emitterTime)
+			particles[i] = particles[#particles]
+			particles[#particles] = nil
+		else
+			i = i + 1
+		end
+	end
+
+	local ax, ay, az = emitter.acceleration[1], emitter.acceleration[2], emitter.acceleration[3]
+	if not emitter.localSpace then
+		local accel = Vector(ax, ay, az)
+		accel:Rotate(select(2, frameOf(instance)))
+		ax, ay, az = accel.x, accel.y, accel.z
+	end
+	local drag, orbit = emitter.drag, emitter.orbit
+	for _, p in ipairs(particles) do
+		p.rel = p.rel + dt / p.life
+		p.bvx, p.bvy, p.bvz = p.bvx + ax * dt, p.bvy + ay * dt, p.bvz + az * dt
+		if drag > 0 then
+			local keep = max(0, 1 - drag * dt)
+			p.bvx, p.bvy, p.bvz = p.bvx * keep, p.bvy * keep, p.bvz * keep
+		end
+		local kx, ky, kz = 1, 1, 1
+		if emitter.velocityOverLife then kx, ky, kz = vectorAt(emitter.velocityOverLife, p.rel, random(), random(), random()) end
+		p.vx, p.vy, p.vz = p.bvx * kx, p.bvy * ky, p.bvz * kz
+		if orbit then
+			-- Each frame starts from the spawn's picks; what is picked every frame adds to them (to the
+			-- rotation, cumulatively). The drawn offset of the last frame is where the particle was drawn.
+			local o = p.orbit
+			o.prev = o.offset
+			o.offset = { o.base[1], o.base[2], o.base[3] }
+			o.rate = { o.baseRate[1], o.baseRate[2], o.baseRate[3] }
+			if orbit.offsetTiming.frame then
+				o.prev = { o.offset[1], o.offset[2], o.offset[3] }
+				local x, y, z = orbitValue(orbit.offset, orbit.offsetTiming, p, emitterTime)
+				o.offset = { o.offset[1] + x, o.offset[2] + y, o.offset[3] + z }
+			end
+			if orbit.rotationTiming.frame then
+				local x, y, z = orbitValue(orbit.rotation, orbit.rotationTiming, p, emitterTime)
+				o.rot = { o.rot[1] + x, o.rot[2] + y, o.rot[3] + z }
+			end
+			if orbit.rateTiming.frame then
+				local x, y, z = orbitValue(orbit.rate, orbit.rateTiming, p, emitterTime)
+				o.rate = { o.rate[1] + x, o.rate[2] + y, o.rate[3] + z }
+			end
+		end
+	end
+
+	local releasing = schedule(instance, emitter, state, time, dt)
+
+	for _, p in ipairs(particles) do
+		local o = p.orbit
+		if o then
+			o.rot = { o.rot[1] + o.rate[1] * dt, o.rot[2] + o.rate[2] * dt, o.rot[3] + o.rate[3] * dt }
+			o.offset = { rotateXYZ(o.rot[1], o.rot[2], o.rot[3], o.offset[1], o.offset[2], o.offset[3]) }
+		end
+		p.oldx, p.oldy, p.oldz = p.x, p.y, p.z
+		p.x, p.y, p.z = p.x + p.vx * dt, p.y + p.vy * dt, p.z + p.vz * dt
+		p.roll = p.roll + p.spin * dt
+	end
+	return releasing or #particles > 0
+end
+
 local function simulate(instance, dt)
 	instance.time = instance.time + dt
 	local time = instance.time
 	local alive = false
 	local emitters = instance.effect.emitters
 	for index, emitter in ipairs(emitters) do
-		local state = instance.states[index]
-		if schedule(instance, emitter, state, time, dt) then alive = true end
-		local particles = state.particles
-		local ax, ay, az = emitter.acceleration[1], emitter.acceleration[2], emitter.acceleration[3]
-		if not emitter.localSpace then
-			local accel = Vector(ax, ay, az)
-			accel:Rotate(select(2, frameOf(instance)))
-			ax, ay, az = accel.x, accel.y, accel.z
-		end
-		local drag = emitter.drag
-		local i = 1
-		while i <= #particles do
-			local p = particles[i]
-			p.t = p.t + dt
-			local age = p.t / p.life
-			if age >= 1 then
-				raise(instance, emitter, "death", p)
-				particles[i] = particles[#particles]
-				particles[#particles] = nil
-			else
-				p.vx, p.vy, p.vz = p.vx + ax * dt, p.vy + ay * dt, p.vz + az * dt
-				if drag > 0 then
-					local keep = max(0, 1 - drag * dt)
-					p.vx, p.vy, p.vz = p.vx * keep, p.vy * keep, p.vz * keep
-				end
-				local kx, ky, kz = 1, 1, 1
-				if emitter.velocityOverLife then kx, ky, kz = vectorAt(emitter.velocityOverLife, age, p.rs[1], p.rs[2], p.rs[3]) end
-				p.x, p.y, p.z = p.x + p.vx * kx * dt, p.y + p.vy * ky * dt, p.z + p.vz * kz * dt
-				alive = true
-				i = i + 1
-			end
-		end
+		if tickEmitter(instance, emitter, instance.states[index], time, dt) then alive = true end
 	end
-	-- Events reach their listeners after every emitter has ticked; ones raised meanwhile wait a frame.
+	-- Events reach their listeners after every emitter has ticked, a whole frame into their lives;
+	-- ones raised meanwhile wait a frame.
 	local events = instance.events
 	instance.events = {}
 	for _, event in ipairs(events) do
 		for _, listener in ipairs(event.listeners) do
 			local child = emitters[listener.emitter]
 			local _, childTime = clock(child, time)
-			spawnAt(instance, child, childTime, floor(floatAt(listener.count, childTime, random())), event)
+			spawnAt(instance, child, childTime, floor(floatAt(listener.count, event.time, random()) + 0.5), dt, event)
 			alive = true
 		end
 	end
-	return alive
+	return alive or #instance.events > 0
 end
 
 -- Drawing
 
 local function particleValues(emitter, p)
-	local age = min(p.t / p.life, 1)
-	local rs = p.rs
+	local age = p.rel
 	local sx, sy, sz = p.sx, p.sy, p.sz
 	if emitter.sizeOverLife then
-		local kx, ky, kz = vectorAt(emitter.sizeOverLife, age, rs[4], rs[5], rs[6])
+		local kx, ky, kz = vectorAt(emitter.sizeOverLife, age, random(), random(), random())
 		sx, sy, sz = sx * kx, sy * ky, sz * kz
 	end
 	local r, g, b = p.r, p.g, p.b
-	if emitter.colorOverLife then r, g, b = vectorAt(emitter.colorOverLife, age, rs[7], rs[8], rs[9]) end
-	local a = emitter.alphaOverLife and floatAt(emitter.alphaOverLife, age, rs[10]) or p.a
+	if emitter.colorOverLife then r, g, b = vectorAt(emitter.colorOverLife, age, random(), random(), random()) end
+	local a = emitter.alphaOverLife and floatAt(emitter.alphaOverLife, age, random()) or p.a
 	local params = emitter.params
-	local p1 = params[1] and floatAt(params[1], age, rs[11]) or 0
-	local p2 = params[2] and floatAt(params[2], age, rs[12]) or 0
-	local p3 = params[3] and floatAt(params[3], age, rs[11]) or 0
-	local p4 = params[4] and floatAt(params[4], age, rs[12]) or 0
+	local p1 = params[1] and floatAt(params[1], age, random()) or 0
+	local p2 = params[2] and floatAt(params[2], age, random()) or 0
+	local p3 = params[3] and floatAt(params[3], age, random()) or 0
+	local p4 = params[4] and floatAt(params[4], age, random()) or 0
 	return age, sx, sy, sz, r, g, b, a, p1, p2, p3, p4
-end
-
-local function orbitOffset(emitter, p, ang)
-	if not emitter.orbit then return nil end
-	local offset = Vector(p.ox, p.oy, p.oz)
-	offset:Rotate(Angle(math.deg(p.ory + p.osy * p.t), math.deg(p.orz + p.osz * p.t), math.deg(p.orx + p.osx * p.t)))
-	offset:Rotate(ang)
-	return offset
 end
 
 local function setBlend(def)
@@ -454,32 +522,46 @@ local function drawSprites(instance, emitter, state, time)
 			local age, sx, sy, _, r, g, b, a, p1, p2, p3, p4 = particleValues(emitter, p)
 			-- Square sprites are as tall as they are wide.
 			if emitter.alignment == 2 then sy = sx end
-			local center = worldPosition(instance, emitter, p)
-			local orbit = orbitOffset(emitter, p, ang)
-			if orbit then center = center + orbit end
+			-- Drawn at its position plus its orbit's offset, both in the emitter's space.
+			local x, y, z = p.x, p.y, p.z
+			local ox, oy, oz = p.oldx, p.oldy, p.oldz
+			local o = p.orbit
+			if o then
+				x, y, z = x + o.offset[1], y + o.offset[2], z + o.offset[3]
+				ox, oy, oz = ox + o.prev[1], oy + o.prev[2], oz + o.prev[3]
+			end
+			local center = worldPosition(instance, emitter, x, y, z)
+			local hidden = false
 			if emitter.cameraOffset then
-				-- Drawn nearer the camera, in front of the surface the effect sits in.
+				-- Drawn nearer the camera, in front of the surface the effect sits in; one whose offset
+				-- would reach the camera isn't drawn.
 				local toEye = eye - center
 				local distance = toEye:Length()
-				if distance > 1e-3 then center = center + toEye * (min(floatAt(emitter.cameraOffset, age, p.rs[2]), distance * 0.9) / distance) end
+				local offset = floatAt(emitter.cameraOffset, age, random())
+				if distance > offset and distance > 1e-6 then
+					center = center + toEye * (offset / distance)
+				else
+					hidden = true
+				end
 			end
 			local axisX, axisY
 			if emitter.alignment == 1 then
-				local velocity = Vector(p.vx, p.vy, p.vz)
-				if emitter.localSpace then velocity:Rotate(ang) end
-				if velocity:LengthSqr() < 1e-8 then velocity = up end
-				axisY = velocity:GetNormalized()
+				-- Stretched along how far it was drawn from last frame, orbit included.
+				local moved = Vector(x - ox, y - oy, z - oz)
+				if emitter.localSpace then moved:Rotate(ang) end
+				if moved:LengthSqr() < 1e-12 then moved = up end
+				axisY = moved:GetNormalized()
 				axisX = axisY:Cross(center - eye):GetNormalized()
 			else
-				local roll = p.roll + p.spin * p.t
-				local c, s = cos(roll), sin(roll)
+				local c, s = cos(p.roll), sin(p.roll)
 				axisX = right * c + up * s
 				axisY = up * c - right * s
 			end
+			if hidden then sx, sy = 0, 0 end
 			local hx, hy = axisX * (sx * 0.5), axisY * (sy * 0.5)
 			local u0, v0, u1, v1 = 0, 0, 1, 1
 			if sheet then
-				local frame = p.frame or floor(floatAt(sheet.frames, age, p.rs[1]))
+				local frame = p.frame or floor(floatAt(sheet.frames, age, random()))
 				local count = sheet.columns * sheet.rows
 				frame = ((frame % count) + count) % count
 				local column, row = frame % sheet.columns, floor(frame / sheet.columns)
@@ -571,21 +653,25 @@ local function step(instance)
 	return instance.alive
 end
 
--- View models: start the effects a sequence passes since the last frame; loops stop with the sequence.
+-- View models: start the effects a sequence passes since the last frame.
 local watched = setmetatable({}, { __mode = "k" })
 local function watch(vm)
-	local events = FX.models[string.lower(vm:GetModel() or "")]
-	if not events then return end
+	local model = vm:GetModel() or ""
+	local last = watched[vm]
+	-- Effects an animation starts run to their end, as Unreal's do; a new model (another weapon)
+	-- takes its effects with it.
+	if last and last.model ~= model then
+		for i = #FX.active, 1, -1 do
+			if FX.active[i].entity == vm then table.remove(FX.active, i) end
+		end
+		last = nil
+	end
 	local sequence = vm:GetSequence()
 	local time = vm:GetCycle() * vm:SequenceDuration(sequence)
-	local last = watched[vm]
-	if last and last.sequence ~= sequence then
-		for _, instance in ipairs(FX.active) do
-			if instance.entity == vm then FX.Stop(instance) end
-		end
-	end
+	watched[vm] = { sequence = sequence, time = time, model = model }
+	local events = FX.models[string.lower(model)]
+	if not events then return end
 	local from = (last and last.sequence == sequence and last.time <= time) and last.time or -1
-	watched[vm] = { sequence = sequence, time = time }
 	for _, event in ipairs(events[vm:GetSequenceName(sequence)] or {}) do
 		if event[1] > from and event[1] <= time then FX.Play(event[2], vm, event[3], true) end
 	end

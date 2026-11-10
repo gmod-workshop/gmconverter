@@ -148,7 +148,8 @@ internal static class GarrysModEffectData
 
         if (emitter.Orbit is { } orbit)
         {
-            Field("orbit", $"{{ offset = {Vector(orbit.Offset, _inchesPerMetre)}, rotation = {Vector(orbit.Rotation, 1f)}, rate = {Vector(orbit.RotationRate, 1f)} }}");
+            Field("orbit", $"{{ offset = {Vector(orbit.Offset, _inchesPerMetre)}, rotation = {Vector(orbit.Rotation, 1f)}, rate = {Vector(orbit.RotationRate, 1f)}, "
+                + $"offsetTiming = {Timing(orbit.OffsetTiming)}, rotationTiming = {Timing(orbit.RotationTiming)}, rateTiming = {Timing(orbit.RotationRateTiming)} }}");
         }
 
         var parameters = Enumerable.Range(0, 4).Select(index => index < emitter.Parameters.Count && emitter.Parameters[index] is { } parameter
@@ -157,6 +158,11 @@ internal static class GarrysModEffectData
         Field("params", "{ " + string.Join(", ", parameters) + " }");
         text.Append("\t\t},\n");
     }
+
+    private static string Timing(ParticleOrbitTiming timing) =>
+        $"{{ spawn = {Bool(timing.OnSpawn)}, frame = {Bool(timing.EveryFrame)}, emitterTime = {Bool(timing.ByEmitterTime)} }}";
+
+    private static string Bool(bool value) => value ? "true" : "false";
 
     private static string Material(EmitterMaterial material)
     {

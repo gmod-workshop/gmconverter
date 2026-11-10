@@ -212,13 +212,22 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
                     }
 
                     break;
+                // Only one orbit per emitter is converted; Cascade chains several by their ChainMode.
+                case "ParticleModuleOrbit" when emitter.Orbit is not null:
+                    skipped.Add($"{className} (chained)");
+                    break;
                 case "ParticleModuleOrbit":
                     emitter = emitter with
                     {
                         Orbit = new ParticleOrbit(
                             Distance("OffsetAmount") ?? ParticleVector.Constant(Vector3.Zero),
-                            Map(Plain("RotationAmount"), value => value * _radiansPerTurn) ?? ParticleVector.Constant(Vector3.Zero),
-                            Map(Plain("RotationRateAmount"), value => value * _radiansPerTurn) ?? ParticleVector.Constant(Vector3.Zero)),
+                            Map(Plain("RotationAmount"), OrbitTurns) ?? ParticleVector.Constant(Vector3.Zero),
+                            Map(Plain("RotationRateAmount"), OrbitTurns) ?? ParticleVector.Constant(Vector3.Zero))
+                        {
+                            OffsetTiming = OrbitTiming(package, module, "OffsetOptions"),
+                            RotationTiming = OrbitTiming(package, module, "RotationOptions"),
+                            RotationRateTiming = OrbitTiming(package, module, "RotationRateOptions"),
+                        },
                     };
                     break;
                 case "ParticleModuleEventReceiverSpawn":
@@ -312,6 +321,20 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
         }
 
         return sources.Count == 0 ? null : new ParticleEventSpawn(sources, count ?? ParticleFloat.Constant(1f));
+    }
+
+    // Orbit rotations are turns, made an FRotator from (X roll, Y pitch, Z yaw). With Unreal's Y
+    // mirrored, that rotation is Rz(-yaw)·Ry(-pitch)·Rx(roll) in the SDK's right-handed axes.
+    private static Vector3 OrbitTurns(Vector3 turns) => new Vector3(turns.X, -turns.Y, -turns.Z) * _radiansPerTurn;
+
+    // OrbitOptions saves only what differs from its defaults: picked at spawn, by the particle's age.
+    private static ParticleOrbitTiming OrbitTiming(UE3Package package, UE3Properties module, string property)
+    {
+        var options = module.GetStruct(property, package.Summary.FileVersion);
+        return new ParticleOrbitTiming(
+            options?.GetBool("bProcessDuringSpawn") ?? true,
+            options?.GetBool("bProcessDuringUpdate") ?? false,
+            options?.GetBool("bUseEmitterTime") ?? false);
     }
 
     private static Vector3 ToMetres(Vector3 value) => new Vector3(value.X, -value.Y, value.Z) * _metresPerUnit;

@@ -25,6 +25,8 @@ public sealed class GarrysModEffectExporterTests
         Assert.Contains("events = { { count = { min = { 0, 2 } }, sources = { { 1, \"spawn\" }, { 2, \"death\" } } } },", lua);
         Assert.Contains("params = { [1] = { min = { 0, -1, 1, 3 } } },", lua);
         Assert.Contains("blend = \"additive\"", lua);
+        // Orbit values say when they're picked: the offset at spawn and again every frame.
+        Assert.Contains("offsetTiming = { spawn = true, frame = true, emitterTime = false }, rotationTiming = { spawn = true, frame = false, emitterTime = false }", lua);
         // Square sprites take their width for their height.
         Assert.Contains("alignment = 2,", lua);
         // Five centimetres toward the camera, as CrossFire HD's flares sit in front of the blade.
@@ -82,6 +84,10 @@ public sealed class GarrysModEffectExporterTests
             Acceleration = new Vector3(0f, 0f, -9.81f),
             Parameters = [ParticleFloat.Curve([new ParticleKey(0f, -1f), new ParticleKey(1f, 3f)])],
             CameraOffset = ParticleFloat.Constant(0.05f),
+            Orbit = new ParticleOrbit(ParticleVector.Constant(new Vector3(0f, 0f, 0.04f)), ParticleVector.Constant(Vector3.Zero), ParticleVector.Constant(Vector3.UnitX))
+            {
+                OffsetTiming = new ParticleOrbitTiming(true, true, false),
+            },
         };
         var tail = new ParticleEmitter("tail", material) { DurationSeconds = 0.1f, Bursts = [new ParticleBurst(0f, 1, 1)] };
         var flash = new ParticleEmitter("flash", material)

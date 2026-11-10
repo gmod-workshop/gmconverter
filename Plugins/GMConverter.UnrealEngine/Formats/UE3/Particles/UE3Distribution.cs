@@ -21,12 +21,13 @@ internal static class UE3Distribution
             return null;
         }
 
-        if (Table(raw) is { } table)
+        var found = Distribution(package, raw);
+        if (Table(raw) is { } table && Layout(raw, 1, found?.Class, table) is { } layout)
         {
-            return FloatFromTable(table, Layout(raw, 1));
+            return FloatFromTable(table, layout);
         }
 
-        if (Distribution(package, raw) is not { } distribution)
+        if (found is not { } distribution)
         {
             return null;
         }
@@ -52,12 +53,13 @@ internal static class UE3Distribution
             return null;
         }
 
-        if (Table(raw) is { } table)
+        var found = Distribution(package, raw);
+        if (Table(raw) is { } table && Layout(raw, 3, found?.Class, table) is { } layout)
         {
-            return VectorFromTable(table, Layout(raw, 3), convert);
+            return VectorFromTable(table, layout, convert);
         }
 
-        if (Distribution(package, raw) is not { } distribution)
+        if (found is not { } distribution)
         {
             return null;
         }
@@ -95,11 +97,23 @@ internal static class UE3Distribution
             [.. keys.Select(key => new ParticleVectorKey(key.Time, At(key.Offset + (layout.Random ? 3 : 0))))]);
     }
 
-    private static UE3DistributionTable Layout(UE3Properties raw, int width) => new(
-        (raw.GetByte("LookupTableNumElements") ?? 1) >= 2,
-        Math.Max(width, (int)(raw.GetByte("LookupTableChunkSize") ?? (byte)width)),
-        raw.GetFloat("LookupTableStartTime") ?? 0f,
-        raw.GetFloat("LookupTableTimeScale") ?? 0f);
+    // A table's header, like any property, is saved only where it differs from the module's default
+    // (an orbit's rotation rate defaults to a uniform range, so a uniform one saves no header). What
+    // is left out follows from the distribution baked into it: uniform ones hold a min and a max per
+    // sample. A table whose length doesn't fit its layout isn't used.
+    private static UE3DistributionTable? Layout(UE3Properties raw, int width, string? distributionClass, float[] table)
+    {
+        var random = raw.GetByte("LookupTableNumElements") is { } elements
+            ? elements >= 2
+            : distributionClass?.Contains("Uniform", StringComparison.Ordinal) == true;
+        var chunk = Math.Max(width, (int)(raw.GetByte("LookupTableChunkSize") ?? (byte)(random ? width * 2 : width)));
+        if ((table.Length - 2) % chunk != 0)
+        {
+            return null;
+        }
+
+        return new UE3DistributionTable(random, chunk, raw.GetFloat("LookupTableStartTime") ?? 0f, raw.GetFloat("LookupTableTimeScale") ?? 0f);
+    }
 
     // Mirroring (Unreal's Y flips into the SDK's) can swap a range's ends; keep min below max per axis.
     private static ParticleVector Ordered(IReadOnlyList<ParticleVectorKey> min, IReadOnlyList<ParticleVectorKey> max) => new(

@@ -102,4 +102,11 @@ public sealed record ParticleEmitter(string Name, Material Material)
 
     /// <summary>Moves each particle's drawn position around its real one.</summary>
     public ParticleOrbit? Orbit { get; init; }
+
+    /// <summary>
+    /// Four values each particle hands its material over its life (null where unset, read as 0), which
+    /// a <see cref="Material.Graph"/> reads through <see cref="MaterialGraphOp.ParticleParameters"/>:
+    /// effects drive texture slides, dissolves and glows with them.
+    /// </summary>
+    public IReadOnlyList<ParticleFloat?> Parameters { get; init; } = [];
 }

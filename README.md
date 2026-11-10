@@ -161,7 +161,6 @@ These use the `--glb-` prefix for both `glb` and `gltf` output. Binary or text o
 | --- | --- | --- |
 | `--pcf-materialPath <path>` | Folder for the effect's materials under the game's `materials` directory. | `particle/gmconverter/<name>` |
 | `--pcf-maxTextureSize <pixels>` | Particle textures larger than this are scaled down. | `512` |
-| `--pcf-studioMdlPath <path>` / `--pcf-vtfCmdPath <path>` | Tools for compiling mesh emitters' models (Garry's Mod), as for MDL export. | Auto-download |
 | `--pcf-viewModel` | Draw the effect with the view model (over it, at its field of view). Use for effects a first-person model's animations start. | `false` |
 
 </details>
@@ -390,10 +389,10 @@ Source picks each play's sound uniformly at random, so weighted choices are writ
 
 PCF export writes the effect to `particles/<name>.pcf`. Each emitter becomes a particle system of its own, which the effect's system starts as a child, so the effect plays by its source-game name and animation particle events start it. Each emitter's texture becomes a SpriteCard material under `materials/<material path>/`, and flipbooks become sprite sheets in the VTF. To load the file:
 
-- **Garry's Mod** (the default target): `lua/autorun/<name>_particles.lua` adds it with `game.AddParticles` and precaches its systems. Mesh emitters, which Source particles can't draw, are drawn by Lua instead: each mesh compiles to an MDL and `lua/autorun/client/<name>_effects.lua` registers it with a small client runtime (`gmconverter_effects.lua`), which draws it with the view model and slides its texture over the particle's life. Converted models whose animations start effects list those moments in `lua/autorun/client/<model>_effect_events.lua` for the runtime. This currently covers view models.
+- **Garry's Mod** (the default target): `lua/autorun/<name>_particles.lua` adds it with `game.AddParticles` and precaches its systems.
 - **Other Source games** (`--target source`): list `particles/<name>.pcf` in the game's `particles/particles_manifest.txt`.
 
-Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Emitters that spawn where another emitter's particles die emit on that emitter's schedule instead, one particle lifetime later, from where its particles start; colours brighter than white (common for glows) have their brightness moved into the emitter's texture, since Source's particle colours stop at white. Some features are left out: velocity over life and orbit rotation, and, outside Garry's Mod, particles drawn as meshes. The converter lists each approximation and omission as a warning.
+Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Emitters that spawn where another emitter's particles die emit on that emitter's schedule instead, one particle lifetime later, from where its particles start; colours brighter than white (common for glows) have their brightness moved into the emitter's texture, since Source's particle colours stop at white. Some features are left out: particles drawn as meshes, velocity over life, orbit rotation, and textures that slide over a particle's life. The converter lists each approximation and omission as a warning.
 
 Models whose animations start particle effects get `AE_CL_CREATE_PARTICLE_EFFECT` events that follow the bone or socket the effect starts at (an attachment is added for a bone that has none).
 

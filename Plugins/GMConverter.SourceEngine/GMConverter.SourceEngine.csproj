@@ -46,10 +46,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-    <EmbeddedResource Include="Particles\Lua\*.lua" />
-  </ItemGroup>
-
-  <ItemGroup>
         <PackageReference Include="MdlCrowbar" Version="0.74.1" />
         <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.4" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />

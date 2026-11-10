@@ -378,13 +378,8 @@ public sealed class MdlExporterTests
                 new AnimationEvent(0.6f, AnimationEventKind.ParticleEffect, Effect: "P_Dust"),
             ]);
 
-        var output = ExportWithStubCompiler(model with { Animations = [swing] }, targetGameId: "garrysmod");
-        var qc = File.ReadAllText(Directory.GetFiles(output, "*.qc", SearchOption.AllDirectories).Single());
-
-        // Garry's Mod also lists the events for the Lua runtime, which draws what Source particles can't.
-        var events = Directory.GetFiles(output, "*_effect_events.lua", SearchOption.AllDirectories);
-        Assert.Contains("[\"swing\"] = { { 0.5, \"P_Glow\", \"" + bone + "\" }, { 0.6, \"P_Dust\", \"\" } }", File.ReadAllText(Assert.Single(events)));
-        Assert.Single(Directory.GetFiles(output, "gmconverter_effects.lua", SearchOption.AllDirectories));
+        var qc = File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model with { Animations = [swing] }, targetGameId: "garrysmod"), "*.qc", SearchOption.AllDirectories).Single());
 
         Assert.Contains($"{{ event AE_CL_CREATE_PARTICLE_EFFECT 15 \"P_Glow follow_attachment {bone}\" }}", qc);
         Assert.Contains("{ event AE_CL_CREATE_PARTICLE_EFFECT 18 \"P_Dust follow_origin\" }", qc);

@@ -97,7 +97,7 @@ public sealed class PCFExporterTests
         var output = Path.Join(Path.GetTempPath(), "GMConverter.PCFTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
         var options = new OptionValues(new Dictionary<string, object?> { [PCFExporter.ViewModelOption] = true });
-        new PCFExporter(new DefaultTextureFactory()).Export(Glow(), new ExportContext(output, "fx", options) { TargetGameId = "garrysmod" });
+        new PCFExporter().Export(Glow(), new ExportContext(output, "fx", options) { TargetGameId = "garrysmod" });
 
         var systems = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions");
         Assert.All(systems, system => Assert.True(system.Get<bool>("view model effect")));
@@ -111,6 +111,19 @@ public sealed class PCFExporterTests
         var (_, result) = Export(Glow(), "source");
 
         Assert.Contains(result.Warnings, warning => warning.Contains("particles_manifest.txt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TextureSlidesOverLifeAreReportedAsLeftOut()
+    {
+        var effect = Glow();
+        var sliding = effect with
+        {
+            Emitters = [effect.Emitters[0] with { UvOffsetOverLife = ParticleVector.Curve([new ParticleVectorKey(0f, Vector3.Zero), new ParticleVectorKey(1f, Vector3.UnitX)]) }],
+        };
+        var (_, result) = Export(sliding, "garrysmod");
+
+        Assert.Contains(result.Warnings, warning => warning.StartsWith("P_Glow: texture slide over life is not written", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -148,7 +161,7 @@ public sealed class PCFExporterTests
     {
         var output = Path.Join(Path.GetTempPath(), "GMConverter.PCFTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
-        var result = new PCFExporter(new DefaultTextureFactory()).Export(effect, new ExportContext(output, "fx", OptionValues.Empty) { TargetGameId = target });
+        var result = new PCFExporter().Export(effect, new ExportContext(output, "fx", OptionValues.Empty) { TargetGameId = target });
         return (output, result);
     }
 

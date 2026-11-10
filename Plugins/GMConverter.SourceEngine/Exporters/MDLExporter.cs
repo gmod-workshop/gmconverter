@@ -10,10 +10,8 @@ using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Animation;
 using GMConverter.SourceEngine.Materials;
-using GMConverter.SourceEngine.Particles;
 using GMConverter.SourceEngine.Physics;
 using GMConverter.SourceEngine.Profiles;
-using GMConverter.SourceEngine.Profiles.GarrysMod;
 using GMConverter.SourceEngine.Tools;
 
 namespace GMConverter.SourceEngine.Exporters;
@@ -182,17 +180,10 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         }
 
         var target = SourceProfiles.Find(context.TargetGameId);
-        List<(string Sequence, AnimationClip Clip)> sequences = [];
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(model, clip, context.TargetOptions) ?? [],
             clip => target?.GetEvents(clip) ?? [],
-            axis => target?.GetPoseParameter(axis),
-            sequences);
-        List<string> files = [qcPath];
-        if (target is GarrysModProfile)
-        {
-            files.AddRange(WriteEffectEvents(context.OutputDirectory, modelPath, safeBaseName, sequences));
-        }
+            axis => target?.GetPoseParameter(axis));
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -205,43 +196,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
         Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
-        return new ExportResult(files);
-    }
-
-    // Garry's Mod draws some converted effects (mesh particles) in Lua, which can't hear model
-    // events, so the model's particle events are also listed for the Lua runtime to start at the
-    // same moments. PCF effects ignore the list.
-    private static IEnumerable<string> WriteEffectEvents(string outputDirectory, string modelPath, string safeBaseName, List<(string Sequence, AnimationClip Clip)> sequences)
-    {
-        Dictionary<string, IReadOnlyList<(float Time, string Effect, string? Attachment)>> events = new(StringComparer.Ordinal);
-        foreach (var (sequence, clip) in sequences)
-        {
-            var effects = (clip.Events ?? [])
-                .Where(animationEvent => animationEvent.Kind == AnimationEventKind.ParticleEffect && !string.IsNullOrWhiteSpace(animationEvent.Effect))
-                .Select(animationEvent => (Math.Min(animationEvent.TimeSeconds, clip.DurationSeconds), animationEvent.Effect!, animationEvent.Bone))
-                .ToArray();
-            if (effects.Length > 0)
-            {
-                events[sequence] = effects;
-            }
-        }
-
-        if (events.Count == 0)
-        {
-            yield break;
-        }
-
-        foreach (var (relativePath, contents) in new[]
-        {
-            (GarrysModEffectsLua.RuntimePath, GarrysModEffectsLua.Runtime),
-            (Path.Join("lua", "autorun", "client", $"{safeBaseName}_effect_events.lua"), GarrysModEffectsLua.ModelEvents($"models/{modelPath.Replace('\\', '/')}", events)),
-        })
-        {
-            var path = Path.Join(outputDirectory, relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, contents, _utf8NoBom);
-            yield return path;
-        }
+        return new ExportResult([qcPath]);
     }
 
     // Binds the host's option bag into the strongly-typed MDLExportOptions the rest of this
@@ -690,8 +645,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Dictionary<AnimationPose, string> basePoseSmdPaths,
         Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities,
         Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
-        Func<BlendAxis, SourcePoseParameter?> getPoseParameter,
-        List<(string Sequence, AnimationClip Clip)> writtenSequences)
+        Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
@@ -752,17 +706,13 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             var events = getEvents(clip);
             if (activities.Count == 0)
             {
-                var name = UniqueSequenceName(clip.Name);
-                writtenSequences.Add((name, clip));
-                WriteSequence(writer, model, clip, animationSmdPath, name, activity: null, events, basePoseSmdPaths);
+                WriteSequence(writer, model, clip, animationSmdPath, UniqueSequenceName(clip.Name), activity: null, events, basePoseSmdPaths);
                 continue;
             }
 
             foreach (var activity in activities)
             {
-                var name = UniqueSequenceName(clip.Name + activity.SequenceSuffix);
-                writtenSequences.Add((name, clip));
-                WriteSequence(writer, model, clip, animationSmdPath, name, activity.Name, events, basePoseSmdPaths);
+                WriteSequence(writer, model, clip, animationSmdPath, UniqueSequenceName(clip.Name + activity.SequenceSuffix), activity.Name, events, basePoseSmdPaths);
             }
         }
 

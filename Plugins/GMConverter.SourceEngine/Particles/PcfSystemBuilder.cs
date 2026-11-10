@@ -9,7 +9,7 @@ namespace GMConverter.SourceEngine.Particles;
 /// start time. What Source's operators can't express is approximated or left out, and listed in
 /// <see cref="Warnings"/>.
 /// </summary>
-internal sealed class PcfSystemBuilder(bool viewModel = false, Func<ParticleEmitter, bool>? drawnElsewhere = null)
+internal sealed class PcfSystemBuilder(bool viewModel = false)
 {
     private const float _inchesPerMetre = 39.3701f;
     private const int _defaultMaxParticles = 64;
@@ -63,11 +63,6 @@ internal sealed class PcfSystemBuilder(bool viewModel = false, Func<ParticleEmit
         var name = SystemName(effect, emitter);
         void Warn(string message) => _warnings.Add($"{name}: {message}");
 
-        if (drawnElsewhere?.Invoke(emitter) == true)
-        {
-            return null;
-        }
-
         if (emitter.Mesh is not null)
         {
             Warn("mesh particles are not written; Source draws particle models only from compiled MDLs.");
@@ -107,6 +102,11 @@ internal sealed class PcfSystemBuilder(bool viewModel = false, Func<ParticleEmit
         if (emitter.Orbit is { } orbit && (VectorBounds(orbit.RotationRate) != (Vector3.Zero, Vector3.Zero) || VectorBounds(orbit.Rotation) != (Vector3.Zero, Vector3.Zero)))
         {
             Warn("orbit rotation is not written; only its offset is kept.");
+        }
+
+        if (emitter.UvOffsetOverLife is not null)
+        {
+            Warn("texture slide over life is not written; Source particles can't move a material's texture by particle age, so the texture is drawn at rest.");
         }
 
         return system;

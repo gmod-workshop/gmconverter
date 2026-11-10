@@ -25,7 +25,9 @@ public sealed class LitShadingTests
         Assert.Contains("float4 n3 = tex2D(Texture0, n2);", hlsl);
         Assert.Contains("clip(n9 - 0.5);", hlsl);
         Assert.Contains("ShadeUnrealGgx(normal, view, In.world, In.atten,", hlsl);
-        Assert.Contains("n3.xyz, n7, n7, roughness, n6);", hlsl);
+        Assert.Contains("float3 baseColor = n3.xyz;", hlsl);
+        Assert.Contains("baseColor, n7, n7, roughness, n6);", hlsl);
+        Assert.Contains("color = g_Unlit.x > 0.5 ? baseColor : color;", hlsl);
         Assert.Contains("FinalOutput(float4(color + n8, 1)", hlsl);
         Assert.Contains("samplerCUBE SceneProbe : register(s6);", hlsl);
         Assert.Contains("sampler EnvironmentBrdf : register(s7);", hlsl);

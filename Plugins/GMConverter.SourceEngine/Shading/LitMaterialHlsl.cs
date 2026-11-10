@@ -12,6 +12,8 @@ namespace GMConverter.SourceEngine.Shading;
 /// (<c>gmc_unreal_ggx.hlsl</c>) with the lighting Source gives the model, which the Lua runtime commits
 /// before each draw. Models have no tangents in this shader, so the tangent frame comes from screen
 /// derivatives of the position and texture coordinate, kept at right angles to the vertex normal.
+/// On fullbright maps, which Source draws without lighting, the surface is drawn unlit at its base
+/// colour, as Source draws its own models there.
 /// </summary>
 internal static class LitMaterialHlsl
 {
@@ -77,8 +79,10 @@ internal static class LitMaterialHlsl
         text.AppendLine("""
 
             // Set by the Lua runtime: x seconds, y the limit on the GGX distribution, z the reflections'
-            // scale, w the probe's last mip. Committed by its lighting draw: the ambient cube and lights.
+            // scale, w the probe's last mip; x of the next, 1 when the map is drawn fullbright (unlit).
+            // Committed by its lighting draw: the ambient cube and lights.
             const float4 g_Shading : register(c0);
+            const float4 g_Unlit : register(c1);
             const float3 g_AmbientCube[6] : register(c4);
             const float4 g_Lights[6] : register(c20);
             """);
@@ -141,8 +145,11 @@ internal static class LitMaterialHlsl
         var reflection = surface.Reflection is { } reflectionNode ? MaterialGraphHlsl.Value(graph, reflectionNode, 3) : "sceneReflection";
         var emissive = graph.Emissive is { } emissiveNode ? MaterialGraphHlsl.Value(graph, emissiveNode, 3) : "float3(0, 0, 0)";
         text.AppendLine(CultureInfo.InvariantCulture, $$"""
+                float3 baseColor = {{MaterialGraphHlsl.Value(graph, surface.BaseColor, 3)}};
                 float3 color = ShadeUnrealGgx(normal, view, In.world, In.atten,
-                    {{MaterialGraphHlsl.Value(graph, surface.BaseColor, 3)}}, {{MaterialGraphHlsl.Value(graph, surface.Metallic, 1)}}, {{MaterialGraphHlsl.Value(graph, surface.Specular, 1)}}, roughness, {{reflection}});
+                    baseColor, {{MaterialGraphHlsl.Value(graph, surface.Metallic, 1)}}, {{MaterialGraphHlsl.Value(graph, surface.Specular, 1)}}, roughness, {{reflection}});
+                // Fullbright maps have no lighting; Source draws models there unlit, at their colour.
+                color = g_Unlit.x > 0.5 ? baseColor : color;
                 return FinalOutput(float4(color + {{emissive}}, 1), 0, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_LINEAR);
             }
             """);

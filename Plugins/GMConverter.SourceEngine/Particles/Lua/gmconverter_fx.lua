@@ -7,7 +7,7 @@
 --
 -- Effect space: +X forward, +Y left, +Z up, in Source units, attached to an entity's attachment.
 
-local VERSION = 4
+local VERSION = 5
 
 if GMConverterFX and (GMConverterFX.version or 0) >= VERSION then return end
 
@@ -178,6 +178,7 @@ local PROBE_SAMPLER, BRDF_SAMPLER = 7, 8 -- 1-based, as TEXTURE_PARAMS
 
 -- The limit CrossFire HD maps put on the GGX distribution (WorldInfo.GGXMaxStrength); Source maps
 -- have none, so none by default.
+local fullbright = GetConVar("mat_fullbright")
 local ggxLimit = CreateClientConVar("gmconverter_ggx_limit", "0", true, false, "Largest GGX distribution value lit GMConverter materials use; 0 for none.")
 
 local litMaterials = {}
@@ -267,6 +268,7 @@ local function beginShading(ent, center)
 			mat:SetFloat("$c0_y", limit > 0 and limit or 1e30)
 			mat:SetFloat("$c0_z", 1)
 			mat:SetFloat("$c0_w", lastMip)
+			mat:SetFloat("$c1_x", fullbright:GetInt() ~= 0 and 1 or 0)
 			render.MaterialOverrideByIndex(entry[1], mat)
 		end
 	end

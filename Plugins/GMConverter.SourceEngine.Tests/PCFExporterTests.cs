@@ -76,6 +76,19 @@ public sealed class PCFExporterTests
     }
 
     [Fact]
+    public void SpawnEventsFollowTheirSourcesScheduleUndelayed()
+    {
+        var effect = Glow();
+        var sparks = effect.Emitters[1] with { EventSpawns = [new ParticleEventSpawn([new ParticleEventSource("core", ParticleEventKind.Spawn)], ParticleFloat.Constant(2f))] };
+        var (output, _) = Export(effect with { Emitters = [effect.Emitters[0], sparks] }, "garrysmod");
+
+        var burst = DmxTestReader.Read(Path.Join(output, "particles", "fx.pcf")).Root.Children("particleSystemDefinitions")[2]
+            .Function("emitters", "emit_instantaneously");
+        Assert.Equal(0.25f, burst.Get<float>("emission_start_time"), 4);
+        Assert.Equal(6, burst.Get<int>("num_to_emit"));
+    }
+
+    [Fact]
     public void BrighterThanWhiteKeepsItsHue()
     {
         var effect = Glow();
@@ -162,7 +175,7 @@ public sealed class PCFExporterTests
         };
         var sparks = new ParticleEmitter("sparks", new Material("spark"))
         {
-            DeathSpawn = new ParticleDeathSpawn("core", ParticleFloat.Constant(2f)),
+            EventSpawns = [new ParticleEventSpawn([new ParticleEventSource("core", ParticleEventKind.Death)], ParticleFloat.Constant(2f))],
         };
         return new ParticleEffect("P_Glow", [core, sparks]);
     }

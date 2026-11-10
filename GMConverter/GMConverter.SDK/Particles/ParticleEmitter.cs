@@ -39,8 +39,8 @@ public sealed record ParticleEmitter(string Name, Material Material)
     /// <summary>Particles released at once during each cycle.</summary>
     public IReadOnlyList<ParticleBurst> Bursts { get; init; } = [];
 
-    /// <summary>Particles released where another emitter's particles die, instead of by rate or burst.</summary>
-    public ParticleDeathSpawn? DeathSpawn { get; init; }
+    /// <summary>Particles released where other emitters' particles are born or die.</summary>
+    public IReadOnlyList<ParticleEventSpawn> EventSpawns { get; init; } = [];
 
     /// <summary>The most particles alive at once, when the source game caps it.</summary>
     public int? MaxParticles { get; init; }

@@ -177,7 +177,16 @@ local function frameOf(instance)
 	return instance.pos or vector_origin, instance.ang or angle_zero
 end
 
-local function spawnParticle(instance, state, emitter, emitterTime, worldOrigin)
+-- Particles raise events where they are born and die; emitters listening for them release theirs there
+-- once every emitter has ticked. An event's position is in its emitter's space.
+local function raise(instance, emitter, kind, p)
+	local listeners = emitter.listeners and emitter.listeners[kind]
+	if not listeners then return end
+	local queue = instance.events
+	queue[#queue + 1] = { listeners = listeners, x = p.x, y = p.y, z = p.z, localSpace = emitter.localSpace }
+end
+
+local function spawnParticle(instance, state, emitter, emitterTime, origin)
 	if #state.particles >= emitter.max then return end
 	local life = floatAt(emitter.life, emitterTime, random())
 	if life <= 0 then return end
@@ -212,15 +221,22 @@ local function spawnParticle(instance, state, emitter, emitterTime, worldOrigin)
 	end
 
 	local pos, ang = frameOf(instance)
-	if worldOrigin then
-		-- Released where another particle died: there, offset by the location in the effect's axes.
-		local world = worldOrigin + ang:Forward() * lx - ang:Right() * ly + ang:Up() * lz
-		if emitter.localSpace then
-			local localPos = WorldToLocal(world, angle_zero, pos, ang)
-			lx, ly, lz = localPos.x, localPos.y, localPos.z
-		else
-			lx, ly, lz = world.x, world.y, world.z
+	if origin then
+		-- Released at another particle's event: there, offset by the location in the effect's axes.
+		local ox, oy, oz = origin.x, origin.y, origin.z
+		if origin.localSpace and not emitter.localSpace then
+			local world = LocalToWorld(Vector(ox, oy, oz), angle_zero, pos, ang)
+			ox, oy, oz = world.x, world.y, world.z
+		elseif emitter.localSpace and not origin.localSpace then
+			local localPos = WorldToLocal(Vector(ox, oy, oz), angle_zero, pos, ang)
+			ox, oy, oz = localPos.x, localPos.y, localPos.z
 		end
+		if not emitter.localSpace then
+			local offset = Vector(lx, ly, lz)
+			offset:Rotate(ang)
+			lx, ly, lz = offset.x, offset.y, offset.z
+		end
+		lx, ly, lz = ox + lx, oy + ly, oz + lz
 	elseif not emitter.localSpace then
 		local world = LocalToWorld(Vector(lx, ly, lz), angle_zero, pos, ang)
 		lx, ly, lz = world.x, world.y, world.z
@@ -233,6 +249,7 @@ local function spawnParticle(instance, state, emitter, emitterTime, worldOrigin)
 	end
 	p.x, p.y, p.z, p.vx, p.vy, p.vz = lx, ly, lz, vx, vy, vz
 	state.particles[#state.particles + 1] = p
+	raise(instance, emitter, "spawn", p)
 end
 
 local function worldPosition(instance, emitter, p)
@@ -241,22 +258,25 @@ local function worldPosition(instance, emitter, p)
 	return LocalToWorld(Vector(p.x, p.y, p.z), angle_zero, pos, ang)
 end
 
-local function spawnAt(instance, emitter, emitterTime, count, worldOrigin)
+local function spawnAt(instance, emitter, emitterTime, count, origin)
 	local state = instance.states[emitter.index]
-	for _ = 1, count do spawnParticle(instance, state, emitter, emitterTime, worldOrigin) end
+	for _ = 1, count do spawnParticle(instance, state, emitter, emitterTime, origin) end
+end
+
+-- The emitter's cycle and its time within it.
+local function clock(emitter, time)
+	local emitterTime = max(time - emitter.delay, 0)
+	local duration = emitter.duration
+	if duration <= 0 then return 0, emitterTime end
+	local cycle = floor(emitterTime / duration)
+	return cycle, emitterTime - cycle * duration
 end
 
 -- Advances an emitter's schedule; returns whether it may still release particles.
 local function schedule(instance, emitter, state, time, dt)
-	if emitter.deathSpawn then return false end
-	local emitterTime = time - emitter.delay
-	if emitterTime < 0 then return true end
+	if time < emitter.delay then return true end
 	local duration = emitter.duration
-	local cycle, cycleTime = 0, emitterTime
-	if duration > 0 then
-		cycle = floor(emitterTime / duration)
-		cycleTime = emitterTime - cycle * duration
-	end
+	local cycle, cycleTime = clock(emitter, time)
 	if emitter.loops > 0 and cycle >= emitter.loops then return false end
 	if instance.stopping then return false end
 	if cycle ~= state.cycle then
@@ -305,14 +325,7 @@ local function simulate(instance, dt)
 			p.t = p.t + dt
 			local age = p.t / p.life
 			if age >= 1 then
-				local listeners = emitter.listeners
-				if listeners then
-					local world = worldPosition(instance, emitter, p)
-					for _, listener in ipairs(listeners) do
-						local child = emitters[listener]
-						spawnAt(instance, child, time - child.delay, floor(floatAt(child.deathSpawn.count, 0, random()) + 0.5), world)
-					end
-				end
+				raise(instance, emitter, "death", p)
 				particles[i] = particles[#particles]
 				particles[#particles] = nil
 			else
@@ -327,6 +340,17 @@ local function simulate(instance, dt)
 				alive = true
 				i = i + 1
 			end
+		end
+	end
+	-- Events reach their listeners after every emitter has ticked; ones raised meanwhile wait a frame.
+	local events = instance.events
+	instance.events = {}
+	for _, event in ipairs(events) do
+		for _, listener in ipairs(event.listeners) do
+			local child = emitters[listener.emitter]
+			local _, childTime = clock(child, time)
+			spawnAt(instance, child, childTime, floor(floatAt(listener.count, childTime, random())), event)
+			alive = true
 		end
 	end
 	return alive
@@ -505,11 +529,14 @@ function FX.Play(name, entity, attachmentName, viewModel, pos, ang)
 	if not effect.linked then
 		effect.linked = true
 		for index, emitter in ipairs(effect.emitters) do
-			if emitter.deathSpawn then
-				local source = effect.emitters[emitter.deathSpawn.emitter]
-				if source then
-					source.listeners = source.listeners or {}
-					source.listeners[#source.listeners + 1] = index
+			for _, eventSpawn in ipairs(emitter.events or {}) do
+				for _, source in ipairs(eventSpawn.sources) do
+					local from = effect.emitters[source[1]]
+					if from then
+						from.listeners = from.listeners or {}
+						from.listeners[source[2]] = from.listeners[source[2]] or {}
+						table.insert(from.listeners[source[2]], { emitter = index, count = eventSpawn.count })
+					end
 				end
 			end
 		end
@@ -517,7 +544,7 @@ function FX.Play(name, entity, attachmentName, viewModel, pos, ang)
 	local instance = {
 		effect = effect, name = name, entity = entity, viewModel = viewModel and true or false,
 		attachment = IsValid(entity) and attachmentName and entity:LookupAttachment(attachmentName) or nil,
-		pos = pos, ang = ang, time = 0, states = {}, last = CurTime(),
+		pos = pos, ang = ang, time = 0, states = {}, events = {}, last = CurTime(),
 	}
 	for index in ipairs(effect.emitters) do
 		instance.states[index] = { particles = {}, accumulated = 0, rateRandom = random(), fired = {}, cycle = -1 }

@@ -13,7 +13,7 @@ namespace GMConverter.SourceEngine.Tests;
 public sealed class GarrysModEffectExporterTests
 {
     [Fact]
-    public void EmittersBecomeLuaInSourceUnitsWithDeathSpawnsByIndex()
+    public void EmittersBecomeLuaInSourceUnitsWithEventSourcesByIndex()
     {
         var lua = GarrysModEffectData.Write(Flare(), _ => Material(), _ => null);
 
@@ -22,7 +22,7 @@ public sealed class GarrysModEffectExporterTests
         // 10 cm sprites are about four inches; gravity is in inches per second squared.
         Assert.Contains("size = { min = { 0, 3.937008, 3.937008, 3.937008 } },", lua);
         Assert.Contains("acceleration = { 0, 0, -386.220", lua);
-        Assert.Contains("deathSpawn = { emitter = 1, count = { min = { 0, 2 } } },", lua);
+        Assert.Contains("events = { { count = { min = { 0, 2 } }, sources = { { 1, \"spawn\" }, { 2, \"death\" } } } },", lua);
         Assert.Contains("params = { [1] = { min = { 0, -1, 1, 3 } } },", lua);
         Assert.Contains("blend = \"additive\"", lua);
         // Five centimetres toward the camera, as CrossFire HD's flares sit in front of the blade.
@@ -80,7 +80,11 @@ public sealed class GarrysModEffectExporterTests
             Parameters = [ParticleFloat.Curve([new ParticleKey(0f, -1f), new ParticleKey(1f, 3f)])],
             CameraOffset = ParticleFloat.Constant(0.05f),
         };
-        var flash = new ParticleEmitter("flash", material) { DeathSpawn = new ParticleDeathSpawn("core", ParticleFloat.Constant(2f)) };
-        return new ParticleEffect("P_Flare", [core, flash]);
+        var tail = new ParticleEmitter("tail", material) { DurationSeconds = 0.1f, Bursts = [new ParticleBurst(0f, 1, 1)] };
+        var flash = new ParticleEmitter("flash", material)
+        {
+            EventSpawns = [new ParticleEventSpawn([new ParticleEventSource("core", ParticleEventKind.Spawn), new ParticleEventSource("tail", ParticleEventKind.Death)], ParticleFloat.Constant(2f))],
+        };
+        return new ParticleEffect("P_Flare", [core, tail, flash]);
     }
 }

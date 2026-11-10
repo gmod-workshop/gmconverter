@@ -69,15 +69,23 @@ internal sealed class PcfSystemBuilder(bool viewModel = false)
             return null;
         }
 
-        if (emitter.DeathSpawn is { } deathSpawn)
+        if (emitter.EventSpawns is [var eventSpawn, ..])
         {
-            if (DeathSchedule(effect, emitter, deathSpawn) is not { } scheduled)
+            var source = eventSpawn.Sources[0];
+            var moment = source.Kind == ParticleEventKind.Death ? "die" : "are born";
+            if (EventSchedule(effect, emitter, eventSpawn, source) is not { } scheduled)
             {
-                Warn($"spawns where {deathSpawn.Emitter}'s particles die, which Source particle systems can't do; left out.");
+                Warn($"spawns where {source.Emitter}'s particles {moment}, which Source particle systems can't do; left out.");
                 return null;
             }
 
-            Warn($"spawns where {deathSpawn.Emitter}'s particles die, which Source can't do; written as emission on {deathSpawn.Emitter}'s schedule, delayed by its particles' lifetime, from where they start.");
+            var delay = source.Kind == ParticleEventKind.Death ? ", delayed by its particles' lifetime," : string.Empty;
+            Warn($"spawns where {source.Emitter}'s particles {moment}, which Source can't do; written as emission on {source.Emitter}'s schedule{delay} from where they start.");
+            if (emitter.EventSpawns.Count > 1 || eventSpawn.Sources.Count > 1)
+            {
+                Warn("only its first event source is written.");
+            }
+
             emitter = scheduled;
         }
 
@@ -117,32 +125,32 @@ internal sealed class PcfSystemBuilder(bool viewModel = false)
         return system;
     }
 
-    // Particles released where another emitter's die follow that emitter's releases, one average
-    // lifetime later, from where its particles start (exact when they don't move far).
-    private static ParticleEmitter? DeathSchedule(ParticleEffect effect, ParticleEmitter emitter, ParticleDeathSpawn deathSpawn)
+    // Particles released where another emitter's are born or die follow that emitter's releases (one
+    // average lifetime later for deaths), from where its particles start (exact when they don't move far).
+    private static ParticleEmitter? EventSchedule(ParticleEffect effect, ParticleEmitter emitter, ParticleEventSpawn eventSpawn, ParticleEventSource source)
     {
-        var parent = effect.Emitters.FirstOrDefault(other => other.Name == deathSpawn.Emitter);
-        if (parent is null || parent.DeathSpawn is not null)
+        var parent = effect.Emitters.FirstOrDefault(other => other.Name == source.Emitter);
+        if (parent is null || parent.EventSpawns.Count > 0)
         {
             return null;
         }
 
-        var count = deathSpawn.Count.Bounds();
-        var perDeath = (count.Min + count.Max) / 2f;
+        var count = eventSpawn.Count.Bounds();
+        var perEvent = (count.Min + count.Max) / 2f;
         var (lifeMin, lifeMax) = parent.Lifetime.Bounds();
         return emitter with
         {
-            DeathSpawn = null,
-            DelaySeconds = parent.DelaySeconds + ((lifeMin + lifeMax) / 2f),
+            EventSpawns = [],
+            DelaySeconds = parent.DelaySeconds + (source.Kind == ParticleEventKind.Death ? (lifeMin + lifeMax) / 2f : 0f),
             DurationSeconds = parent.DurationSeconds,
             Cycles = parent.Cycles,
             SpawnRate = parent.SpawnRate is { } rate ? new ParticleFloat(
-                [.. rate.Min.Select(key => key with { Value = key.Value * perDeath })],
-                [.. rate.Max.Select(key => key with { Value = key.Value * perDeath })]) : null,
+                [.. rate.Min.Select(key => key with { Value = key.Value * perEvent })],
+                [.. rate.Max.Select(key => key with { Value = key.Value * perEvent })]) : null,
             Bursts = [.. parent.Bursts.Select(burst => burst with
             {
-                MinCount = (int)MathF.Round(burst.MinCount * count.Min),
-                MaxCount = (int)MathF.Round(burst.MaxCount * count.Max),
+                MinCount = (int)MathF.Floor(burst.MinCount * count.Min),
+                MaxCount = (int)MathF.Floor(burst.MaxCount * count.Max),
             })],
             StartLocation = emitter.StartLocation ?? parent.StartLocation,
         };

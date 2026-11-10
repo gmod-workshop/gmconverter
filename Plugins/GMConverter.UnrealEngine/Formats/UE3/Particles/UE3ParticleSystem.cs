@@ -46,24 +46,26 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
             emitters.Add((emitter, lodProperties));
         }
 
-        // Event receivers spawn from the emitter whose generator raises the event they listen for.
-        Dictionary<string, string> eventSources = new(StringComparer.OrdinalIgnoreCase);
+        // Event receivers spawn from every emitter whose generator raises the event they listen for:
+        // a name, and the moment (a particle's spawn or death) that raises it.
+        Dictionary<string, List<(string Emitter, string Type)>> eventSources = new(StringComparer.OrdinalIgnoreCase);
         var names = emitters.Select((emitter, index) => EmitterName(package, emitter.Export, emitter.Lod, index)).ToArray();
+        List<string> skipped = [];
         for (var index = 0; index < emitters.Count; index++)
         {
             if (package.GetExport(emitters[index].Lod.GetObject("EventGenerator")) is { } generator)
             {
                 foreach (var generated in package.OpenObject(generator).Properties.GetStructArray("Events", package.Summary.FileVersion))
                 {
-                    if (generated.GetName("CustomName") is { Length: > 0 } eventName)
+                    if (generated.GetName("CustomName") is { Length: > 0 } eventName && generated.Find("Type")?.EnumValue is { } type)
                     {
-                        eventSources.TryAdd(eventName, names[index]);
+                        eventSources.TryAdd(eventName, []);
+                        eventSources[eventName].Add((names[index], type));
                     }
                 }
             }
         }
 
-        List<string> skipped = [];
         List<UE3ParticleEmitter> read = [];
         for (var index = 0; index < emitters.Count; index++)
         {
@@ -80,7 +82,7 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
     }
 
     private static UE3ParticleEmitter ReadEmitter(
-        UE3GameContent content, UE3Package package, UE3Properties lod, string name, Dictionary<string, string> eventSources, List<string> skipped)
+        UE3GameContent content, UE3Package package, UE3Properties lod, string name, Dictionary<string, List<(string Emitter, string Type)>> eventSources, List<string> skipped)
     {
         UE3Properties Module(int index) => package.OpenObject(package.GetExport(index)!).Properties;
         var required = package.GetExport(lod.GetObject("RequiredModule")) is { } requiredExport ? package.OpenObject(requiredExport).Properties : null;
@@ -220,9 +222,9 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
                     };
                     break;
                 case "ParticleModuleEventReceiverSpawn":
-                    if (module.GetName("EventName") is { } eventName && eventSources.TryGetValue(eventName, out var source))
+                    if (ReceiverSpawn(module, eventSources, className, skipped, Float("SpawnCount")) is { } eventSpawn)
                     {
-                        emitter = emitter with { DeathSpawn = new ParticleDeathSpawn(source, Float("SpawnCount") ?? ParticleFloat.Constant(1f)) };
+                        emitter = emitter with { EventSpawns = [.. emitter.EventSpawns, eventSpawn] };
                     }
 
                     break;
@@ -253,6 +255,46 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
         }
 
         return new UE3ParticleEmitter(emitter, meshMaterial ?? material, mesh) { DynamicParameters = dynamicParameters };
+    }
+
+    // A receiver listens for one event name, from generators raising it at a particle's spawn or
+    // death (EPET_Any, the default, takes either). Collision events, and the receiver options that
+    // take the system's location, the event's time or the particle's velocity, aren't converted.
+    private static ParticleEventSpawn? ReceiverSpawn(
+        UE3Properties module, Dictionary<string, List<(string Emitter, string Type)>> eventSources, string className, List<string> skipped, ParticleFloat? count)
+    {
+        foreach (var option in new[] { "bUsePSysLocation", "bUseParticleTime", "bInheritVelocity" })
+        {
+            if (module.GetBool(option) == true)
+            {
+                skipped.Add($"{className}.{option}");
+            }
+        }
+
+        if (module.GetName("EventName") is not { } eventName || !eventSources.TryGetValue(eventName, out var generators))
+        {
+            return null;
+        }
+
+        var listensFor = module.Find("EventGeneratorType")?.EnumValue ?? "EPET_Any";
+        List<ParticleEventSource> sources = [];
+        foreach (var (source, type) in generators.Where(generator => listensFor == "EPET_Any" || generator.Type == listensFor))
+        {
+            switch (type)
+            {
+                case "EPET_Spawn":
+                    sources.Add(new ParticleEventSource(source, ParticleEventKind.Spawn));
+                    break;
+                case "EPET_Death":
+                    sources.Add(new ParticleEventSource(source, ParticleEventKind.Death));
+                    break;
+                default:
+                    skipped.Add($"{className} ({type} events)");
+                    break;
+            }
+        }
+
+        return sources.Count == 0 ? null : new ParticleEventSpawn(sources, count ?? ParticleFloat.Constant(1f));
     }
 
     private static Vector3 ToMetres(Vector3 value) => new Vector3(value.X, -value.Y, value.Z) * _metresPerUnit;

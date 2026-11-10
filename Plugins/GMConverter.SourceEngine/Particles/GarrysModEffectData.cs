@@ -63,9 +63,18 @@ internal static class GarrysModEffectData
         }
 
         Field("bursts", "{ " + string.Join(", ", emitter.Bursts.Select(burst => $"{{ {Number(burst.TimeSeconds)}, {burst.MinCount}, {burst.MaxCount} }}")) + " }");
-        if (emitter.DeathSpawn is { } death && effect.Emitters.ToList().FindIndex(other => other.Name == death.Emitter) is >= 0 and var source)
+        var events = emitter.EventSpawns.Select(eventSpawn =>
         {
-            Field("deathSpawn", $"{{ emitter = {source + 1}, count = {Float(death.Count, 1f)} }}");
+            var sources = eventSpawn.Sources
+                .Select(source => (Index: effect.Emitters.ToList().FindIndex(other => other.Name == source.Emitter), source.Kind))
+                .Where(source => source.Index >= 0)
+                .Select(source => $"{{ {source.Index + 1}, {(source.Kind == ParticleEventKind.Death ? "\"death\"" : "\"spawn\"")} }}")
+                .ToArray();
+            return sources.Length == 0 ? null : $"{{ count = {Float(eventSpawn.Count, 1f)}, sources = {{ {string.Join(", ", sources)} }} }}";
+        }).OfType<string>().ToArray();
+        if (events.Length > 0)
+        {
+            Field("events", "{ " + string.Join(", ", events) + " }");
         }
 
         Field("life", Float(emitter.Lifetime, 1f));
@@ -166,8 +175,8 @@ internal static class GarrysModEffectData
         var lifetime = emitter.Lifetime.Bounds().Max;
         var rate = emitter.SpawnRate?.Bounds().Max ?? 0f;
         var bursts = emitter.Bursts.Sum(burst => burst.MaxCount);
-        var deaths = emitter.DeathSpawn is { } death ? (int)MathF.Ceiling(death.Count.Bounds().Max) * 64 : 0;
-        return Math.Clamp((int)MathF.Ceiling((rate * lifetime) + bursts) + deaths + 8, 8, _maximumParticles);
+        var events = emitter.EventSpawns.Sum(eventSpawn => (int)MathF.Ceiling(eventSpawn.Count.Bounds().Max) * 64 * eventSpawn.Sources.Count);
+        return Math.Clamp((int)MathF.Ceiling((rate * lifetime) + bursts) + events + 8, 8, _maximumParticles);
     }
 
     private static string Float(ParticleFloat value, float scale)

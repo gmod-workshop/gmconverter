@@ -26,6 +26,7 @@ public sealed class SourceEnginePlugin : IPlugin
         context.RegisterImporter<WAVImporter>();
         context.RegisterExporter<WAVExporter>();
         context.RegisterExporter<PCFExporter>();
+        context.RegisterExporter<GarrysModEffectExporter>();
         // The first target registered for each exporter is its default.
         foreach (var profile in SourceProfiles.All)
         {

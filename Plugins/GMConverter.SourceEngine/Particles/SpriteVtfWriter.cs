@@ -3,7 +3,7 @@ using System.Text;
 namespace GMConverter.SourceEngine.Particles;
 
 /// <summary>
-/// Writes a particle texture as a VTF 7.4: uncompressed RGBA8888 with a full mip chain, clamped, and
+/// Writes a particle texture as a VTF 7.4: uncompressed RGBA8888 with a full mip chain, clamped unless asked to wrap, and
 /// optionally a sprite sheet resource (tag 0x10) describing flipbook sequences over a grid of frames.
 /// VTFCmd can't write sheet resources. Resources are listed in tag order (the sheet before the image),
 /// which Garry's Mod requires.
@@ -16,7 +16,7 @@ internal static class SpriteVtfWriter
     private const uint _flagEightBitAlpha = 0x2000;
     private const int _formatRgba8888 = 0;
 
-    public static void Write(string path, byte[] rgba, int width, int height, int columns, int rows, IReadOnlyList<SpriteSequence>? sequences)
+    public static void Write(string path, byte[] rgba, int width, int height, int columns, int rows, IReadOnlyList<SpriteSequence>? sequences, bool clampU = true, bool clampV = true)
     {
         var mips = Mips(rgba, width, height);
         byte[]? sheet = sequences is { Count: > 0 } ? Sheet(sequences, columns, rows) : null;
@@ -31,7 +31,7 @@ internal static class SpriteVtfWriter
         writer.Write(dataStart);
         writer.Write((ushort)width);
         writer.Write((ushort)height);
-        writer.Write(_flagClampS | _flagClampT | _flagEightBitAlpha);
+        writer.Write((clampU ? _flagClampS : 0) | (clampV ? _flagClampT : 0) | _flagEightBitAlpha);
         writer.Write((ushort)1); // frames
         writer.Write((ushort)0); // first frame
         writer.Write(0); // padding

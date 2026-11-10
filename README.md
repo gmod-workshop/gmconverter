@@ -34,6 +34,7 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | Particle format | Read | Write | Notes |
 |---|---|---|---|
 | Source particles (`PCF`) | No | Yes* | Writes a particle file, sprite materials and what the target game needs to load it. |
+| Garry's Mod effects (`gmfx`) | No | Yes | Writes an add-on that draws each effect with shaders compiled from its materials. |
 
 ## CLI
 
@@ -54,7 +55,7 @@ These apply to every input and output format.
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
 | `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent`, `wem` or `ue3cue` for sounds; `ue3fx` for particle effects. | `--input-format psk` | Required |
-| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds; `pcf` for particle effects. | `--output-format mdl` | Required |
+| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds; `pcf` or `gmfx` for particle effects. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
 | `--name <base-name>` | Override generated file names. | `--name bacta_dispenser` | Input file name |
@@ -162,6 +163,16 @@ These use the `--glb-` prefix for both `glb` and `gltf` output. Binary or text o
 | `--pcf-materialPath <path>` | Folder for the effect's materials under the game's `materials` directory. | `particle/gmconverter/<name>` |
 | `--pcf-maxTextureSize <pixels>` | Particle textures larger than this are scaled down. | `512` |
 | `--pcf-viewModel` | Draw the effect with the view model (over it, at its field of view). Use for effects a first-person model's animations start. | `false` |
+
+</details>
+
+<details>
+<summary>Garry's Mod Effect Export Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--gmfx-shaderKitPath <path>` | Folder with `ShaderCompile.exe` and the Garry's Mod shader headers ([gmod_shader_guide](https://github.com/meetric1/gmod_shader_guide)). | Auto-download |
+| `--gmfx-maxTextureSize <pixels>` | Effect textures larger than this are scaled down. | `1024` |
 
 </details>
 
@@ -395,6 +406,20 @@ PCF export writes the effect to `particles/<name>.pcf`. Each emitter becomes a p
 Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Emitters that spawn where another emitter's particles die emit on that emitter's schedule instead, one particle lifetime later, from where its particles start; colours brighter than white (common for glows) have their brightness moved into the emitter's texture, since Source's particle colours stop at white. Some features are left out: particles drawn as meshes, velocity over life, orbit rotation, and textures that slide over a particle's life. The converter lists each approximation and omission as a warning.
 
 Models whose animations start particle effects get `AE_CL_CREATE_PARTICLE_EFFECT` events that follow the bone or socket the effect starts at (an attachment is added for a bone that has none).
+
+</details>
+
+<details>
+<summary>Garry's Mod effects</summary>
+
+Garry's Mod effect export (`gmfx`) draws an effect the way its source game does rather than approximating it with Source particles. Each emitter's material is compiled into a pixel shader from the material's own node graph, so animated textures, glows brighter than white and per-particle parameters look as they did, and a client Lua runtime simulates the emitters: spawn rates and bursts, spawning where another emitter's particles die, lifetimes, start values and over-life curves, orbit, flipbooks, camera-facing and velocity-stretched sprites, and particles drawn as meshes. It writes:
+
+- `shaders/fxc/`: the compiled shaders (their HLSL in `shaders/src/`).
+- `materials/gmconverter/fx/<name>/`: the textures the materials sample.
+- `data_static/gmconverter/fx/<name>/`: the models mesh particles draw.
+- `lua/gmconverter_fx/effects/<name>.lua` and `lua/autorun/gmconverter_fx_<name>.lua`: the effect and what loads it, with the shared runtime in `lua/autorun/client/gmconverter_fx.lua`.
+
+Shaders compile with `ShaderCompile.exe`, which is downloaded on first use unless `--gmfx-shaderKitPath` points at a kit; without it the add-on is written with its HLSL only, and a warning. Effects need Garry's Mod 2025.12 or newer (`screenspace_general_8tex`). Lua starts them with `GMConverterFX.Play(name, entity, attachment)`. Materials using a node the converter doesn't translate yet draw their baked texture tinted by the particle, and soft edges where particles meet surfaces aren't drawn.
 
 </details>
 

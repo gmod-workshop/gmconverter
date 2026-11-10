@@ -7,7 +7,7 @@
 --
 -- Effect space: +X forward, +Y left, +Z up, in Source units, attached to an entity's attachment.
 
-local VERSION = 2
+local VERSION = 3
 
 if GMConverterFX and (GMConverterFX.version or 0) >= VERSION then return end
 
@@ -802,8 +802,16 @@ end
 
 -- A view model with lit materials is drawn here rather than by the engine: screenspace_general only
 -- tests depth inside render.OverrideDepthEnable, which doesn't last into the engine's own draw. The
--- gamemode (and so the weapon) still gets to hide it first.
-local drawingViewModel = false
+-- gamemode (and so the weapon) still gets to hide it first. The engine then skips its own draw and
+-- the PostDrawViewModel after it, so effects start and draw from the PostDrawViewModel our draw runs.
+local drawingViewModel, shadingViewModel = false, false
+
+local function finishViewModelShading()
+	if not shadingViewModel then return end
+	render.OverrideDepthEnable(false, false)
+	endShading()
+	shadingViewModel = false
+end
 
 hook.Add("PreDrawViewModel", "GMConverterFX", function(vm, ply, weapon)
 	if drawingViewModel or not IsValid(vm) then return end
@@ -812,17 +820,19 @@ hook.Add("PreDrawViewModel", "GMConverterFX", function(vm, ply, weapon)
 	if not FX.shaded[string.lower(vm:GetModel() or "")] then return end
 	if GAMEMODE and GAMEMODE.PreDrawViewModel and GAMEMODE:PreDrawViewModel(vm, ply, weapon) then return true end
 	if not beginShading(vm, EyePos()) then return end
+	shadingViewModel = true
 	drawingViewModel = true
 	render.OverrideDepthEnable(true, true)
 	vm:DrawModel()
-	render.OverrideDepthEnable(false, false)
 	drawingViewModel = false
-	endShading()
+	finishViewModelShading()
 	return true
 end)
 
 hook.Add("PostDrawViewModel", "GMConverterFX", function(vm)
-	if drawingViewModel or not IsValid(vm) then return end
+	-- Effects and the hands draw as usual, not with the view model's lit materials.
+	finishViewModelShading()
+	if not IsValid(vm) then return end
 	-- Shader libraries such as GShader draw the view model again into their depth target; effects don't belong there.
 	local target = render.GetRenderTarget()
 	if target and target:GetName() == "_rt_resolvedfullframedepth" then return end

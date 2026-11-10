@@ -21,7 +21,7 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
     // Modules that change only how Unreal draws or culls a particle, which nothing downstream uses.
     private static readonly HashSet<string> _ignored = new(StringComparer.Ordinal)
     {
-        "ParticleModuleEventGenerator", "ParticleModuleCameraOffset", "ParticleModuleTypeDataMesh",
+        "ParticleModuleEventGenerator", "ParticleModuleTypeDataMesh",
     };
 
     public static UE3ParticleSystem Read(UE3GameContent content, UE3Package package, UE3PackageExport export)
@@ -155,6 +155,9 @@ internal sealed record UE3ParticleSystem(string Name, IReadOnlyList<UE3ParticleE
             ParticleVector? Plain(string property) => UE3Distribution.ReadVector(package, module, property, value => value);
             switch (className)
             {
+                case "ParticleModuleCameraOffset":
+                    emitter = emitter with { CameraOffset = Scale(Float("CameraOffset") ?? ParticleFloat.Constant(1f), _metresPerUnit) };
+                    break;
                 case "ParticleModuleLifetime":
                     emitter = emitter with { Lifetime = Float("Lifetime") ?? emitter.Lifetime };
                     break;

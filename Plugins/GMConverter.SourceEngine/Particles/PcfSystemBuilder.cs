@@ -104,6 +104,11 @@ internal sealed class PcfSystemBuilder(bool viewModel = false)
             Warn("orbit rotation is not written; only its offset is kept.");
         }
 
+        if (emitter.CameraOffset is not null)
+        {
+            Warn("camera offset is not written; sprites draw where they are, which can be inside the model they sit on.");
+        }
+
         if (emitter.UvOffsetOverLife is not null)
         {
             Warn("texture slide over life is not written; Source particles can't move a material's texture by particle age, so the texture is drawn at rest.");

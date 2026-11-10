@@ -127,6 +127,11 @@ internal static class GarrysModEffectData
             Field("sheet", $"{{ columns = {Math.Max(1, sheet.Columns)}, rows = {Math.Max(1, sheet.Rows)}{frames} }}");
         }
 
+        if (emitter.CameraOffset is { } cameraOffset && !isMesh)
+        {
+            Field("cameraOffset", Float(cameraOffset, _inchesPerMetre));
+        }
+
         if (emitter.Orbit is { } orbit)
         {
             Field("orbit", $"{{ offset = {Vector(orbit.Offset, _inchesPerMetre)}, rotation = {Vector(orbit.Rotation, 1f)}, rate = {Vector(orbit.RotationRate, 1f)} }}");

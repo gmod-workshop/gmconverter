@@ -127,6 +127,16 @@ public sealed class PCFExporterTests
     }
 
     [Fact]
+    public void CameraOffsetsAreReportedAsLeftOut()
+    {
+        var effect = Glow();
+        var offset = effect with { Emitters = [effect.Emitters[0] with { CameraOffset = ParticleFloat.Constant(0.05f) }] };
+        var (_, result) = Export(offset, "garrysmod");
+
+        Assert.Contains(result.Warnings, warning => warning.StartsWith("P_Glow: camera offset is not written", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GarrysModAddsTheFileAndPrecachesItsSystems()
     {
         var (output, _) = Export(Glow(), "garrysmod");

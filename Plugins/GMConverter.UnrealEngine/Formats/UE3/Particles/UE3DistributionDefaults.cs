@@ -26,6 +26,7 @@ internal static class UE3DistributionDefaults
         ["ParticleModuleOrbit.DistributionOffsetAmount"] = new() { ["Min"] = Vector3.Zero, ["Max"] = new Vector3(0f, 50f, 0f) },
         ["ParticleModuleOrbit.DistributionRotationAmount"] = new() { ["Min"] = Vector3.Zero, ["Max"] = Vector3.One },
         ["ParticleModuleOrbit.DistributionRotationRateAmount"] = new() { ["Min"] = Vector3.Zero, ["Max"] = Vector3.One },
+        ["ParticleModuleCameraOffset.DistributionCameraOffset"] = new() { ["Constant"] = 1f },
     };
 
     /// <summary>The default for <paramref name="property"/> of the distribution whose archetype path is <paramref name="archetype"/>.</summary>

@@ -104,6 +104,12 @@ public sealed record ParticleEmitter(string Name, Material Material)
     public ParticleOrbit? Orbit { get; init; }
 
     /// <summary>
+    /// How far toward the camera each sprite is drawn, in metres, over its life: flares and glows set
+    /// on a model use it to draw in front of the surface they sit in. Ignored for <see cref="Mesh"/> particles.
+    /// </summary>
+    public ParticleFloat? CameraOffset { get; init; }
+
+    /// <summary>
     /// Four values each particle hands its material over its life (null where unset, read as 0), which
     /// a <see cref="Material.Graph"/> reads through <see cref="MaterialGraphOp.ParticleParameters"/>:
     /// effects drive texture slides, dissolves and glows with them.

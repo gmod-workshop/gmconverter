@@ -25,6 +25,8 @@ public sealed class GarrysModEffectExporterTests
         Assert.Contains("deathSpawn = { emitter = 1, count = { min = { 0, 2 } } },", lua);
         Assert.Contains("params = { [1] = { min = { 0, -1, 1, 3 } } },", lua);
         Assert.Contains("blend = \"additive\"", lua);
+        // Five centimetres toward the camera, as CrossFire HD's flares sit in front of the blade.
+        Assert.Contains("cameraOffset = { min = { 0, 1.968504 } },", lua);
     }
 
     [Fact]
@@ -76,6 +78,7 @@ public sealed class GarrysModEffectExporterTests
             Lifetime = ParticleFloat.Constant(0.1f),
             Acceleration = new Vector3(0f, 0f, -9.81f),
             Parameters = [ParticleFloat.Curve([new ParticleKey(0f, -1f), new ParticleKey(1f, 3f)])],
+            CameraOffset = ParticleFloat.Constant(0.05f),
         };
         var flash = new ParticleEmitter("flash", material) { DeathSpawn = new ParticleDeathSpawn("core", ParticleFloat.Constant(2f)) };
         return new ParticleEffect("P_Flare", [core, flash]);

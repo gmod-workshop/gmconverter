@@ -431,6 +431,12 @@ local function drawSprites(instance, emitter, state, time)
 			local center = worldPosition(instance, emitter, p)
 			local orbit = orbitOffset(emitter, p, ang)
 			if orbit then center = center + orbit end
+			if emitter.cameraOffset then
+				-- Drawn nearer the camera, in front of the surface the effect sits in.
+				local toEye = eye - center
+				local distance = toEye:Length()
+				if distance > 1e-3 then center = center + toEye * (min(floatAt(emitter.cameraOffset, age, p.rs[2]), distance * 0.9) / distance) end
+			end
 			local axisX, axisY
 			if emitter.alignment == 1 then
 				local velocity = Vector(p.vx, p.vy, p.vz)

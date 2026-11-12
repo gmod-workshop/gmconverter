@@ -19,8 +19,6 @@ internal sealed class UnityHumanoidSolver
     private const int _rightUpperLeg = 2;
     private const int _leftUpperArm = 14;
     private const int _rightUpperArm = 15;
-    private const int _leftHand = 18;
-    private const int _rightHand = 19;
     private const int _bodyMuscleCount = 55;
     private const int _fingerMusclesPerHand = 20;
 
@@ -42,10 +40,38 @@ internal sealed class UnityHumanoidSolver
         { -1, 20, 19 }, // Jaw
     };
 
+    // The body bones whose joints, averaged, place each body bone's mass, measured against Unity:
+    // a limb or spine segment's mass sits halfway to the next joint, the upper chest's among it,
+    // the neck and the shoulders, the hips' among the upper legs and spine, and the feet, hands
+    // and head at their own joint. Unity places the left forearm's mass between the upper arm and
+    // the hand, unlike the right.
+    private static readonly int[][] _massBones =
+    [
+        [1, 2, 7], // Hips
+        [1, 3], [2, 4], // Upper legs
+        [3, 5], [4, 6], // Lower legs
+        [5], [6], // Feet
+        [7, 8], [8, 9], [9, 10, 12, 13], // Spine, chest, upper chest
+        [10, 11], [11], // Neck, head
+        [12, 14], [13, 15], // Shoulders
+        [14, 16], [15, 17], // Upper arms
+        [14, 18], [17, 19], // Lower arms
+        [18], [19], [20], [21], [22], [23], [24], // Hands, toes, eyes, jaw
+    ];
+
+    // The bones that stand in for an optional bone the avatar lacks.
+    private static readonly Dictionary<int, int[]> _standIns = new()
+    {
+        [9] = [10, 12, 13], // Upper chest: neck and shoulders
+        [10] = [11], // Neck: head
+        [12] = [14], // Shoulders: upper arms
+        [13] = [15],
+    };
+
     private readonly UnityAvatar _avatar;
     private readonly (int X, int Y, int Z)[] _nodeMuscles;
     private readonly UnityXform[] _referenceGlobals;
-    private readonly Vector3 _massOffset;
+    private readonly int[][] _massNodes;
 
     public UnityHumanoidSolver(UnityAvatar avatar)
     {
@@ -65,10 +91,7 @@ internal sealed class UnityHumanoidSolver
 
         HipsNode = avatar.BodyNodes[_hips];
         _referenceGlobals = Globals([.. avatar.Pose]);
-
-        // The centre of mass computed from the bones misses the avatar's own by a little; keep the
-        // difference, in the body's frame, so the reference pose lands exactly.
-        _massOffset = Vector3.Transform(avatar.Root.Translation - MassCenter(_referenceGlobals), Quaternion.Conjugate(avatar.Root.Rotation));
+        _massNodes = [.. Enumerable.Range(0, UnityAvatar.BodyBoneCount).Select(MassNodes)];
     }
 
     /// <summary>The node of the hips, which the solved pose moves; -1 when the avatar has none.</summary>
@@ -77,11 +100,9 @@ internal sealed class UnityHumanoidSolver
     /// <summary>
     /// Local transforms for every human skeleton node. <paramref name="muscles"/> holds the 95
     /// muscle values; <paramref name="bodyPosition"/> is the centre of mass in human units and
-    /// <paramref name="bodyRotation"/> the body's orientation. <paramref name="handGoals"/>, when
-    /// the clip has them, are where Unity put the left and right hands, relative to the body in
-    /// human units.
+    /// <paramref name="bodyRotation"/> the body's orientation.
     /// </summary>
-    public UnityXform[] Solve(ReadOnlySpan<float> muscles, Vector3 bodyPosition, Quaternion bodyRotation, (Vector3 Left, Vector3 Right)? handGoals = null)
+    public UnityXform[] Solve(ReadOnlySpan<float> muscles, Vector3 bodyPosition, Quaternion bodyRotation)
     {
         var locals = _avatar.Pose.ToArray();
         for (var node = 0; node < locals.Length; node++)
@@ -94,42 +115,69 @@ internal sealed class UnityHumanoidSolver
             }
         }
 
+        ShareTwist(locals, muscles);
+
         if (HipsNode < 0)
         {
             return locals;
         }
 
         // Unity's body orientation comes from the limbs: right across the upper legs and upper
-        // arms, up from between the legs to between the arms. Find it with the hips unturned; the
-        // hips' rotation is whatever turns that onto the pose's body rotation.
+        // arms, up from between the legs to between the arms. Clips store it relative to the
+        // avatar's own reference orientation, so they play on any avatar. Find it with the hips
+        // unturned; the hips' rotation is whatever turns that onto the pose's.
         var parentGlobal = _avatar.Parents[HipsNode] >= 0 ? _referenceGlobals[_avatar.Parents[HipsNode]] : UnityXform.Identity;
         locals[HipsNode] = Relative(new UnityXform(Vector3.Zero, Quaternion.Identity, _referenceGlobals[HipsNode].Scale), parentGlobal);
         var unturned = BodyOrientation(Globals(locals));
-        var hipsRotation = Quaternion.Normalize(bodyRotation * Quaternion.Conjugate(unturned));
+        var hipsRotation = Quaternion.Normalize(bodyRotation * _avatar.Root.Rotation * Quaternion.Conjugate(unturned));
 
         // Pose the skeleton with the hips at the origin in that orientation to find where the
         // centre of mass sits relative to them, then move the hips to put it at the body position.
         locals[HipsNode] = Relative(new UnityXform(Vector3.Zero, hipsRotation, _referenceGlobals[HipsNode].Scale), parentGlobal);
         var globals = Globals(locals);
-        var massCenter = MassCenter(globals) + Vector3.Transform(_massOffset, bodyRotation);
+        var massCenter = MassCenter(globals);
         var hipsPosition = (bodyPosition * _avatar.Scale) - (massCenter - globals[HipsNode].Translation);
-
-        // Unity's centre of mass isn't quite the bones' mass-weighted average, which leaves the
-        // body a few centimetres off; the hand goals, where Unity's own solve put the hands, show
-        // by how much. The hands share that error, so move the whole body by their average miss.
-        if (handGoals is { } goals &&
-            _avatar.BodyNodes[_leftHand] is var leftHand and >= 0 &&
-            _avatar.BodyNodes[_rightHand] is var rightHand and >= 0)
-        {
-            var leftGoal = (bodyPosition + Vector3.Transform(goals.Left, bodyRotation)) * _avatar.Scale;
-            var rightGoal = (bodyPosition + Vector3.Transform(goals.Right, bodyRotation)) * _avatar.Scale;
-            var hipsOffset = hipsPosition - globals[HipsNode].Translation;
-            var miss = ((leftGoal - globals[leftHand].Translation) + (rightGoal - globals[rightHand].Translation)) * 0.5f;
-            hipsPosition += miss - hipsOffset;
-        }
 
         locals[HipsNode] = Relative(new UnityXform(hipsPosition, hipsRotation, _referenceGlobals[HipsNode].Scale), parentGlobal);
         return locals;
+    }
+
+    /// <summary>
+    /// Unity keeps only the avatar's share of each limb bone's twist on the bone and passes the rest
+    /// down, so the skin twists along the whole limb. Each human bone below keeps its orientation;
+    /// other nodes, such as twist bones, ride along with their parents.
+    /// </summary>
+    private void ShareTwist(UnityXform[] locals, ReadOnlySpan<float> muscles)
+    {
+        var turns = new Quaternion?[locals.Length];
+        var any = false;
+        for (var bone = 0; bone < UnityAvatar.BodyBoneCount; bone++)
+        {
+            var node = _avatar.BodyNodes[bone];
+            var share = _avatar.TwistShares[bone];
+            if (node >= 0 && share != 1f && _bodyMuscles[bone, 0] >= 0 && _avatar.Axes[node] is { } axes)
+            {
+                turns[node] = axes.TwistBy(axes.Twist(Muscle(muscles, _bodyMuscles[bone, 0])) * (share - 1f));
+                any = true;
+            }
+        }
+
+        if (!any)
+        {
+            return;
+        }
+
+        var before = new Quaternion[locals.Length];
+        var after = new Quaternion[locals.Length];
+        for (var node = 0; node < locals.Length; node++)
+        {
+            var parent = _avatar.Parents[node];
+            var parentBefore = parent >= 0 ? before[parent] : Quaternion.Identity;
+            var parentAfter = parent >= 0 ? after[parent] : Quaternion.Identity;
+            before[node] = parentBefore * locals[node].Rotation;
+            after[node] = _avatar.Axes[node] is null ? parentAfter * locals[node].Rotation : before[node] * (turns[node] ?? Quaternion.Identity);
+            locals[node] = locals[node] with { Rotation = Quaternion.Normalize(Quaternion.Conjugate(parentAfter) * after[node]) };
+        }
     }
 
     private Quaternion BodyOrientation(UnityXform[] globals)
@@ -196,14 +244,44 @@ internal sealed class UnityHumanoidSolver
         var total = 0f;
         for (var bone = 0; bone < UnityAvatar.BodyBoneCount && bone < _avatar.BodyMasses.Count; bone++)
         {
-            if (_avatar.BodyNodes[bone] is var node and >= 0)
+            var nodes = _massNodes[bone];
+            if (nodes.Length > 0)
             {
-                center += globals[node].Translation * _avatar.BodyMasses[bone];
+                var segment = nodes.Aggregate(Vector3.Zero, (sum, node) => sum + globals[node].Translation) / nodes.Length;
+                center += segment * _avatar.BodyMasses[bone];
                 total += _avatar.BodyMasses[bone];
             }
         }
 
         return total > 0f ? center / total : Vector3.Zero;
+    }
+
+    /// <summary>The nodes whose mean places a body bone's mass, or none when the avatar lacks the bone.</summary>
+    private int[] MassNodes(int bone)
+    {
+        if (_avatar.BodyNodes[bone] < 0)
+        {
+            return [];
+        }
+
+        List<int> nodes = [];
+        Add(_massBones[bone]);
+        return [.. nodes];
+
+        void Add(IEnumerable<int> bones)
+        {
+            foreach (var other in bones)
+            {
+                if (_avatar.BodyNodes[other] is var node and >= 0)
+                {
+                    nodes.Add(node);
+                }
+                else if (_standIns.TryGetValue(other, out var standIns))
+                {
+                    Add(standIns);
+                }
+            }
+        }
     }
 
     private static UnityXform Relative(UnityXform global, UnityXform parent)

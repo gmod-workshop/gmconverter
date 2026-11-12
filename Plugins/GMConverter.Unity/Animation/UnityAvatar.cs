@@ -16,6 +16,15 @@ internal sealed class UnityAvatar
     /// <summary>Finger bones per hand: three phalanges for each of five fingers, thumb first.</summary>
     public const int HandBoneCount = 15;
 
+    private const int _leftUpperLeg = 1;
+    private const int _rightUpperLeg = 2;
+    private const int _leftLowerLeg = 3;
+    private const int _rightLowerLeg = 4;
+    private const int _leftUpperArm = 14;
+    private const int _rightUpperArm = 15;
+    private const int _leftLowerArm = 16;
+    private const int _rightLowerArm = 17;
+
     private UnityAvatar(
         string?[] nodePaths,
         int[] parents,
@@ -25,6 +34,7 @@ internal sealed class UnityAvatar
         int[] leftHandNodes,
         int[] rightHandNodes,
         float[] bodyMasses,
+        float[] twistShares,
         float scale,
         UnityXform root)
     {
@@ -36,6 +46,7 @@ internal sealed class UnityAvatar
         LeftHandNodes = leftHandNodes;
         RightHandNodes = rightHandNodes;
         BodyMasses = bodyMasses;
+        TwistShares = twistShares;
         Scale = scale;
         Root = root;
     }
@@ -60,6 +71,12 @@ internal sealed class UnityAvatar
 
     /// <summary>Each body bone's share of the body's mass, for finding its centre of mass.</summary>
     public IReadOnlyList<float> BodyMasses { get; }
+
+    /// <summary>
+    /// The share of each body bone's twist that stays on the bone, the rest passing to the bone
+    /// below: the avatar's arm, forearm, upper leg and leg twist settings for the limbs, 1 elsewhere.
+    /// </summary>
+    public IReadOnlyList<float> TwistShares { get; }
 
     /// <summary>The human scale: root positions in clips are multiplied by it.</summary>
     public float Scale { get; }
@@ -106,8 +123,26 @@ internal sealed class UnityAvatar
             human["m_HasLeftHand"].AsBool ? ReadIndices(human["m_LeftHand"]["data"]["m_HandBoneIndex"], HandBoneCount) : Missing(HandBoneCount),
             human["m_HasRightHand"].AsBool ? ReadIndices(human["m_RightHand"]["data"]["m_HandBoneIndex"], HandBoneCount) : Missing(HandBoneCount),
             [.. UnityFields.Items(human["m_HumanBoneMass"]).Select(mass => mass.AsFloat)],
+            ReadTwistShares(human),
             human["m_Scale"].AsFloat,
             UnityXform.Read(human["m_RootX"]));
+    }
+
+    private static float[] ReadTwistShares(AssetTypeValueField human)
+    {
+        var shares = new float[BodyBoneCount];
+        Array.Fill(shares, 1f);
+        shares[_leftUpperLeg] = shares[_rightUpperLeg] = Share("m_UpperLegTwist");
+        shares[_leftLowerLeg] = shares[_rightLowerLeg] = Share("m_LegTwist");
+        shares[_leftUpperArm] = shares[_rightUpperArm] = Share("m_ArmTwist");
+        shares[_leftLowerArm] = shares[_rightLowerArm] = Share("m_ForeArmTwist");
+        return shares;
+
+        // Unity's default for each setting is half.
+        float Share(string name)
+        {
+            return human[name] is { IsDummy: false } field ? field.AsFloat : 0.5f;
+        }
     }
 
     private static int[] ReadIndices(AssetTypeValueField field, int count)

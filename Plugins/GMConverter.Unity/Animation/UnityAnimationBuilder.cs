@@ -18,8 +18,6 @@ internal sealed class UnityAnimationBuilder
     private const float _defaultSampleRate = 30f;
     private const int _rootPositionAttribute = 7;
     private const int _rootRotationAttribute = 10;
-    private const int _leftHandGoalAttribute = 28;
-    private const int _rightHandGoalAttribute = 35;
     private const int _firstMuscleAttribute = 42;
 
     private readonly UnitySkeleton _skeleton;
@@ -28,7 +26,7 @@ internal sealed class UnityAnimationBuilder
     private readonly UnityTransformNode[] _bones;
     private readonly Dictionary<uint, UnityTransformNode> _nodesByPathHash = [];
     private readonly UnityHumanoidSolver? _solver;
-    private readonly (int Node, UnityTransformNode Bone)[] _humanBones = [];
+    private readonly (int Node, UnityTransformNode Bone, Quaternion Between)[] _humanBones = [];
     private readonly UnityTransformNode? _hipsBone;
 
     public UnityAnimationBuilder(UnitySkeleton skeleton, UnityTransformNode animatorRoot, UnityAvatar? avatar, IReadOnlySet<UnityTransformNode>? toggledBones = null)
@@ -53,12 +51,22 @@ internal sealed class UnityAnimationBuilder
         if (avatar is not null)
         {
             _solver = new UnityHumanoidSolver(avatar);
+            // Unity binds human bones by name, so a game can put nodes between them (Liar's Bar
+            // adds a head pivot above the head); fall back to a uniquely named node.
+            var byName = nodesByPath.Values
+                .GroupBy(node => node.Name, StringComparer.Ordinal)
+                .Where(group => group.Count() == 1)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            UnityTransformNode? Find(int node) => avatar.NodePaths[node] is not { } path
+                ? null
+                : nodesByPath.GetValueOrDefault(path) ?? byName.GetValueOrDefault(path[(path.LastIndexOf('/') + 1)..]);
+
             _humanBones = [.. Enumerable.Range(0, avatar.NodeCount)
-                .Where(node => avatar.Axes[node] is not null && avatar.NodePaths[node] is { } path && nodesByPath.TryGetValue(path, out var bone) && skeleton.Indices.ContainsKey(bone))
-                .Select(node => (node, nodesByPath[avatar.NodePaths[node]!]))];
-            if (_solver.HipsNode >= 0 && avatar.NodePaths[_solver.HipsNode] is { } hipsPath)
+                .Where(node => avatar.Axes[node] is not null && Find(node) is { } bone && skeleton.Indices.ContainsKey(bone))
+                .Select(node => (node, Find(node)!, Between(avatar.Parents[node] >= 0 ? Find(avatar.Parents[node]) : null, Find(node)!)))];
+            if (_solver.HipsNode >= 0)
             {
-                _hipsBone = nodesByPath.GetValueOrDefault(hipsPath);
+                _hipsBone = Find(_solver.HipsNode);
             }
         }
     }
@@ -171,24 +179,11 @@ internal sealed class UnityAnimationBuilder
         Array.Clear(muscles);
         var rootPosition = Vector3.Zero;
         var rootRotation = new Vector4(0f, 0f, 0f, 1f);
-        var leftHandGoal = Vector3.Zero;
-        var rightHandGoal = Vector3.Zero;
-        var goalCurves = 0;
         foreach (var binding in humanoid)
         {
             var attribute = (int)binding.Attribute;
             var value = values[binding.FirstCurve];
-            if (attribute >= _leftHandGoalAttribute && attribute < _leftHandGoalAttribute + 3)
-            {
-                leftHandGoal[attribute - _leftHandGoalAttribute] = value;
-                goalCurves++;
-            }
-            else if (attribute >= _rightHandGoalAttribute && attribute < _rightHandGoalAttribute + 3)
-            {
-                rightHandGoal[attribute - _rightHandGoalAttribute] = value;
-                goalCurves++;
-            }
-            else if (attribute >= _rootPositionAttribute && attribute < _rootRotationAttribute)
+            if (attribute >= _rootPositionAttribute && attribute < _rootRotationAttribute)
             {
                 rootPosition[attribute - _rootPositionAttribute] = value;
             }
@@ -205,14 +200,15 @@ internal sealed class UnityAnimationBuilder
         var rotation = rootRotation.LengthSquared() > 1e-12f
             ? Quaternion.Normalize(new Quaternion(rootRotation.X, rootRotation.Y, rootRotation.Z, rootRotation.W))
             : Quaternion.Identity;
-        var solved = _solver!.Solve(muscles, rootPosition, rotation, goalCurves == 6 ? (leftHandGoal, rightHandGoal) : null);
+        var solved = _solver!.Solve(muscles, rootPosition, rotation);
 
-        // Bones keep their own lengths; only the hips move.
-        foreach (var (node, bone) in _humanBones)
+        // Bones keep their own lengths; only the hips move. Nodes the game put between a bone and
+        // its human parent keep their own turn, which the bone's rotation then leaves out.
+        foreach (var (node, bone, between) in _humanBones)
         {
             locals[bone] = bone == _hipsBone
                 ? solved[node]
-                : new UnityXform(bone.LocalPosition, solved[node].Rotation, bone.LocalScale);
+                : new UnityXform(bone.LocalPosition, Quaternion.Normalize(Quaternion.Conjugate(between) * solved[node].Rotation), bone.LocalScale);
         }
     }
 
@@ -236,6 +232,18 @@ internal sealed class UnityAnimationBuilder
             UnityTransformCurve.Euler => local with { Rotation = Euler(vector) },
             _ => local,
         };
+    }
+
+    // The combined saved rotation of the nodes strictly between a human bone and its human parent.
+    private static Quaternion Between(UnityTransformNode? humanParent, UnityTransformNode bone)
+    {
+        var between = Quaternion.Identity;
+        for (var node = bone.Parent; node is not null && node != humanParent; node = node.Parent)
+        {
+            between = node.LocalRotation * between;
+        }
+
+        return humanParent is not null && bone.Ancestors().Contains(humanParent) ? between : Quaternion.Identity;
     }
 
     // A node and the nodes above it up to the animated root: all must be switched on for it to show.

@@ -7,6 +7,7 @@ using GMConverter.Unity.Animation;
 using GMConverter.Unity.Assets;
 using GMConverter.Unity.Geometry;
 using GMConverter.Unity.Materials;
+using GMConverter.Unity.Profiles.LiarsBar;
 using GMConverter.Unity.Scenes;
 
 namespace GMConverter.Unity.Models;
@@ -18,6 +19,9 @@ namespace GMConverter.Unity.Models;
 /// </summary>
 internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFactory textureFactory)
 {
+    // A tenth of a millimetre: a morph moving a vertex less than that leaves it out.
+    private const float _morphTolerance = 0.0001f;
+
     private readonly UnityMaterialBuilder _materials = new(library, textureFactory);
 
     /// <summary>Textures left out because their format could not be decoded.</summary>
@@ -41,6 +45,10 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
         var skeleton = renderers.Any(renderer => renderer.IsSkinned) || props.Length > 0
             ? BuildSkeleton(hierarchy, renderers, props, toggledProps)
             : null;
+        UnityPoseMorph[] poseMorphs = skeleton is not null && LiarsBarProfile.IsDataDirectory(library.DataDirectory) &&
+            LiarsBarMouth.Find(library, hierarchy) is { } mouth
+            ? [mouth]
+            : [];
 
         List<Mesh> meshes = [];
         foreach (var renderer in renderers)
@@ -48,8 +56,8 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
             var data = UnityMeshReader.Read(library, renderer.Mesh);
             var materials = ReadMaterials(renderer.Renderer);
             meshes.Add(renderer.IsSkinned && data.IsSkinned
-                ? BuildSkinnedMesh(renderer, data, materials, skeleton!)
-                : BuildRigidMesh(renderer.Node, data, materials, skeleton));
+                ? BuildSkinnedMesh(renderer, data, materials, skeleton!, poseMorphs)
+                : BuildRigidMesh(renderer.Node, data, materials, skeleton, poseMorphs));
         }
 
         return new Model(
@@ -181,7 +189,12 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
         return new UnitySkeleton(new Skeleton(bones), indices);
     }
 
-    private static Mesh BuildSkinnedMesh(UnityRenderer renderer, UnityMeshData data, IReadOnlyList<UnityMaterial> materials, UnitySkeleton skeleton)
+    private static Mesh BuildSkinnedMesh(
+        UnityRenderer renderer,
+        UnityMeshData data,
+        IReadOnlyList<UnityMaterial> materials,
+        UnitySkeleton skeleton,
+        UnityPoseMorph[] poseMorphs)
     {
         var boneCount = renderer.Bones.Count;
         var skinMatrices = new Matrix4x4[boneCount];
@@ -193,6 +206,14 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
             skinMatrices[bone] = bindPose * node.World;
             boneIndices[bone] = skeleton.IndexOf(node);
         }
+
+        // Each pose morph's skin matrices, with the bones it turns turned.
+        var morphSkins = poseMorphs
+            .Select(morph => skinMatrices
+                .Select((skin, bone) => morph.Moves(renderer.Bones[bone] ?? renderer.Node) ? skin * morph.Change() : skin)
+                .ToArray())
+            .ToArray();
+        var morphDeltas = poseMorphs.Select(_ => new Dictionary<int, MorphTargetDelta>()).ToArray();
 
         var vertices = new Vertex[data.VertexCount];
         for (var vertex = 0; vertex < data.VertexCount; vertex++)
@@ -222,18 +243,64 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
             }
 
             vertices[vertex] = ConvertVertex(data, vertex, skin * (1f / total), MergeWeights(weights, total));
+            for (var morph = 0; morph < poseMorphs.Length; morph++)
+            {
+                var moved = new Matrix4x4();
+                for (var slot = 0; slot < UnityMeshData.InfluencesPerVertex; slot++)
+                {
+                    var influence = vertex * UnityMeshData.InfluencesPerVertex + slot;
+                    var bone = data.BoneIndices![influence];
+                    var weight = data.BoneWeights![influence];
+                    if (weight > 0f && bone >= 0 && bone < boneCount)
+                    {
+                        moved += morphSkins[morph][bone] * weight;
+                    }
+                }
+
+                AddMorphDelta(morphDeltas[morph], data, vertex, vertices[vertex], moved * (1f / total));
+            }
         }
 
-        return BuildSdkMesh(renderer.Node.Name, data, vertices, materials, mirrored: false);
+        return BuildSdkMesh(renderer.Node.Name, data, vertices, materials, mirrored: false, poseMorphs, morphDeltas);
     }
 
-    private static Mesh BuildRigidMesh(UnityTransformNode node, UnityMeshData data, IReadOnlyList<UnityMaterial> materials, UnitySkeleton? skeleton)
+    private static Mesh BuildRigidMesh(
+        UnityTransformNode node,
+        UnityMeshData data,
+        IReadOnlyList<UnityMaterial> materials,
+        UnitySkeleton? skeleton,
+        UnityPoseMorph[] poseMorphs)
     {
         IReadOnlyList<VertexBoneWeight>? weights = skeleton is null ? null : [new VertexBoneWeight(skeleton.IndexOf(node), 1f)];
         var vertices = Enumerable.Range(0, data.VertexCount)
             .Select(index => ConvertVertex(data, index, node.World, weights))
             .ToArray();
-        return BuildSdkMesh(node.Name, data, vertices, materials, mirrored: node.World.GetDeterminant() < 0f);
+        var morphDeltas = poseMorphs.Select(morph =>
+        {
+            Dictionary<int, MorphTargetDelta> deltas = [];
+            if (morph.Moves(node))
+            {
+                var moved = node.World * morph.Change();
+                for (var vertex = 0; vertex < vertices.Length; vertex++)
+                {
+                    AddMorphDelta(deltas, data, vertex, vertices[vertex], moved);
+                }
+            }
+
+            return deltas;
+        }).ToArray();
+        return BuildSdkMesh(node.Name, data, vertices, materials, mirrored: node.World.GetDeterminant() < 0f, poseMorphs, morphDeltas);
+    }
+
+    // Records how far the vertex moves when posed by the morph's matrix instead of its own.
+    private static void AddMorphDelta(Dictionary<int, MorphTargetDelta> deltas, UnityMeshData data, int index, Vertex vertex, Matrix4x4 moved)
+    {
+        var posed = ConvertVertex(data, index, moved, null);
+        var position = posed.Position - vertex.Position;
+        if (position.LengthSquared() > _morphTolerance * _morphTolerance)
+        {
+            deltas[index] = new MorphTargetDelta(index, position, posed.Normal - vertex.Normal);
+        }
     }
 
     private static Vertex ConvertVertex(UnityMeshData data, int index, Matrix4x4 transform, IReadOnlyList<VertexBoneWeight>? weights)
@@ -252,9 +319,17 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
 
     // Each submesh gets its own copy of the vertices it uses when its material tiles or offsets
     // the texture, since the SDK keeps texture coordinates on the vertices.
-    private static Mesh BuildSdkMesh(string name, UnityMeshData data, Vertex[] vertices, IReadOnlyList<UnityMaterial> materials, bool mirrored)
+    private static Mesh BuildSdkMesh(
+        string name,
+        UnityMeshData data,
+        Vertex[] vertices,
+        IReadOnlyList<UnityMaterial> materials,
+        bool mirrored,
+        UnityPoseMorph[]? poseMorphs = null,
+        Dictionary<int, MorphTargetDelta>[]? morphDeltas = null)
     {
         List<Vertex> output = [.. vertices];
+        List<(int Copy, int Source)> copies = [];
         List<Submesh> submeshes = [];
 
         // Unity's left-handed space mirrors into the SDK's, which reverses the winding once; a
@@ -290,6 +365,7 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
                     var source = vertices[vertex];
                     copy = output.Count;
                     output.Add(source with { TextureCoordinate = material.Apply(source.TextureCoordinate) });
+                    copies.Add((copy, vertex));
                     remap[vertex] = copy;
                 }
 
@@ -297,7 +373,22 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
             }
         }
 
-        return new Mesh(output, submeshes, name);
+        // Copies made for a material's texture transform move with the vertex they copy.
+        List<MorphTarget> morphs = [];
+        for (var morph = 0; morph < (poseMorphs?.Length ?? 0); morph++)
+        {
+            var deltas = morphDeltas![morph];
+            List<MorphTargetDelta> all = [.. deltas.Values];
+            all.AddRange(copies
+                .Where(copy => deltas.ContainsKey(copy.Source))
+                .Select(copy => deltas[copy.Source] with { VertexIndex = copy.Copy }));
+            if (all.Count > 0)
+            {
+                morphs.Add(new MorphTarget(poseMorphs![morph].Name, [.. all.OrderBy(delta => delta.VertexIndex)], poseMorphs[morph].Role));
+            }
+        }
+
+        return new Mesh(output, submeshes, name, morphs.Count > 0 ? morphs : null);
     }
 
     private static List<VertexBoneWeight> MergeWeights(List<VertexBoneWeight> weights, float total)

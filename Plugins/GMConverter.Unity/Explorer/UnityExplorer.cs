@@ -6,13 +6,15 @@ using GMConverter.SDK.Common;
 using GMConverter.SDK.Explorer;
 using GMConverter.Unity.Assets;
 using GMConverter.Unity.Audio;
+using GMConverter.Unity.Importers;
 
 namespace GMConverter.Unity.Explorer;
 
 /// <summary>
 /// Browses a Unity player build. Lists prefabs and scene objects that hold renderers (each becomes
 /// a model with everything under it), every mesh on its own, with the materials of a renderer
-/// that draws it, and every audio clip as a sound.
+/// that draws it, every animation clip, which can be added to a model, and every audio clip as a
+/// sound.
 /// </summary>
 public sealed class UnityExplorer : IExplorer
 {
@@ -86,6 +88,19 @@ public sealed class UnityExplorer : IExplorer
                     entries.Add(CreateEntry(dataDirectory, $"Meshes/{Path.GetFileNameWithoutExtension(fileName)}/{Sanitize(name)}", fileName, entryPath, "Mesh", details));
                 }
 
+                foreach (var info in file.file.GetAssetsOfType(AssetClassID.AnimationClip))
+                {
+                    var key = new UnityObjectKey(fileName, info.PathId);
+                    var name = library.GetNameFast(file, info);
+                    var details = string.Create(CultureInfo.InvariantCulture, $"AnimationClip {name} | {fileName} | Path ID {info.PathId}");
+                    entries.Add(CreateEntry(dataDirectory, $"Animations/{Path.GetFileNameWithoutExtension(fileName)}/{Sanitize(name)}", fileName, key.ToString(), "AnimationClip", details) with
+                    {
+                        IsConvertible = false,
+                        Kind = ExplorerEntryKind.Animation,
+                        CanAddToModel = true,
+                    });
+                }
+
                 foreach (var clip in library.ObjectsOfType(file, AssetClassID.AudioClip))
                 {
                     var audio = new UnityAudioClip(clip);
@@ -134,7 +149,10 @@ public sealed class UnityExplorer : IExplorer
         var path = Path.Join(directory, name + UnityAssetReference.FileExtension);
         reference.Write(path);
 
-        return new ExplorerResolvedEntry(path, directory, fileEntry.Details);
+        // A clip is added to the model being converted rather than converted itself.
+        return fileEntry.Kind == ExplorerEntryKind.Animation
+            ? new ExplorerResolvedEntry(path, directory, fileEntry.Details, new Dictionary<string, object?> { [UnityImporter.Animations] = parts[0] })
+            : new ExplorerResolvedEntry(path, directory, fileEntry.Details);
     }
 
     public void ClearCaches()

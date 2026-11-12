@@ -1,9 +1,11 @@
 using AssetsTools.NET.Extra;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Textures;
+using GMConverter.Unity.Animation;
 using GMConverter.Unity.Assets;
 using GMConverter.Unity.Models;
 using Microsoft.Extensions.Logging;
@@ -20,6 +22,8 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
     private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<UnityImporter>();
 
     public const string IncludeInactive = "includeInactive";
+    public const string ControllerAnimations = "controllerAnimations";
+    public const string Animations = "animations";
 
     public string Format => "unity";
 
@@ -35,6 +39,19 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
             {
                 Description = "Also import renderers that are disabled or sit under inactive game objects, such as alternative outfits.",
                 DefaultValue = false,
+            },
+        ]),
+        new OptionGroup("animation", "Animation",
+        [
+            new OptionDescriptor(ControllerAnimations, OptionType.Bool, "Animator controller clips")
+            {
+                Description = "Import the clips the model's Animator controller plays.",
+                DefaultValue = true,
+            },
+            new OptionDescriptor(Animations, OptionType.String, "Animation clips")
+            {
+                Description = "More clips to import, as the Explorer adds them (<file>:<path id>). Humanoid clips play on any humanoid character. Separate several with ';'.",
+                AllowsMultiple = true,
             },
         ]),
     ]);
@@ -55,6 +72,9 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
         var reference = UnityAssetReference.Read(context.InputPath);
         var library = UnityAssetLibrary.For(reference.DataDirectory);
         var includeInactive = context.Options.GetBool(IncludeInactive);
+        var animations = new UnityAnimationRequest(
+            context.Options.GetBool(ControllerAnimations, defaultValue: true),
+            [.. context.Options.GetStrings(Animations).Select(UnityObjectKey.Parse)]);
 
         lock (library.SyncRoot)
         {
@@ -62,8 +82,8 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
             var builder = new UnityModelBuilder(library, textureFactory);
             var model = target.ClassId switch
             {
-                AssetClassID.Transform => builder.BuildHierarchy(target, includeInactive),
-                AssetClassID.GameObject => builder.BuildHierarchy(FindTransform(library, target), includeInactive),
+                AssetClassID.Transform => builder.BuildHierarchy(target, includeInactive, animations),
+                AssetClassID.GameObject => builder.BuildHierarchy(FindTransform(library, target), includeInactive, animations),
                 AssetClassID.Mesh => builder.BuildMesh(target, reference.MaterialRendererKey is { } renderer ? library.Find(renderer) : null),
                 _ => throw new GMConverterException($"Unity {target.ClassId} objects cannot be imported as models."),
             };
@@ -71,6 +91,11 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
             if (builder.SkippedTextures.Count > 0)
             {
                 _logger.SkippedTextures(builder.SkippedTextures.Count, string.Join(", ", builder.SkippedTextures));
+            }
+
+            if (builder.SkippedAnimations.Count > 0)
+            {
+                _logger.SkippedAnimations(builder.SkippedAnimations.Count, string.Join(", ", builder.SkippedAnimations));
             }
 
             return Scale(model, context.ScaleFactor);
@@ -105,6 +130,20 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
                     .Select(bone => bone with { LocalBindPose = bone.LocalBindPose with { Translation = bone.LocalBindPose.Translation * scale } })
                     .ToArray())
                 : null,
+            Animations = model.Animations?.Select(clip => Scale(clip, scale)).ToArray(),
+        };
+    }
+
+    private static AnimationClip Scale(AnimationClip clip, float scale)
+    {
+        return clip with
+        {
+            Tracks = [.. clip.Tracks.Select(track => track is BoneTransformTrack bone
+                ? bone with
+                {
+                    Keyframes = [.. bone.Keyframes.Select(key => key with { Transform = key.Transform with { Translation = key.Transform.Translation * scale } })],
+                }
+                : track)],
         };
     }
 }

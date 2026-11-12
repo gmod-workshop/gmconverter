@@ -1,5 +1,7 @@
 using System.Numerics;
 using GMConverter.Unity.Animation;
+using GMConverter.Unity.Geometry;
+using GMConverter.Unity.Models;
 
 namespace GMConverter.Unity.Tests;
 
@@ -82,6 +84,23 @@ public sealed class UnityAnimationTests
         Assert.Equal(3f, global.Translation.X, 4);
         Assert.Equal(0f, global.Translation.Z, 4);
         Assert.Equal(new Vector3(2f, 2f, 2f), global.Scale);
+    }
+
+    [Fact]
+    public void PoseMorphsTurnNodesBelowThePivotAboutIt()
+    {
+        // A jaw pivot 1 m up, already turned 90 degrees about Y, turning a further 90 degrees about its own Z.
+        var pivotWorld = UnitySpace.Compose(Vector3.UnitY, Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f), Vector3.One);
+        var change = UnityPoseMorph.Change(pivotWorld, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f));
+
+        // The pivot stays put; a point a metre along the pivot's x (world -z) swings to its y (world up).
+        AssertNear(Vector3.UnitY, Vector3.Transform(Vector3.UnitY, change));
+        AssertNear(new Vector3(0f, 2f, 0f), Vector3.Transform(new Vector3(0f, 1f, -1f), change));
+    }
+
+    private static void AssertNear(Vector3 expected, Vector3 actual)
+    {
+        Assert.True(Vector3.Distance(expected, actual) < 1e-4f, $"Expected {expected}, got {actual}.");
     }
 
     private static void AssertRotates(Quaternion rotation, Vector3 from, Vector3 expected)

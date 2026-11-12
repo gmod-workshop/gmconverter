@@ -123,7 +123,13 @@ internal sealed class UnityImporter(ITextureFactory textureFactory, ILoggerFacto
         return model with
         {
             Meshes = model.Meshes
-                .Select(mesh => mesh with { Vertices = mesh.Vertices.Select(vertex => vertex with { Position = vertex.Position * scale }).ToArray() })
+                .Select(mesh => mesh with
+                {
+                    Vertices = mesh.Vertices.Select(vertex => vertex with { Position = vertex.Position * scale }).ToArray(),
+                    MorphTargets = mesh.MorphTargets?
+                        .Select(morph => morph with { Deltas = [.. morph.Deltas.Select(delta => delta with { Position = delta.Position * scale })] })
+                        .ToArray(),
+                })
                 .ToArray(),
             Skeleton = model.Skeleton is { } skeleton
                 ? new Skeleton(skeleton.Bones

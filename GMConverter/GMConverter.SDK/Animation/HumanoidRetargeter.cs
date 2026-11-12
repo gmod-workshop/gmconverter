@@ -127,8 +127,10 @@ public static class HumanoidRetargeter
         return source with
         {
             Skeleton = skeleton,
-            // IK chains name bones by index in the old skeleton, so they don't carry over.
+            // IK chains and body groups point at bones and meshes by index in the old model, and
+            // both are rebuilt here, so they don't carry over.
             IkChains = null,
+            BodyGroups = null,
             Meshes = meshes,
             Materials = [.. source.Materials.Where(material => usedMaterials.Contains(material.Name))],
             Animations = source.Animations?.Select(clip => RetargetClip(clip, sourceSkeleton, sourceRoles, target, targetRoles, scale, keptSource, sourceToOutput, heldSide, heldScale, skeleton)).ToArray(),
@@ -220,8 +222,10 @@ public static class HumanoidRetargeter
         return retargeted with
         {
             Skeleton = new Skeleton(bones),
-            // IK chains name bones by index in the old skeleton, so they don't carry over.
+            // IK chains and body groups point at bones and meshes by index in the old model, and
+            // both are rebuilt here, so they don't carry over.
             IkChains = null,
+            BodyGroups = null,
             Meshes = meshes,
             Animations = null,
             Attachments = retargeted.Attachments?

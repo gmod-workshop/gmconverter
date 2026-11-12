@@ -92,11 +92,11 @@ internal static class SourceFlexes
         writer.WriteLine("end");
     }
 
-    /// <summary>Writes the body as a <c>$model</c> carrying the flexes and their controllers.</summary>
-    public static void WriteModel(StreamWriter writer, string smdFileName, string vtaFileName, IReadOnlyList<SourceFlex> flexes)
+    /// <summary>Writes the always-shown body as a <c>$model</c> carrying the flexes and their controllers.</summary>
+    public static void WriteModel(StreamWriter writer, string bodyName, string smdFileName, string vtaFileName, IReadOnlyList<SourceFlex> flexes)
     {
         // studiomdl only reads a block whose brace is on the command's line.
-        writer.WriteLine(FormattableString.Invariant($"$model \"body\" \"{smdFileName}\" {{"));
+        writer.WriteLine(FormattableString.Invariant($"$model \"{bodyName}\" \"{smdFileName}\" {{"));
         writer.WriteLine(FormattableString.Invariant($"    flexfile \"{vtaFileName}\" {{"));
         writer.WriteLine("        defaultflex frame 0");
         foreach (var flex in flexes)

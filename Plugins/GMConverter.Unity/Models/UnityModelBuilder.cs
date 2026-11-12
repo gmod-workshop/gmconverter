@@ -1,7 +1,9 @@
 using System.Numerics;
 using AssetsTools.NET.Extra;
+using GMConverter.SDK.Animation;
 using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Textures;
+using GMConverter.Unity.Animation;
 using GMConverter.Unity.Assets;
 using GMConverter.Unity.Geometry;
 using GMConverter.Unity.Materials;
@@ -21,11 +23,21 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
     /// <summary>Textures left out because their format could not be decoded.</summary>
     public IReadOnlyList<string> SkippedTextures => _materials.SkippedTextures;
 
-    public Model BuildHierarchy(UnityObject rootTransform, bool includeInactive)
+    /// <summary>Clips left out, with the reason.</summary>
+    public IReadOnlyList<string> SkippedAnimations { get; private set; } = [];
+
+    public Model BuildHierarchy(UnityObject rootTransform, bool includeInactive, UnityAnimationRequest animations)
     {
         var hierarchy = UnityHierarchy.Load(library, rootTransform);
         var renderers = FindRenderers(hierarchy, includeInactive);
-        var skeleton = renderers.Any(renderer => renderer.IsSkinned) ? BuildSkeleton(hierarchy, renderers) : null;
+        var animators = UnityAnimators.Find(library, hierarchy, animations);
+
+        // Props the clips move need bones of their own for their meshes to follow.
+        HashSet<UnityTransformNode> drawn = [.. renderers.SelectMany(renderer => renderer.Node.Ancestors().Prepend(renderer.Node))];
+        UnityTransformNode[] movedProps = [.. animators.MovedNodes().Where(drawn.Contains)];
+        var skeleton = renderers.Any(renderer => renderer.IsSkinned) || movedProps.Length > 0
+            ? BuildSkeleton(hierarchy, renderers, movedProps)
+            : null;
 
         List<Mesh> meshes = [];
         foreach (var renderer in renderers)
@@ -42,7 +54,15 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
             meshes,
             CollectMaterials(),
             skeleton?.Skeleton,
+            skeleton is null ? null : BuildAnimations(animators, skeleton),
             Forward: UnitySpace.Forward);
+    }
+
+    private List<AnimationClip>? BuildAnimations(UnityAnimators animators, UnitySkeleton skeleton)
+    {
+        var animations = animators.Build(skeleton);
+        SkippedAnimations = animators.Skipped;
+        return animations;
     }
 
     public Model BuildMesh(UnityObject mesh, UnityObject? materialRenderer)
@@ -119,12 +139,13 @@ internal sealed class UnityModelBuilder(UnityAssetLibrary library, ITextureFacto
         return includeInactive || renderer["m_Enabled"].AsBool;
     }
 
-    // Keeps every bone a skinned renderer uses plus their ancestors, so each bone's parent is its
-    // parent in the hierarchy and the root is always present for rigid parts to fall back on.
-    private static UnitySkeleton BuildSkeleton(UnityHierarchy hierarchy, IReadOnlyList<UnityRenderer> renderers)
+    // Keeps every bone a skinned renderer uses and every animated prop, plus their ancestors, so each
+    // bone's parent is its parent in the hierarchy and the root is always present for rigid parts
+    // to fall back on.
+    private static UnitySkeleton BuildSkeleton(UnityHierarchy hierarchy, IReadOnlyList<UnityRenderer> renderers, IEnumerable<UnityTransformNode> movedProps)
     {
         HashSet<UnityTransformNode> used = [hierarchy.Root];
-        foreach (var bone in renderers.SelectMany(renderer => renderer.Bones).OfType<UnityTransformNode>())
+        foreach (var bone in renderers.SelectMany(renderer => renderer.Bones).OfType<UnityTransformNode>().Concat(movedProps))
         {
             if (used.Add(bone))
             {

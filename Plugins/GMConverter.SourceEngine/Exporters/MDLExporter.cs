@@ -9,6 +9,7 @@ using GMConverter.SDK.Options;
 using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Animation;
+using GMConverter.SourceEngine.Flexes;
 using GMConverter.SourceEngine.Materials;
 using GMConverter.SourceEngine.Particles;
 using GMConverter.SourceEngine.Physics;
@@ -169,6 +170,17 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Directory.CreateDirectory(materialDirectory);
 
         WriteSmd(model, smdPath);
+        var flexes = SourceFlexes.Plan(model);
+        string? vtaPath = null;
+        if (flexes.Count > 0)
+        {
+            vtaPath = Path.Combine(outputDirectory, $"{safeBaseName}.vta");
+            using var vtaWriter = new StreamWriter(vtaPath, false, _utf8NoBom);
+            SourceFlexes.WriteVta(vtaWriter, model, flexes, _metersToSourceUnits,
+                writer => WriteSmdNodes(writer, model.Skeleton),
+                writer => WriteReferencePose(writer, model.Skeleton));
+        }
+
         if (physicsSmdPath is not null)
         {
             WritePhysicsSmd(model, physicsSmdPath, physicsOptions!);
@@ -195,7 +207,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         var target = SourceProfiles.Find(context.TargetGameId);
         List<string> warnings = [];
         List<(AnimationClip Clip, string Sequence)> sequences = [];
-        WriteQc(qcPath, model, modelPath, safeBaseName, idleSmdPath, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
+        WriteQc(qcPath, model, modelPath, safeBaseName, idleSmdPath, vtaPath, flexes, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(model, clip, context.TargetOptions) ?? [],
             clip => FitEvents(clip, target?.GetEvents(clip, context.TargetOptions) ?? [], warnings),
             axis => target?.GetPoseParameter(axis),
@@ -683,6 +695,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         string modelPath,
         string safeBaseName,
         string? idleSmdPath,
+        string? vtaPath,
+        IReadOnlyList<SourceFlex> flexes,
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
@@ -697,7 +711,15 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
 
         writer.WriteLine(FormattableString.Invariant($"$modelname \"{modelPath.Replace('\\', '/')}\""));
-        writer.WriteLine(FormattableString.Invariant($"$body \"body\" \"{smdFileName}\""));
+        if (vtaPath is null)
+        {
+            writer.WriteLine(FormattableString.Invariant($"$body \"body\" \"{smdFileName}\""));
+        }
+        else
+        {
+            SourceFlexes.WriteModel(writer, smdFileName, Path.GetFileName(vtaPath), flexes);
+        }
+
         foreach (var materialRelativeDirectory in materialRelativeDirectories)
         {
             writer.WriteLine(FormattableString.Invariant($"$cdmaterials \"{materialRelativeDirectory.Replace('\\', '/')}\""));
@@ -1246,21 +1268,23 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
     {
         writer.WriteLine("skeleton");
         writer.WriteLine("time 0");
+        WriteReferencePose(writer, skeleton);
+        writer.WriteLine("end");
+    }
 
+    private static void WriteReferencePose(StreamWriter writer, Skeleton? skeleton)
+    {
         if (skeleton is null || skeleton.Bones.Count == 0)
         {
             writer.WriteLine("0 0 0 0 0 0 0");
-        }
-        else
-        {
-            var sourceTransforms = BuildSourceLocalTransforms(skeleton);
-            foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))
-            {
-                WriteSmdBoneTransform(writer, bone.Index, sourceTransforms[bone.Index]);
-            }
+            return;
         }
 
-        writer.WriteLine("end");
+        var sourceTransforms = BuildSourceLocalTransforms(skeleton);
+        foreach (var bone in skeleton.Bones.OrderBy(bone => bone.Index))
+        {
+            WriteSmdBoneTransform(writer, bone.Index, sourceTransforms[bone.Index]);
+        }
     }
 
     // Attachments are written relative to their bone as it ends up in the SMD. Source bones carry

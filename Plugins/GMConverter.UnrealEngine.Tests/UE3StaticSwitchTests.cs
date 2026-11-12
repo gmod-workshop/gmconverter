@@ -63,8 +63,8 @@ public sealed class UE3StaticSwitchTests
             "Use_A", "Use_B", "Use_Wrong", "M_Base", "Switch_A", "Switch_B", "MI_Test", "MI_Child", "MI_Plain", .. _classes];
         int Name(string name) => names.IndexOf(name);
 
-        var body = new MemoryStream();
-        var writer = new BinaryWriter(body);
+        using var body = new MemoryStream();
+        using var writer = new BinaryWriter(body);
         void WriteName(string name)
         {
             writer.Write(Name(name));
@@ -203,8 +203,8 @@ public sealed class UE3StaticSwitchTests
         var bodyBytes = body.ToArray();
         var firstSerial = serials[0].Offset;
 
-        var file = new MemoryStream();
-        var summary = new BinaryWriter(file);
+        using var file = new MemoryStream();
+        using var summary = new BinaryWriter(file);
         summary.Write(UE3Compression.PackageTag);
         summary.Write((ushort)872);
         summary.Write((ushort)5);

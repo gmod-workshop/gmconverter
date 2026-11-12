@@ -72,6 +72,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     private readonly Action<string> _setStatusMessage;
     private readonly List<ExplorerFileEntry> _explorerEntries = [];
     private IReadOnlyList<ExplorerFileEntry> _selectedExplorerEntries = [];
+    private ExplorerFileEntry? _loadedModelEntry;
     private CancellationTokenSource? _explorerFilterCts;
     private string _explorerName = "Explorer";
     private string? _scannedGameName;
@@ -156,6 +157,8 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     public bool HasAnimationExplorerEntry => GetSelectedAnimationEntries().Count > 0;
 
+    public bool HasVariantExplorerEntry => GetSelectedVariantEntries().Count > 0;
+
     public bool HasExplorerFilter => !string.IsNullOrWhiteSpace(ExplorerFilter);
 
     public bool HasExplorerEntries => _explorerEntries.Count > 0;
@@ -169,11 +172,13 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasSelectedExplorerEntry));
         OnPropertyChanged(nameof(HasConvertibleExplorerEntry));
         OnPropertyChanged(nameof(HasAnimationExplorerEntry));
+        OnPropertyChanged(nameof(HasVariantExplorerEntry));
         OnPropertyChanged(nameof(CanFindRelatedExplorerAnimations));
         FindRelatedExplorerAnimationsCommand.NotifyCanExecuteChanged();
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
         AddSelectedAnimationsCommand.NotifyCanExecuteChanged();
+        AddSelectedVariantsCommand.NotifyCanExecuteChanged();
 
         if (value?.Entry is { } entry)
         {
@@ -200,6 +205,7 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         PreviewExplorerSelectionCommand.NotifyCanExecuteChanged();
         ExportExplorerSelectionCommand.NotifyCanExecuteChanged();
         AddSelectedAnimationsCommand.NotifyCanExecuteChanged();
+        AddSelectedVariantsCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -210,7 +216,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
     {
         _selectedExplorerEntries = [.. nodes.Select(node => node.Entry).OfType<ExplorerFileEntry>()];
         OnPropertyChanged(nameof(HasAnimationExplorerEntry));
+        OnPropertyChanged(nameof(HasVariantExplorerEntry));
         AddSelectedAnimationsCommand.NotifyCanExecuteChanged();
+        AddSelectedVariantsCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRunCommand))]
@@ -349,6 +357,76 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
         return entry.Kind is ExplorerEntryKind.Animation && entry.CanAddToModel;
     }
 
+    [RelayCommand(CanExecute = nameof(CanAddSelectedVariants))]
+    private async Task AddSelectedVariantsAsync()
+    {
+        var variants = GetSelectedVariantEntries();
+        if (_getIsBusy() || variants.Count == 0)
+        {
+            return;
+        }
+
+        _setIsBusy(true);
+        try
+        {
+            var added = 0;
+            for (var index = 0; index < variants.Count; index++)
+            {
+                var message = $"Exporting variant {index + 1} of {variants.Count}...";
+                _setStatusMessage(message);
+                ExplorerStatus = message;
+
+                var variant = variants[index];
+                var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(variant));
+                if (resolvedEntry.VariantImporterOptions is not { } options)
+                {
+                    _logSink.Append($"{variant.DisplayPath} cannot be added as a variant.");
+                    continue;
+                }
+
+                added += _convert.AppendImporterOptions(options);
+                _logSink.Append($"Added variant: {resolvedEntry.InputPath}");
+            }
+
+            ExplorerStatus = $"Added {added} variant(s) to the current model as body group options.";
+            _setStatusMessage("Variants added.");
+        }
+        catch (Exception ex)
+        {
+            _setStatusMessage("Variant export failed.");
+            ExplorerStatus = "Variant export failed.";
+            _logSink.Append($"Variant export failed. {ex.Message}");
+        }
+        finally
+        {
+            _setIsBusy(false);
+        }
+    }
+
+    private bool CanAddSelectedVariants()
+    {
+        return HasVariantExplorerEntry && !_getIsBusy();
+    }
+
+    // Other models made for the skeleton of the model loaded on the Convert page, which can become
+    // options of its body group.
+    private List<ExplorerFileEntry> GetSelectedVariantEntries()
+    {
+        if (_loadedModelEntry is not { SkeletonId: { } skeletonId } loaded)
+        {
+            return [];
+        }
+
+        IEnumerable<ExplorerFileEntry> selection = _selectedExplorerEntries.Count > 0
+            ? _selectedExplorerEntries
+            : SelectedExplorerNode?.Entry is { } entry ? [entry] : [];
+        return [.. selection.Where(candidate =>
+            candidate.Kind is ExplorerEntryKind.Model &&
+            candidate != loaded &&
+            string.Equals(candidate.InputFormat, loaded.InputFormat, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.SkeletonId, skeletonId, StringComparison.OrdinalIgnoreCase))];
+    }
+
     [RelayCommand(CanExecute = nameof(HasExplorerFilter))]
     private void ClearExplorerFilter()
     {
@@ -484,6 +562,13 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
         var resolvedEntry = await Task.Run(() => _explorerService.ResolveEntry(entry));
         PopulateExplorerSelection(entry, resolvedEntry);
+        if (entry.IsConvertible && entry.Kind is ExplorerEntryKind.Model)
+        {
+            _loadedModelEntry = entry;
+            OnPropertyChanged(nameof(HasVariantExplorerEntry));
+            AddSelectedVariantsCommand.NotifyCanExecuteChanged();
+        }
+
         if (!string.IsNullOrWhiteSpace(resolvedEntry.Details))
         {
             _logSink.Append(resolvedEntry.Details);
@@ -519,7 +604,9 @@ public sealed partial class ExplorerViewModel : ViewModelBase, IDisposable
 
     private void PopulateExplorerSelection(ExplorerFileEntry fileEntry, ExplorerResolvedEntry? resolvedEntry = null)
     {
-        if (fileEntry.IsConvertible)
+        // An archive entry is only usable once resolved, so merely selecting one leaves the Convert
+        // page on the model already there, to which selected animations or variants can be added.
+        if (fileEntry.IsConvertible && (resolvedEntry is not null || fileEntry.ArchivePath is null))
         {
             _convert.ApplyExplorerSelection(fileEntry, resolvedEntry);
         }

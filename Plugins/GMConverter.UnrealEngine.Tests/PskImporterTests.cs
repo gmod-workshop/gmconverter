@@ -179,6 +179,32 @@ public sealed class PskImporterTests
     }
 
     [Fact]
+    public void VariantsBecomeABodyGroupBoundToTheModelsSkeleton()
+    {
+        // The variant lists its bones in another order and adds one; its weights must follow
+        // "spine" to the model's index, and the new bone joins the skeleton.
+        var directory = PskFixtures.CreateDirectory();
+        var plain = Path.Join(directory, "SK_Plain.psk");
+        var coil = Path.Join(directory, "SK_Coil.psk");
+        PskFixtures.WriteSkinnedTriangle(plain, [("root", -1), ("spine", 0)], weightedBone: 1);
+        PskFixtures.WriteSkinnedTriangle(coil, [("root", -1), ("bolt", 0), ("spine", 0)], weightedBone: 2, offsetX: 200);
+
+        var model = _importer.Import(new ModelImportContext(plain)
+        {
+            Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.VariantPath] = coil }),
+        });
+
+        Assert.Equal(["root", "spine", "bolt"], model.Skeleton!.Bones.Select(bone => bone.Name));
+        Assert.Equal(2, model.Meshes.Count);
+        Assert.All(model.Meshes.SelectMany(mesh => mesh.Vertices), vertex => Assert.Equal(1, Assert.Single(vertex.BoneWeights!).BoneIndex));
+        var group = Assert.Single(model.BodyGroups!);
+        Assert.Equal("body", group.Name);
+        Assert.Equal(["SK_Plain", "SK_Coil"], group.Options.Select(option => option.Name));
+        Assert.Equal([[0], [1]], group.Options.Select(option => option.MeshIndices.ToArray()));
+        Assert.Same(model.Meshes[0], Assert.Single(model.DefaultMeshes));
+    }
+
+    [Fact]
     public void ScenePhysicsBodiesAndJointsFollowTheMergedSkeleton()
     {
         // Merged bones: root 0, spine 1, head 2. The body on a bone the mesh doesn't have is

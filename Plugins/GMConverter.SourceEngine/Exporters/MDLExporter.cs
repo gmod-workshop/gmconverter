@@ -169,14 +169,25 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         Directory.CreateDirectory(materialDirectory);
 
-        WriteSmd(model, smdPath);
-        var flexes = SourceFlexes.Plan(model);
+        var bodyParts = SourceBodyParts.Plan(model, safeBaseName);
+        foreach (var option in bodyParts.SelectMany(part => part.Options))
+        {
+            if (option.SmdFileName is { } smdFileName)
+            {
+                WriteSmd(model, Path.Combine(outputDirectory, smdFileName), option.Meshes);
+            }
+        }
+
+        // Flexes ride on the always-shown body, whose SMD holds the meshes the VTA numbers.
+        var flexModel = model with { Meshes = bodyParts.FirstOrDefault(part => !part.IsGroup)?.Options[0].Meshes ?? [] };
+        var flexes = SourceFlexes.Plan(flexModel);
+        var groupMorphs = model.Meshes.Except(flexModel.Meshes).Any(mesh => mesh.MorphTargets is { Count: > 0 });
         string? vtaPath = null;
         if (flexes.Count > 0)
         {
             vtaPath = Path.Combine(outputDirectory, $"{safeBaseName}.vta");
             using var vtaWriter = new StreamWriter(vtaPath, false, _utf8NoBom);
-            SourceFlexes.WriteVta(vtaWriter, model, flexes, _metersToSourceUnits,
+            SourceFlexes.WriteVta(vtaWriter, flexModel, flexes, _metersToSourceUnits,
                 writer => WriteSmdNodes(writer, model.Skeleton),
                 writer => WriteReferencePose(writer, model.Skeleton));
         }
@@ -206,8 +217,13 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var target = SourceProfiles.Find(context.TargetGameId);
         List<string> warnings = [];
+        if (groupMorphs)
+        {
+            warnings.Add("Morph targets on body group options were left out: only the always-shown body carries flexes.");
+        }
+
         List<(AnimationClip Clip, string Sequence)> sequences = [];
-        WriteQc(qcPath, model, modelPath, safeBaseName, idleSmdPath, vtaPath, flexes, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
+        WriteQc(qcPath, model, modelPath, idleSmdPath, vtaPath, flexes, bodyParts, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(model, clip, context.TargetOptions) ?? [],
             clip => FitEvents(clip, target?.GetEvents(clip, context.TargetOptions) ?? [], warnings),
             axis => target?.GetPoseParameter(axis),
@@ -327,7 +343,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         ProcessRunner.Run(studioMdlPath, [qcPath]);
     }
 
-    private static void WriteSmd(Model model, string smdPath)
+    private static void WriteSmd(Model model, string smdPath, IReadOnlyList<Mesh> meshes)
     {
         using var writer = new StreamWriter(smdPath, false, _utf8NoBom);
         writer.WriteLine("version 1");
@@ -345,7 +361,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             uvScales[material.Name] = material.BakedUv0Scale!.Value;
         }
 
-        foreach (var mesh in model.Meshes)
+        foreach (var mesh in meshes)
         {
             foreach (var submesh in mesh.Submeshes)
             {
@@ -693,10 +709,10 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         string qcPath,
         Model model,
         string modelPath,
-        string safeBaseName,
         string? idleSmdPath,
         string? vtaPath,
         IReadOnlyList<SourceFlex> flexes,
+        IReadOnlyList<SourceBodyPart> bodyParts,
         IReadOnlyList<string> materialRelativeDirectories,
         string? physicsSmdPath,
         PhysicsOptions? physicsOptions,
@@ -707,18 +723,10 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Func<BlendAxis, SourcePoseParameter?> getPoseParameter,
         List<(AnimationClip Clip, string Sequence)> sequences)
     {
-        var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
 
         writer.WriteLine(FormattableString.Invariant($"$modelname \"{modelPath.Replace('\\', '/')}\""));
-        if (vtaPath is null)
-        {
-            writer.WriteLine(FormattableString.Invariant($"$body \"body\" \"{smdFileName}\""));
-        }
-        else
-        {
-            SourceFlexes.WriteModel(writer, smdFileName, Path.GetFileName(vtaPath), flexes);
-        }
+        WriteBodyParts(writer, bodyParts, vtaPath, flexes);
 
         foreach (var materialRelativeDirectory in materialRelativeDirectories)
         {
@@ -744,7 +752,9 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         WriteHitboxes(writer, model);
         WriteIkChains(writer, model);
 
-        writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", idleSmdPath is null ? smdFileName : Path.GetFileName(idleSmdPath));
+        // Every reference SMD carries the whole skeleton in its bind pose, so any of them is the idle.
+        var idleSmd = bodyParts.SelectMany(part => part.Options).First(option => option.SmdFileName is not null).SmdFileName;
+        writer.WriteLine("$sequence \"idle\" \"{0}\" fps 1", idleSmdPath is null ? idleSmd : Path.GetFileName(idleSmdPath));
 
         // studiomdl compares sequence names without case, and "idle" is the bind pose above, so a
         // game clip named "Idle" (or two clips differing only in case) would stop the compile.
@@ -1157,6 +1167,33 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         {
             writer.WriteLine(FormattableString.Invariant(
                 $"$hbox {SourceHitGroups.FromBoneName(bone.Name)} \"{EscapeQcString(bone.Name)}\" {Clean(bounds.Min.X)} {Clean(bounds.Min.Y)} {Clean(bounds.Min.Z)} {Clean(bounds.Max.X)} {Clean(bounds.Max.Y)} {Clean(bounds.Max.Z)}"));
+        }
+    }
+
+    private static void WriteBodyParts(StreamWriter writer, IReadOnlyList<SourceBodyPart> bodyParts, string? vtaPath, IReadOnlyList<SourceFlex> flexes)
+    {
+        foreach (var part in bodyParts)
+        {
+            if (!part.IsGroup && vtaPath is not null)
+            {
+                SourceFlexes.WriteModel(writer, part.Name, part.Options[0].SmdFileName!, Path.GetFileName(vtaPath), flexes);
+                continue;
+            }
+
+            if (!part.IsGroup)
+            {
+                writer.WriteLine(FormattableString.Invariant($"$body \"{EscapeQcString(part.Name)}\" \"{part.Options[0].SmdFileName}\""));
+                continue;
+            }
+
+            writer.WriteLine(FormattableString.Invariant($"$bodygroup \"{EscapeQcString(part.Name)}\""));
+            writer.WriteLine("{");
+            foreach (var option in part.Options)
+            {
+                writer.WriteLine(option.SmdFileName is { } smdFileName ? $"    studio \"{smdFileName}\"" : "    blank");
+            }
+
+            writer.WriteLine("}");
         }
     }
 

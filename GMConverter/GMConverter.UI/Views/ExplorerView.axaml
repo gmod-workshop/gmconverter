@@ -127,6 +127,11 @@
                         Command="{Binding AddSelectedAnimationsCommand}"
                         IsEnabled="{Binding HasAnimationExplorerEntry}"
                         ToolTip.Tip="Export the selected animations (Ctrl/Shift-click to pick several) and add them to the model on the Convert page"/>
+                <Button Classes="Outline"
+                        Content="Add as Variant"
+                        Command="{Binding AddSelectedVariantsCommand}"
+                        IsEnabled="{Binding HasVariantExplorerEntry}"
+                        ToolTip.Tip="Add the selected meshes made for the same skeleton to the model on the Convert page as options of its body group, so one model can show any of them"/>
                 <Button Classes="Outline" Content="Preview Selected" Command="{Binding PreviewExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
                 <Button Classes="Primary" Content="Export Selected" Command="{Binding ExportExplorerSelectionCommand}" IsEnabled="{Binding HasConvertibleExplorerEntry}"/>
             </StackPanel>

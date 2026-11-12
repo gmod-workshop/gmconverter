@@ -62,6 +62,51 @@ public sealed class MdlExporterTests
     }
 
     [Fact]
+    public void BodyGroupsBecomeBodyGroupBlocksWithAnSmdPerOption()
+    {
+        var triangle = CreateSkinnedTriangle(Quaternion.Identity);
+        var model = triangle with
+        {
+            Meshes = [triangle.Meshes[0], triangle.Meshes[0] with { Name = "coil" }],
+            BodyGroups = [new BodyGroup("body", [new BodyGroupOption("Plain", [0]), new BodyGroupOption("Coil", [1]), new BodyGroupOption("None", [])])],
+        };
+
+        var output = ExportWithStubCompiler(model);
+
+        var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single()).Replace("\r", "");
+        Assert.Contains("$bodygroup \"body\"\n{\n    studio \"triangle_body_plain.smd\"\n    studio \"triangle_body_coil.smd\"\n    blank\n}\n", qc);
+        Assert.DoesNotContain("$body ", qc);
+        Assert.Contains("$sequence \"idle\" \"triangle_body_plain.smd\"", qc);
+        Assert.Single(Directory.GetFiles(output, "triangle_body_coil.smd", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(output, "triangle.smd", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void FlexesRideOnTheAlwaysShownBodyNextToBodyGroups()
+    {
+        var triangle = CreateSkinnedTriangle(Quaternion.Identity);
+        var smile = new MorphTarget("Smile", [new MorphTargetDelta(1, new Vector3(0, 0.1f, 0), Vector3.Zero)]);
+        var model = triangle with
+        {
+            Meshes =
+            [
+                triangle.Meshes[0] with { MorphTargets = [smile] },
+                triangle.Meshes[0] with { Name = "hat", MorphTargets = [smile with { Name = "Hat Tilt" }] },
+            ],
+            BodyGroups = [new BodyGroup("hat", [new BodyGroupOption("On", [1]), new BodyGroupOption("Off", [])])],
+        };
+
+        var output = ExportWithStubCompiler(model);
+
+        var qc = File.ReadAllText(Directory.GetFiles(output, "triangle.qc", SearchOption.AllDirectories).Single()).Replace("\r", "");
+        Assert.Contains("$model \"body\" \"triangle.smd\" {", qc);
+        Assert.Contains("flex \"smile\" frame 1", qc);
+        Assert.DoesNotContain("hat_tilt", qc);
+        Assert.Contains("$bodygroup \"hat\"\n{\n    studio \"triangle_hat_on.smd\"\n    blank\n}\n", qc);
+        Assert.Contains("$sequence \"idle\" \"triangle.smd\"", qc);
+    }
+
+    [Fact]
     public void CollisionPreviewFollowsThePhysicsOptions()
     {
         var exporter = new MDLExporter(new DefaultTextureFactory());

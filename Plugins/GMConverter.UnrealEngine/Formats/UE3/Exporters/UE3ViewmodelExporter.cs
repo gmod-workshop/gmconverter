@@ -43,6 +43,7 @@ internal static class UE3ViewmodelExporter
         var meshPath = Path.Combine(outputDirectory, assembled.Name + ".psk");
         UE3PskWriter.Write(meshPath, assembled, [.. slots.Select(slot => slot.Name)], [.. slots.Select(slot => (slot.AddressX, slot.AddressY))]);
         UE3MeshExporter.WriteSockets(assembled, meshPath);
+        UE3MeshExporter.WriteModel(assembled, meshPath, firstPerson: true);
 
         var animationPath = Path.Combine(outputDirectory, assembled.Name + ".psa");
         WriteClips(animationPath, assembled, armsSets, weaponSets);

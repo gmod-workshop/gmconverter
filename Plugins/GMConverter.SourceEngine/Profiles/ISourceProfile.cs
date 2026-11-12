@@ -1,4 +1,5 @@
 using GMConverter.SDK.Animation;
+using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Profiles;
 using GMConverter.SourceEngine.Animation;
@@ -14,10 +15,11 @@ namespace GMConverter.SourceEngine.Profiles;
 internal interface ISourceProfile : IExportGameProfile
 {
     /// <summary>
-    /// The activities to give a clip's sequences, from its role. Empty for clips without a role or
-    /// whose role this game has no activity for.
+    /// The activities to give a clip's sequences, from its role and what the model is (a view
+    /// model's clips get view model activities). Empty for clips without a role or whose role this
+    /// game has no activity for.
     /// </summary>
-    IReadOnlyList<SourceActivity> GetActivities(AnimationClip clip, OptionValues options);
+    IReadOnlyList<SourceActivity> GetActivities(Model model, AnimationClip clip, OptionValues options);
 
     /// <summary>The QC events to write into a clip's sequences, from its animation events.</summary>
     IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip);

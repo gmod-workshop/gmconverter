@@ -181,7 +181,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var target = SourceProfiles.Find(context.TargetGameId);
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
-            clip => target?.GetActivities(clip, context.TargetOptions) ?? [],
+            clip => target?.GetActivities(model, clip, context.TargetOptions) ?? [],
             clip => target?.GetEvents(clip) ?? [],
             axis => target?.GetPoseParameter(axis));
 

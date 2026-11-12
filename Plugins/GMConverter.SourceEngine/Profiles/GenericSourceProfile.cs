@@ -1,5 +1,6 @@
 using GMConverter.SDK.Animation;
 using GMConverter.SDK.Explorer;
+using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Profiles;
 using GMConverter.SourceEngine.Animation;
@@ -22,11 +23,15 @@ internal sealed class GenericSourceProfile : ISourceProfile
 
     public OptionSchema OptionSchema => OptionSchema.Empty;
 
-    public IReadOnlyList<SourceActivity> GetActivities(AnimationClip clip, OptionValues options)
+    public IReadOnlyList<SourceActivity> GetActivities(Model model, AnimationClip clip, OptionValues options)
     {
-        return clip.Role is { } role && clip.Layering is null && SourceActivities.Npc(role) is { } activity
-            ? [new SourceActivity(activity)]
-            : [];
+        if (clip.Role is not { } role || clip.Layering is not null)
+        {
+            return [];
+        }
+
+        var activity = model.FirstPerson ? SourceActivities.ViewModel(role) : SourceActivities.Npc(role);
+        return activity is null ? [] : [new SourceActivity(activity)];
     }
 
     /// <summary>A fallback for any folder holding a Source <c>gameinfo.txt</c>.</summary>

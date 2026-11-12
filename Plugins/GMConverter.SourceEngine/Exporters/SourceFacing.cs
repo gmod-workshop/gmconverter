@@ -22,6 +22,15 @@ internal static class SourceFacing
         }
 
         var angle = -MathF.Atan2(forward.Y, forward.X);
+
+        // studiomdl turns every compiled animation a quarter turn counter-clockwise about Z, leaving
+        // the rest pose as written. A view model is drawn straight along the player's view, so it is
+        // laid out facing -Y for its animations to come out facing +X (measured in Garry's Mod).
+        if (model.FirstPerson)
+        {
+            angle -= MathF.PI / 2f;
+        }
+
         if (MathF.Abs(angle) < _alignedTolerance)
         {
             return model;
@@ -87,7 +96,7 @@ internal static class SourceFacing
             Attachments = model.Attachments is { } attachments
                 ? [.. attachments.Select(attachment => attachment.BoneIndex is null ? attachment with { LocalTransform = Turn(attachment.LocalTransform) } : attachment)]
                 : null,
-            Forward = Vector3.UnitX,
+            Forward = model.FirstPerson ? -Vector3.UnitY : Vector3.UnitX,
         };
     }
 }

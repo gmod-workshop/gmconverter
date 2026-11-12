@@ -52,7 +52,8 @@ internal static class UE3MeshAssembly
             })],
             [.. body.Indices, .. part.Indices.Select(index => index + vertexOffset)],
             vertices,
-            [.. body.Sockets, .. part.Sockets.Select(socket => socket with { BoneName = bonePrefix + socket.BoneName })]);
+            [.. body.Sockets, .. part.Sockets.Select(socket => socket with { BoneName = bonePrefix + socket.BoneName })],
+            body.Forward);
     }
 
     /// <summary>

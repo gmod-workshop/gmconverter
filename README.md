@@ -315,6 +315,8 @@ Additive animations (layers such as aim poses, flinches and hit reactions that t
 
 Animations that use Unreal's root motion (the character travels or turns with its root bone, as walk cycles, starts, stops and turns usually do) carry that movement in MDL output, so Garry's Mod moves NPCs and players at the speed their feet step. Animations Unreal marks as looping, such as idles and walk cycles, loop in MDL output.
 
+Characters built on Unreal's mannequin skeleton (with `foot_l`, `foot_r`, `hand_l` and `hand_r` bones) get Source IK chains for their legs and arms in MDL output. Each animation's foot plants (where a foot stays on the ground) become footstep IK rules, so in game the feet stand on slopes and steps instead of floating or sinking into them. Aim layers don't drag the feet.
+
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 
 Unreal Engine 3 games list their sound cues (`SoundCue`) in the Explorer. Exporting one writes the audio of each wave it plays and a `.ue3cue` file, and converts it with the `ue3cue` importer, decoding the audio with vgmstream. A cue that plays several sounds at once (a mixer) becomes one sound event per layer, named `<cue>`, `<cue>_2` and so on; random choices keep their weights, modulators their pitch and volume ranges, and attenuation how far the sound carries. Animation notifies that play a cue (including CrossFire HD's) become `AE_CL_PLAYSOUND` events for each layer, after the cue's delay; variants that only play underwater are left out.

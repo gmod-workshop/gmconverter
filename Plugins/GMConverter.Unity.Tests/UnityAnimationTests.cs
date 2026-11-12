@@ -11,6 +11,9 @@ public sealed class UnityAnimationTests
         // From Liar's Bar's Toar avatar, whose m_TOS maps this hash to the pelvis.
         Assert.Equal(883898639u, UnityPathHash.Compute("Base HumanPelvis"));
         Assert.Equal(0u, UnityPathHash.Compute(string.Empty));
+
+        // The attribute of Liar's Bar's GameObject on/off curves.
+        Assert.Equal(2086281974u, UnityPathHash.Compute("m_IsActive"));
     }
 
     [Fact]

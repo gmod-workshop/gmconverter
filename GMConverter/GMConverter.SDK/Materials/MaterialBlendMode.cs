@@ -13,5 +13,8 @@ public enum MaterialBlendMode
     AlphaTest,
 
     // Add the material's colour to what is behind it (glows, energy effects); alpha is ignored.
-    Additive
+    Additive,
+
+    // Draw solid even when the diffuse texture has alpha.
+    Opaque
 }

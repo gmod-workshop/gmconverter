@@ -553,7 +553,7 @@ internal sealed class GLTFExporter : IModelExporter
         {
             builder.WithAlpha(AlphaMode.MASK, material.AlphaCutoff);
         }
-        else if (material.HasAlpha)
+        else if (material.HasAlpha && material.BlendMode != MaterialBlendMode.Opaque)
         {
             builder.WithAlpha(AlphaMode.BLEND, 0.5f);
         }

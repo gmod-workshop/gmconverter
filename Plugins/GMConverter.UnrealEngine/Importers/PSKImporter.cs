@@ -12,6 +12,7 @@ using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Formats.PSK.Physics;
 using GMConverter.UnrealEngine.Formats.UE2.Exporters;
+using GMConverter.UnrealEngine.Formats.UE3.Exporters;
 using GMConverter.UnrealEngine.Materials;
 using SixLabors.ImageSharp;
 
@@ -616,6 +617,9 @@ internal sealed class PSKImporter : IModelImporter
         var psaBoneToSkeletonBone = MapPsaBones(skeleton, psa);
         var layering = ReadLayering(skeleton, animationPath, options, basePoses);
         var playback = PSAClipSidecar.TryRead(animationPath);
+        var meshTranslationBones = new HashSet<string>(
+            playback?.MeshTranslationBones?.Select(NormalizeBoneName) ?? [],
+            StringComparer.OrdinalIgnoreCase);
         List<AnimationClip> clips = [];
 
         foreach (var sequence in psa.Sequences)
@@ -633,11 +637,20 @@ internal sealed class PSKImporter : IModelImporter
                     continue;
                 }
 
+                // Rotation-only bones keep this mesh's own offsets, whatever the animation was made on.
+                var bindTranslation = meshTranslationBones.Contains(NormalizeBoneName(skeleton.Bones[skeletonBoneIndex].Name))
+                    ? skeleton.Bones[skeletonBoneIndex].LocalBindPose.Translation
+                    : (Vector3?)null;
                 List<TransformKeyframe> keyframes = [];
                 for (var frameIndex = 0; frameIndex < sequence.FrameCount; frameIndex++)
                 {
                     var keyIndex = checked(frameIndex * psa.Bones.Count + psaBoneIndex);
                     var transform = ReadBoneTransform(skeleton, skeletonBoneIndex, keys, scaleKeys, keyIndex, options);
+                    if (bindTranslation is { } translation)
+                    {
+                        transform = transform with { Translation = translation };
+                    }
+
                     keyframes.Add(new TransformKeyframe(frameIndex / fps, transform));
                 }
 
@@ -1079,10 +1092,10 @@ internal sealed class PSKImporter : IModelImporter
                 emissiveTexture: emissiveTexture,
                 specularTexturePacking: usesCueMaterial
                     ? MaterialSpecularTexturePacking.SpecularMetallicRoughness
-                    : MaterialSpecularTexturePacking.Standard,
+                    : sidecarSettings.SpecularPacking ?? MaterialSpecularTexturePacking.Standard,
                 normalTextureConvention: usesCueMaterial
                     ? MaterialNormalTextureConvention.DirectX
-                    : MaterialNormalTextureConvention.OpenGl,
+                    : sidecarSettings.NormalConvention ?? MaterialNormalTextureConvention.OpenGl,
                 bakedUv0Scale: bakedUv0Scale,
                 specularFactor: usesCueMaterial ? _fortniteSpecularFactor : 1.0f,
                 uvScrollRate: sidecarSettings.UvScrollRate,
@@ -1956,7 +1969,9 @@ internal sealed class PSKImporter : IModelImporter
             UnrealMaterialExporter.DetailBlendKey,
             UnrealMaterialExporter.SelfIlluminationFadeKey,
             UnrealMaterialExporter.BlendKey,
-            UnrealMaterialExporter.AlphaRefKey
+            UnrealMaterialExporter.AlphaRefKey,
+            UE3MaterialExporter.SpecularPackingKey,
+            UE3MaterialExporter.NormalConventionKey
         };
 
         private static SidecarMaterialSettings ReadSidecarSettings(string materialPath)
@@ -2024,7 +2039,9 @@ internal sealed class PSKImporter : IModelImporter
                 PSKUvTransformParser.Parse(values.GetValueOrDefault(UnrealMaterialExporter.UvTransformKey)),
                 PSKUvTransformParser.Parse(values.GetValueOrDefault(UnrealMaterialExporter.DetailUvTransformKey)),
                 PSKUvTransformParser.ParseBlend(values.GetValueOrDefault(UnrealMaterialExporter.DetailBlendKey)),
-                fade);
+                fade,
+                Enum.TryParse<MaterialSpecularTexturePacking>(values.GetValueOrDefault(UE3MaterialExporter.SpecularPackingKey), out var packing) ? packing : null,
+                Enum.TryParse<MaterialNormalTextureConvention>(values.GetValueOrDefault(UE3MaterialExporter.NormalConventionKey), out var convention) ? convention : null);
         }
 
         private sealed record SidecarMaterialSettings(
@@ -2038,7 +2055,9 @@ internal sealed class PSKImporter : IModelImporter
             MaterialUvTransform? UvTransform,
             MaterialUvTransform? DetailUvTransform,
             MaterialLayerBlend? DetailBlend,
-            SidecarFade? SelfIlluminationFade)
+            SidecarFade? SelfIlluminationFade,
+            MaterialSpecularTexturePacking? SpecularPacking = null,
+            MaterialNormalTextureConvention? NormalConvention = null)
         {
             public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f, null, null, [], null, null, null, null);
         }

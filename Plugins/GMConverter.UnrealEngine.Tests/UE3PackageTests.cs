@@ -64,8 +64,8 @@ public sealed class UE3PackageTests
     {
         int Name(string name) => Array.IndexOf(_names, name);
 
-        var body = new MemoryStream();
-        var writer = new BinaryWriter(body);
+        using var body = new MemoryStream();
+        using var writer = new BinaryWriter(body);
         void WriteName(string name)
         {
             writer.Write(Name(name));
@@ -136,8 +136,8 @@ public sealed class UE3PackageTests
         writer.Write(serialOffset);
         var bodyBytes = body.ToArray();
 
-        var file = new MemoryStream();
-        var summary = new BinaryWriter(file);
+        using var file = new MemoryStream();
+        using var summary = new BinaryWriter(file);
         summary.Write(UE3Compression.PackageTag);
         summary.Write((ushort)_version);
         summary.Write((ushort)_licenseeVersion);

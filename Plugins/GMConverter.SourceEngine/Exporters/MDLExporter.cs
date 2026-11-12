@@ -76,6 +76,11 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
                 Description = "Compile VTFs and VMTs alongside the MDL. Disable for mesh-only output.",
                 Aliases = ["no-materials"],
             },
+            new OptionDescriptor("lods", OptionType.Bool, "Levels of detail")
+            {
+                DefaultValue = true,
+                Description = "Write the model's simpler levels of detail as $lod, for the engine to switch to as the model gets smaller on screen.",
+            },
         ]),
         new OptionGroup("material", "Materials",
         [
@@ -176,6 +181,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         var smdPath = Path.Combine(outputDirectory, $"{safeBaseName}.smd");
         var physicsSmdPath =
             physicsOptions is null ? null : Path.Combine(outputDirectory, $"{safeBaseName}_phys.smd");
+        var lodSmdPaths = options.Lods ? GetLodSmdPaths(model, outputDirectory, safeBaseName) : [];
         var animationSmdPaths = GetAnimationSmdPaths(model, outputDirectory, safeBaseName);
         var basePoseSmdPaths = GetBasePoseSmdPaths(animationSmdPaths, outputDirectory, safeBaseName);
         var qcPath = Path.Combine(outputDirectory, $"{safeBaseName}.qc");
@@ -208,6 +214,11 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             SourceFlexes.WriteVta(vtaWriter, flexModel, flexes, _metersToSourceUnits,
                 writer => WriteSmdNodes(writer, model.Skeleton),
                 writer => WriteReferencePose(writer, model.Skeleton));
+        }
+
+        foreach (var (lod, lodSmdPath, _) in lodSmdPaths)
+        {
+            WriteSmd(model with { Meshes = lod.Meshes }, lodSmdPath, lod.Meshes);
         }
 
         if (physicsSmdPath is not null)
@@ -245,13 +256,21 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             warnings.Add("Morph targets on body group options were left out: only the always-shown body carries flexes.");
         }
 
+        if (lodSmdPaths.Count > 0 && model.BodyGroups is { Count: > 0 })
+        {
+            warnings.Add(bodyParts.Any(part => !part.IsGroup)
+                ? "Levels of detail replace only the always-shown body; body group options keep their full detail."
+                : "Levels of detail were left out: every mesh is in a body group, and only the always-shown body gets levels of detail.");
+        }
+
         List<(AnimationClip Clip, string Sequence)> sequences = [];
         WriteQc(qcPath, model, modelPath, idleSmdPath, vtaPath, flexes, bodyParts, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(model, clip, context.TargetOptions) ?? [],
             clip => FitEvents(clip, target?.GetEvents(clip, context.TargetOptions) ?? [], warnings),
             axis => target?.GetPoseParameter(axis),
             sequences,
-            gibs);
+            gibs,
+            lodSmdPaths);
         List<string> files = [qcPath, .. gibs.Select(gib => gib.QcPath)];
         if (target is GarrysModProfile && context.TargetOptions.GetString(GarrysModProfile.ParticleEffectsOption) == GarrysModProfile.GmfxEffects &&
             GarrysModEffectModel.Write(modelPath, sequences) is { } effectLua)
@@ -340,6 +359,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             StudioMdlPath: o.GetString("studioMdlPath"),
             VtfCmdPath: o.GetString("vtfCmdPath"),
             BuildMaterials: o.GetBool("buildMaterials", defaultValue: true),
+            Lods: o.GetBool("lods", defaultValue: true),
             Physics: physics,
             MaterialOptimization: material,
             Gibs: gibs);
@@ -756,12 +776,25 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
         Func<BlendAxis, SourcePoseParameter?> getPoseParameter,
         List<(AnimationClip Clip, string Sequence)> sequences,
-        IReadOnlyList<(string BoneName, string ModelPath, string QcPath)>? gibs = null)
+        IReadOnlyList<(string BoneName, string ModelPath, string QcPath)>? gibs = null,
+        IReadOnlyList<(ModelLod Lod, string SmdPath, float SwitchPoint)>? lodSmdPaths = null)
     {
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
 
         writer.WriteLine(FormattableString.Invariant($"$modelname \"{modelPath.Replace('\\', '/')}\""));
         WriteBodyParts(writer, bodyParts, vtaPath, flexes);
+
+        // Levels of detail replace the always-shown body's SMD.
+        if (bodyParts.FirstOrDefault(part => !part.IsGroup)?.Options[0].SmdFileName is { } bodySmdFileName)
+        {
+            foreach (var (_, lodSmdPath, switchPoint) in lodSmdPaths ?? [])
+            {
+                writer.WriteLine(FormattableString.Invariant($"$lod {switchPoint:0.##}"));
+                writer.WriteLine("{");
+                writer.WriteLine(FormattableString.Invariant($"    replacemodel \"{bodySmdFileName}\" \"{Path.GetFileName(lodSmdPath)}\""));
+                writer.WriteLine("}");
+            }
+        }
 
         foreach (var materialRelativeDirectory in materialRelativeDirectories)
         {
@@ -923,7 +956,7 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             var gibPhysics = new PhysicsOptions(PhysicsMode.Auto, MathF.Max(mass * gib.Volume / totalVolume, 0.1f), null);
 
             // A gib is one piece of the model: the whole piece is its body, with no chains of its own.
-            var gibModel = gib.Model with { BodyGroups = null, IkChains = null };
+            var gibModel = gib.Model with { BodyGroups = null, IkChains = null, Lods = null };
             WriteSmd(gibModel, smdPath, gibModel.Meshes);
             WritePhysicsSmd(gibModel, physicsSmdPath, gibPhysics);
             WriteQc(qcPath, gibModel, gibModelPath, null, null, [], SourceBodyParts.Plan(gibModel, name), materialRelativeDirectories, physicsSmdPath, gibPhysics, [], [],
@@ -1337,6 +1370,40 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
     private static void WriteSkinFamily(StreamWriter writer, IEnumerable<string> materialNames)
     {
         writer.WriteLine("    { " + string.Join(' ', materialNames.Select(name => $"\"{EscapeQcString(name)}\"")) + " }");
+    }
+
+    // Source picks a level by how wide a sphere one unit across at the model's origin is on screen:
+    // its switch point is 100 over that width in pixels. Unreal's screen size is the model's
+    // bounding sphere diameter over the screen width. Both scale the same way with distance and
+    // field of view, so a level switches at the same distance in both on a screen this wide.
+    private const float _lodReferenceScreenWidth = 1920f;
+
+    // The model's levels from most to least detailed, each with its SMD and Source switch point.
+    private static List<(ModelLod Lod, string SmdPath, float SwitchPoint)> GetLodSmdPaths(
+        Model model,
+        string outputDirectory,
+        string safeBaseName)
+    {
+        if (model.Lods is not { Count: > 0 } lods || model.Meshes.Count == 0)
+        {
+            return [];
+        }
+
+        var bounds = model.Bounds();
+        var center = (bounds.Min + bounds.Max) / 2f;
+        var radius = model.Meshes.SelectMany(mesh => mesh.Positions).Max(position => Vector3.Distance(position, center)) * _metersToSourceUnits;
+
+        List<(ModelLod, string, float)> levels = [];
+        var previousSwitchPoint = 0f;
+        foreach (var lod in lods.Where(lod => lod.ScreenSize > 0f && lod.Meshes.Count > 0).OrderByDescending(lod => lod.ScreenSize))
+        {
+            // studiomdl needs each level to switch later than the one before.
+            var switchPoint = MathF.Max(200f * radius / (lod.ScreenSize * _lodReferenceScreenWidth), previousSwitchPoint + 0.01f);
+            levels.Add((lod, Path.Combine(outputDirectory, FormattableString.Invariant($"{safeBaseName}_lod{levels.Count + 1}.smd")), switchPoint));
+            previousSwitchPoint = switchPoint;
+        }
+
+        return levels;
     }
 
     private static (AnimationClip Clip, string SmdPath)[] GetAnimationSmdPaths(

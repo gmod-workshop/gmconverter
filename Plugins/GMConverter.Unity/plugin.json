@@ -1,0 +1,11 @@
+{
+  "id": "gmconverter.unity",
+  "version": "0.1.0",
+  "displayName": "Unity",
+  "entry": "GMConverter.Unity.dll",
+  "sdkVersion": "1.0",
+  "capabilities": [
+    "importer:unity",
+    "explorer:unity"
+  ]
+}

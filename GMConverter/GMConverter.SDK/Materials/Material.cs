@@ -20,7 +20,8 @@ public sealed class Material(
     float alphaCutoff = 0.5f,
     MaterialEmissiveLayer? emissiveLayer = null,
     MaterialUvTransform? uvTransform = null,
-    MaterialLayer? detailLayer = null)
+    MaterialLayer? detailLayer = null,
+    MaterialGraph? graph = null)
 {
     public string Name { get; } = name;
 
@@ -78,6 +79,10 @@ public sealed class Material(
 
     // Second texture combined with the diffuse before lighting.
     public MaterialLayer? DetailLayer { get; } = detailLayer;
+
+    // The material as its source engine computes it per pixel, for exporters that compile shaders;
+    // the textures above remain the fallback for those that don't.
+    public MaterialGraph? Graph { get; } = graph;
 
     public bool HasAlpha => DiffuseTexture?.HasAlpha ?? false;
 

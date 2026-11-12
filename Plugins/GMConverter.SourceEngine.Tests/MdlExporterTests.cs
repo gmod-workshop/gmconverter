@@ -8,6 +8,7 @@ using GMConverter.SDK.Materials;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Physics;
 using GMConverter.SourceEngine.Exporters;
+using GMConverter.SourceEngine.Profiles.GarrysMod;
 
 namespace GMConverter.SourceEngine.Tests;
 
@@ -360,6 +361,77 @@ public sealed class MdlExporterTests
         // The root sits 0.25 m along X; the eyes are 1.5 m above it, in inches.
         Assert.Contains("$eyeposition 9.8425 0 59.0551", Qc(model));
         Assert.DoesNotContain("$eyeposition", Qc(model with { Attachments = null }));
+    }
+
+    [Fact]
+    public void ParticleEventsFollowAnAttachmentAddedForTheirBone()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var bone = model.Skeleton!.Bones[0].Name;
+        var swing = new AnimationClip(
+            "swing",
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            Events:
+            [
+                new AnimationEvent(0.5f, AnimationEventKind.ParticleEffect, Bone: bone, Effect: "P_Glow"),
+                new AnimationEvent(0.6f, AnimationEventKind.ParticleEffect, Effect: "P_Dust"),
+            ]);
+
+        var qc = File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model with { Animations = [swing] }, targetGameId: "garrysmod"), "*.qc", SearchOption.AllDirectories).Single());
+
+        Assert.Contains($"{{ event AE_CL_CREATE_PARTICLE_EFFECT 15 \"P_Glow follow_attachment {bone}\" }}", qc);
+        Assert.Contains("{ event AE_CL_CREATE_PARTICLE_EFFECT 18 \"P_Dust follow_origin\" }", qc);
+        Assert.Contains($"$attachment \"{bone}\" \"{bone}\" 0 0 0 rotate 0 0 0", qc);
+    }
+
+    [Fact]
+    public void GmfxEffectsAreStartedFromLuaInsteadOfQcEvents()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var bone = model.Skeleton!.Bones[0].Name;
+        var inspect = new AnimationClip(
+            "Inspect",
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            Events:
+            [
+                new AnimationEvent(0.69f, AnimationEventKind.ParticleEffect, Bone: bone, Effect: "P_Kukri_Esport_Curve_Back"),
+                new AnimationEvent(0.2f, AnimationEventKind.ParticleEffect, Effect: "P_Dust"),
+            ]);
+
+        var output = ExportWithStubCompiler(
+            model with { Animations = [inspect] },
+            new Dictionary<string, object?> { ["modelPath"] = "weapons/v_knife.mdl" },
+            targetGameId: "garrysmod",
+            targetOptions: new Dictionary<string, object?> { [GarrysModProfile.ParticleEffectsOption] = GarrysModProfile.GmfxEffects });
+
+        Assert.DoesNotContain("AE_CL_CREATE_PARTICLE_EFFECT", File.ReadAllText(Directory.GetFiles(output, "*.qc", SearchOption.AllDirectories).Single()));
+        var lua = File.ReadAllText(Path.Join(output, "lua", "autorun", "client", $"gmconverter_fx_model_{model.Name.ToLowerInvariant()}.lua"));
+        Assert.Contains("GMConverterFX.RegisterModel(\"models/weapons/v_knife.mdl\", {", lua);
+        // In time order, with the attachment the effect follows (none for the model's origin).
+        Assert.Contains($"[\"Inspect\"] = {{ {{ 0.2, \"P_Dust\", nil }}, {{ 0.69, \"P_Kukri_Esport_Curve_Back\", \"{bone}\" }} }},", lua);
+    }
+
+    [Fact]
+    public void EventsTooLongForStudiomdlAreLeftOut()
+    {
+        var model = CreateSkinnedTriangle(Quaternion.Identity);
+        var swing = new AnimationClip(
+            "swing",
+            30f,
+            1f,
+            [new BoneTransformTrack(0, [new TransformKeyframe(0f, Transform.Identity), new TransformKeyframe(1f, Transform.Identity)])],
+            Events: [new AnimationEvent(0.5f, AnimationEventKind.ParticleEffect, Bone: "FX_Glow_03", Effect: "P_Kukri_LensFlar_Body_02_StartMotion")]);
+
+        var qc = File.ReadAllText(Directory.GetFiles(
+            ExportWithStubCompiler(model with { Animations = [swing] }, targetGameId: "garrysmod"), "*.qc", SearchOption.AllDirectories).Single());
+
+        // "P_Kukri_LensFlar_Body_02_StartMotion follow_attachment FX_Glow_03" is 65 characters; studiomdl would cut it.
+        Assert.DoesNotContain("P_Kukri_LensFlar_Body_02_StartMotion", qc);
     }
 
     [Fact]

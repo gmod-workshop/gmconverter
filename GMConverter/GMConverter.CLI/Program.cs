@@ -97,7 +97,7 @@ internal static class Program
             DefaultValueFactory = _ => "auto"
         };
 
-        var rootCommand = new RootCommand("Convert model and sound assets into Source Engine compile inputs for Garry's Mod.")
+        var rootCommand = new RootCommand("Convert model, sound and particle assets into Source Engine compile inputs for Garry's Mod.")
         {
             inputFormatOption,
             outputFormatOption,

@@ -1,3 +1,4 @@
+using GMConverter.Core.Plugins;
 using GMConverter.SDK.Assets;
 using GMConverter.SDK.Common;
 using GMConverter.SDK.Exporters;
@@ -26,6 +27,12 @@ internal abstract class AssetPipeline<TAsset> : IAssetPipeline
 
         var asset = Import(request);
         var exported = Export(asset, request, destination);
+        var logger = PluginHost.CreateLogger("GMConverter.Pipeline");
+        foreach (var warning in exported.Warnings)
+        {
+            logger.ExportWarning(asset.Name, warning);
+        }
+
         return new AssetResult(request, destination, exported);
     }
 

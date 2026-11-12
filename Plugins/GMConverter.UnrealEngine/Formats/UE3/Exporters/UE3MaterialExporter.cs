@@ -1,4 +1,5 @@
 using System.Globalization;
+using GMConverter.SDK.Common;
 using GMConverter.UnrealEngine.Formats.UE3.Materials;
 using GMConverter.UnrealEngine.Formats.UE3.Packages;
 using GMConverter.UnrealEngine.Formats.UE3.Textures;
@@ -21,6 +22,9 @@ internal static class UE3MaterialExporter
     /// <summary>Sidecar key naming the normal map's green-channel convention (a <see cref="SDK.Materials.MaterialNormalTextureConvention"/> name).</summary>
     public const string NormalConventionKey = "NormalConvention";
 
+    /// <summary>Sidecar key naming the material's translated graph (a <see cref="UE3MaterialGraphFile"/> beside it), for lit materials that translate.</summary>
+    public const string GraphKey = "Graph";
+
     private const string _noMaterial = "None";
 
     /// <summary>Writes every material slot, returning each slot's name and how its base texture repeats.</summary>
@@ -32,6 +36,7 @@ internal static class UE3MaterialExporter
         int maximumTextureSize)
     {
         Dictionary<string, UE3MaterialTexture?> textureCache = [];
+        Dictionary<string, UE3MaterialGraphFile.TextureFile> graphTextures = new(StringComparer.OrdinalIgnoreCase);
         List<(string, UE3TextureAddress, UE3TextureAddress)> slots = [];
         for (var slot = 0; slot < Math.Max(materials.Count, 1); slot++)
         {
@@ -42,17 +47,38 @@ internal static class UE3MaterialExporter
                 continue;
             }
 
-            var baked = UE3MaterialBaker.Bake(content, new UE3ObjectReference(found.Package, found.Export), maximumTextureSize, textureCache);
-            WriteMaterial(baked, outputDirectory);
+            var material = new UE3ObjectReference(found.Package, found.Export);
+            var baked = UE3MaterialBaker.Bake(content, material, maximumTextureSize, textureCache);
+            WriteMaterial(baked, outputDirectory, Graph(content, material, baked.Name, outputDirectory, graphTextures));
             slots.Add((baked.Name, baked.AddressX, baked.AddressY));
         }
 
         return slots;
     }
 
-    private static void WriteMaterial(UE3BakedMaterial material, string outputDirectory)
+    // A lit material's graph, written beside its sidecar; null, logged, when it doesn't translate.
+    private static string? Graph(UE3GameContent content, UE3ObjectReference material, string name, string outputDirectory, Dictionary<string, UE3MaterialGraphFile.TextureFile> written)
+    {
+        var translated = UE3MaterialTranslator.Translate(content, material, out var failure);
+        if (translated is not { Surface: not null })
+        {
+            PerfTimer.Log("ue3.materials", $"{name} keeps its baked textures only: {failure ?? "it is unlit"}");
+            return null;
+        }
+
+        var file = name + UE3MaterialGraphFile.Extension;
+        UE3MaterialGraphFile.Export(content, translated, outputDirectory, written).Write(Path.Combine(outputDirectory, file));
+        return file;
+    }
+
+    private static void WriteMaterial(UE3BakedMaterial material, string outputDirectory, string? graph)
     {
         List<string> lines = [];
+        if (graph is not null)
+        {
+            lines.Add($"{GraphKey}={graph}");
+        }
+
         string? Save(DecodedImage? image, string role)
         {
             if (image is null)

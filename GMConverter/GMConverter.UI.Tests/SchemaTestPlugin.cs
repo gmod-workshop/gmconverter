@@ -13,6 +13,8 @@ public sealed class SchemaTestPlugin : IPlugin
     {
         context.RegisterImporter(new SchemaTestImporter());
         context.RegisterExporter(new SchemaTestExporter());
+        context.RegisterImporter(new SchemaTestParticleImporter());
+        context.RegisterExporter(new SchemaTestParticleExporter());
         context.RegisterGameProfile(new SchemaTestGameProfile());
         context.RegisterGameProfile(new SchemaTestTargetProfile("test.target", "Test target"));
         context.RegisterGameProfile(new SchemaTestTargetProfile("test.target2", "Second test target"));

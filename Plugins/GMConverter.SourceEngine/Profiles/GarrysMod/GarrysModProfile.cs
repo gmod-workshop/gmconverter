@@ -4,6 +4,7 @@ using GMConverter.SDK.Geometry;
 using GMConverter.SDK.Options;
 using GMConverter.SDK.Profiles;
 using GMConverter.SourceEngine.Animation;
+using GMConverter.SourceEngine.Tools;
 
 namespace GMConverter.SourceEngine.Profiles.GarrysMod;
 
@@ -25,6 +26,13 @@ internal sealed class GarrysModProfile : ISourceProfile
     public const string ModelHands = "model";
     public const string PlayerHands = "player";
     public const string WorldModelOption = "worldModel";
+    public const string ParticleEffectsOption = "particleEffects";
+    public const string PcfEffects = "pcf";
+    public const string GmfxEffects = "gmfx";
+    public const string MaterialsOption = "materials";
+    public const string VmtMaterials = "vmt";
+    public const string GmfxMaterials = "gmfx";
+    public const string ShaderKitPathOption = "shaderKitPath";
 
     // When a clip needs both sets, its own sequence keeps the NPC activity and a copy with this
     // suffix carries the player one.
@@ -58,6 +66,23 @@ internal sealed class GarrysModProfile : ISourceProfile
             {
                 DefaultValue = false,
                 Description = "For first-person view models: write the world model instead (a w_ model for SWEP.WorldModel): only what the right hand holds, on a ValveBiped.Bip01_R_Hand bone that Garry's Mod matches to the player's hand.",
+            },
+            new OptionDescriptor(ParticleEffectsOption, OptionType.Enum, "Particle effects")
+            {
+                DefaultValue = PcfEffects,
+                Choices = [PcfEffects, GmfxEffects],
+                Description = "How the model's animations start their particle effects: as Source particle events for effects exported as pcf, or as a client Lua file that starts effects exported as gmfx (GMConverter's shader effects).",
+            },
+            new OptionDescriptor(MaterialsOption, OptionType.Enum, "Materials")
+            {
+                DefaultValue = VmtMaterials,
+                Choices = [VmtMaterials, GmfxMaterials],
+                Description = "How the model's materials are lit: by Source's VertexLitGeneric (vmt), or, where the source game's shading is known, by shaders that light them as it does, which the gmfx client Lua applies over the VertexLitGeneric materials (gmfx).",
+            },
+            new OptionDescriptor(ShaderKitPathOption, OptionType.Path, "Shader kit")
+            {
+                Description = "For gmfx materials: the folder with ShaderCompile.exe and the Garry's Mod shader headers (meetric1/gmod_shader_guide). Auto-downloads to tools/ when omitted.",
+                DefaultValueFactory = ShaderCompiler.TryFindLocalDefault,
             },
             new OptionDescriptor(EyesOption, OptionType.Bool, "Eyes")
             {
@@ -138,7 +163,9 @@ internal sealed class GarrysModProfile : ISourceProfile
         return activities;
     }
 
-    public IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip) => SourceAnimationEvents.For(clip);
+    // Effects exported as gmfx are started by the Lua file the MDL exporter writes, not by QC events.
+    public IReadOnlyList<SourceAnimationEvent> GetEvents(AnimationClip clip, OptionValues options) =>
+        SourceAnimationEvents.For(clip, includeParticleEffects: options.GetString(ParticleEffectsOption) != GmfxEffects);
 
     public SourcePoseParameter? GetPoseParameter(BlendAxis axis) => SourcePoseParameters.For(axis);
 }

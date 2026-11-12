@@ -45,6 +45,15 @@ public static class PluginHost
         }
     }
 
+    /// <summary>A logger writing where plugins' logs go, or one that discards everything before <see cref="Initialize"/>.</summary>
+    internal static ILogger CreateLogger(string category)
+    {
+        lock (_lock)
+        {
+            return _loggerFactory?.CreateLogger(category) ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        }
+    }
+
     /// <summary>
     /// Adds a log destination to the logger factory plugins received at load time. Hosts call
     /// this once their own logging surface exists (e.g. the UI console after Avalonia starts),

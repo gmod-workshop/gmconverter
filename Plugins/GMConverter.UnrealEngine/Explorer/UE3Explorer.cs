@@ -15,7 +15,8 @@ namespace GMConverter.UnrealEngine.Explorer;
 /// export with their materials baked and the anim sets of their own package that fit them; anim
 /// sets can be added to any model. Weapons with first-person arm animations also get a
 /// <c>Viewmodel</c> entry that assembles the arms, the weapon and their clips into one model.
-/// Sound cues export as sounds, one sound event per layer of the cue.
+/// Sound cues export as sounds, one sound event per layer of the cue, and particle systems as
+/// particle effects.
 /// </summary>
 public sealed class UE3Explorer : IExplorer
 {
@@ -52,7 +53,7 @@ public sealed class UE3Explorer : IExplorer
             {
                 var export = package.Exports[index - 1];
                 var className = package.GetClassName(export);
-                if (export.SerialSize > 0 && className is "SkeletalMesh" or "AnimSet" or "SoundCue")
+                if (export.SerialSize > 0 && className is "SkeletalMesh" or "StaticMesh" or "AnimSet" or "SoundCue" or "ParticleSystem")
                 {
                     assets.Add((package, index, className));
                 }
@@ -112,6 +113,17 @@ public sealed class UE3Explorer : IExplorer
 
         var export = package.Exports[exportIndex - 1];
         var outputDirectory = GetExportRoot(fileEntry);
+        if (fileEntry.AssetClass.Equals("StaticMesh", StringComparison.OrdinalIgnoreCase))
+        {
+            var staticMesh = UE3MeshExporter.ExportStaticMesh(content, package, export, outputDirectory);
+            return new ExplorerResolvedEntry(staticMesh.MeshPath!, outputDirectory);
+        }
+
+        if (fileEntry.AssetClass.Equals("ParticleSystem", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ExplorerResolvedEntry(UE3ParticleExporter.Export(content, package, export, outputDirectory), outputDirectory);
+        }
+
         if (fileEntry.AssetClass.Equals("SoundCue", StringComparison.OrdinalIgnoreCase))
         {
             return new ExplorerResolvedEntry(UE3SoundExporter.Export(content, package, export, outputDirectory), outputDirectory);
@@ -200,10 +212,11 @@ public sealed class UE3Explorer : IExplorer
         var objectPath = package.GetPath(exportIndex);
         var isAnimation = className == "AnimSet";
         var isSound = className == "SoundCue";
+        var isParticle = className == "ParticleSystem";
         return new ExplorerFileEntry(
             $"{Sanitize(packageName)}/{className}/{string.Join('/', objectPath.Split('.').Select(Sanitize))}",
             package.FilePath,
-            isSound ? UE3SoundCueImporter.FormatId : "psk",
+            isSound ? UE3SoundCueImporter.FormatId : isParticle ? UE3ParticleImporter.FormatId : "psk",
             root,
             root,
             package.FilePath,
@@ -211,7 +224,7 @@ public sealed class UE3Explorer : IExplorer
             Id,
             $"Class {className} | Object {objectPath} | Package {packageName} | File {Path.GetFileName(package.FilePath)} | Version {package.Summary.FileVersion}/{package.Summary.LicenseeVersion} | Size {export.SerialSize:N0}",
             AssetClass: className,
-            Kind: isSound ? ExplorerEntryKind.Sound : isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
+            Kind: isSound ? ExplorerEntryKind.Sound : isParticle ? ExplorerEntryKind.Particle : isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
             CanAddToModel: isAnimation);
     }
 

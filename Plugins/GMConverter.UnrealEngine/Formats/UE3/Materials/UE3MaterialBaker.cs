@@ -22,7 +22,8 @@ internal static class UE3MaterialBaker
         UE3GameContent content,
         UE3ObjectReference material,
         int maximumSize,
-        Dictionary<string, UE3MaterialTexture?> textureCache)
+        Dictionary<string, UE3MaterialTexture?> textureCache,
+        bool particleTextureSpace = false)
     {
         var parameters = UE3MaterialParameters.Collect(content, material);
         var name = material.Export.ObjectName;
@@ -31,10 +32,12 @@ internal static class UE3MaterialBaker
             return Fallback(content, name, parameters);
         }
 
-        var graph = new UE3MaterialGraph(content, parameters, baseMaterial, textureCache);
+        var graph = new UE3MaterialGraph(content, parameters, baseMaterial, textureCache, particleTextureSpace);
         var diffuseOutput = graph.CompileOutput("DiffuseColor");
         var normalOutput = graph.CompileOutput("Normal");
-        if (diffuseOutput is null && normalOutput is null)
+        var emissiveOutput = graph.CompileOutput("EmissiveColor");
+        // Unlit materials (particle glows) may have nothing but an emissive colour.
+        if (diffuseOutput is null && normalOutput is null && emissiveOutput is null)
         {
             return Fallback(content, name, parameters);
         }
@@ -77,9 +80,10 @@ internal static class UE3MaterialBaker
             ? FallbackTexture(content, parameters, "Normal")
             : BakeImage([normalOutput], maximumSize, (value, _) => EncodeNormal(value));
         var specular = BakeSpecularMasks(graph, maximumSize);
-        var emissiveOutput = graph.CompileOutput("EmissiveColor");
+        // An unlit translucent material's colour is its emission, so its opacity goes in the emissive alpha.
+        var emissiveLayers = diffuseOutput is null && opacity is not null && emissiveOutput is not null ? Combine(emissiveOutput, opacity) : null;
         var emissive = emissiveOutput is not null && (emissiveOutput.Varies || emissiveOutput.Evaluate(Vector2.Zero).Expanded.X > _visibleEmission)
-            ? BakeImage([emissiveOutput], maximumSize, (value, _) => EncodeColor(value, null))
+            ? BakeImage(emissiveLayers ?? [emissiveOutput], maximumSize, (value, alpha) => EncodeColor(value, emissiveLayers is null ? null : alpha))
             : null;
         if (emissive is not null && IsBlack(emissive))
         {
@@ -98,7 +102,10 @@ internal static class UE3MaterialBaker
             blend,
             alphaCutoff,
             baseTexture?.AddressX ?? UE3TextureAddress.Wrap,
-            baseTexture?.AddressY ?? UE3TextureAddress.Wrap);
+            baseTexture?.AddressY ?? UE3TextureAddress.Wrap)
+        {
+            ParticleUv = graph.ParticleUv,
+        };
     }
 
     private static UE3MaterialOutput[] Combine(UE3MaterialOutput color, UE3MaterialOutput? opacity)

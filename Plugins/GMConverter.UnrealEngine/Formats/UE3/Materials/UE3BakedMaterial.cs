@@ -18,4 +18,8 @@ internal sealed record UE3BakedMaterial(
     string? Blend,
     float AlphaCutoff,
     UE3TextureAddress AddressX,
-    UE3TextureAddress AddressY);
+    UE3TextureAddress AddressY)
+{
+    /// <summary>For a particle material baked in texture space, the slide a particle parameter drives.</summary>
+    public UE3ParticleUvAnimation? ParticleUv { get; init; }
+}

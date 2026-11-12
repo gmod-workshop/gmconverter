@@ -10,8 +10,11 @@ using GMConverter.SDK.Physics;
 using GMConverter.SDK.Textures;
 using GMConverter.SourceEngine.Animation;
 using GMConverter.SourceEngine.Materials;
+using GMConverter.SourceEngine.Particles;
 using GMConverter.SourceEngine.Physics;
 using GMConverter.SourceEngine.Profiles;
+using GMConverter.SourceEngine.Profiles.GarrysMod;
+using GMConverter.SourceEngine.Shading;
 using GMConverter.SourceEngine.Tools;
 
 namespace GMConverter.SourceEngine.Exporters;
@@ -180,10 +183,22 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         }
 
         var target = SourceProfiles.Find(context.TargetGameId);
+        List<string> warnings = [];
+        List<(AnimationClip Clip, string Sequence)> sequences = [];
         WriteQc(qcPath, model, modelPath, safeBaseName, materialRelativeDirectories, physicsSmdPath, physicsOptions, animationSmdPaths, basePoseSmdPaths,
             clip => target?.GetActivities(model, clip, context.TargetOptions) ?? [],
-            clip => target?.GetEvents(clip) ?? [],
-            axis => target?.GetPoseParameter(axis));
+            clip => FitEvents(clip, target?.GetEvents(clip, context.TargetOptions) ?? [], warnings),
+            axis => target?.GetPoseParameter(axis),
+            sequences);
+        List<string> files = [qcPath];
+        if (target is GarrysModProfile && context.TargetOptions.GetString(GarrysModProfile.ParticleEffectsOption) == GarrysModProfile.GmfxEffects &&
+            GarrysModEffectModel.Write(modelPath, sequences) is { } effectLua)
+        {
+            var luaPath = Path.Join(outputDirectory, "lua", "autorun", "client", $"gmconverter_fx_model_{safeBaseName.ToLowerInvariant()}.lua");
+            Directory.CreateDirectory(Path.GetDirectoryName(luaPath)!);
+            File.WriteAllText(luaPath, effectLua, _utf8NoBom);
+            files.Add(luaPath);
+        }
 
         // PNG+VMT fallback path: only useful when VtfCmd isn't going to run. When the compiler is
         // available it owns both files in materialDirectory — and the resize/dedup logic there
@@ -196,7 +211,26 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
 
         var result = new MDLExportResult(qcPath, smdPath, physicsSmdPath, materialDirectory, materialRelativeDirectory);
         Compile(model, result, sourceTools, options.BuildMaterials, options.MaterialOptimization);
-        return new ExportResult([qcPath]);
+        if (target is GarrysModProfile && context.TargetOptions.GetString(GarrysModProfile.MaterialsOption) == GarrysModProfile.GmfxMaterials)
+        {
+            files.AddRange(GarrysModShading.Write(model, modelPath, outputDirectory, context.TargetOptions.GetString(GarrysModProfile.ShaderKitPathOption), warnings));
+        }
+
+        return new ExportResult(files) { Warnings = warnings };
+    }
+
+    // studiomdl keeps 63 characters of an event's options and cuts the rest, which turns a long
+    // particle event into one naming an attachment that doesn't exist; such events are left out.
+    private const int _maximumEventOptionsLength = 63;
+
+    private static IReadOnlyList<SourceAnimationEvent> FitEvents(AnimationClip clip, IReadOnlyList<SourceAnimationEvent> events, List<string> warnings)
+    {
+        foreach (var tooLong in events.Where(animationEvent => animationEvent.Options.Length > _maximumEventOptionsLength))
+        {
+            warnings.Add($"{clip.Name}: {tooLong.Name} \"{tooLong.Options}\" is left out; studiomdl keeps only {_maximumEventOptionsLength} characters of an event's options.");
+        }
+
+        return [.. events.Where(animationEvent => animationEvent.Options.Length <= _maximumEventOptionsLength)];
     }
 
     // Binds the host's option bag into the strongly-typed MDLExportOptions the rest of this
@@ -645,7 +679,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
         Dictionary<AnimationPose, string> basePoseSmdPaths,
         Func<AnimationClip, IReadOnlyList<SourceActivity>> getActivities,
         Func<AnimationClip, IReadOnlyList<SourceAnimationEvent>> getEvents,
-        Func<BlendAxis, SourcePoseParameter?> getPoseParameter)
+        Func<BlendAxis, SourcePoseParameter?> getPoseParameter,
+        List<(AnimationClip Clip, string Sequence)> sequences)
     {
         var smdFileName = $"{safeBaseName}.smd";
         using var writer = new StreamWriter(qcPath, false, _utf8NoBom);
@@ -706,13 +741,17 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             var events = getEvents(clip);
             if (activities.Count == 0)
             {
-                WriteSequence(writer, model, clip, animationSmdPath, UniqueSequenceName(clip.Name), activity: null, events, basePoseSmdPaths);
+                var name = UniqueSequenceName(clip.Name);
+                sequences.Add((clip, name));
+                WriteSequence(writer, model, clip, animationSmdPath, name, activity: null, events, basePoseSmdPaths);
                 continue;
             }
 
             foreach (var activity in activities)
             {
-                WriteSequence(writer, model, clip, animationSmdPath, UniqueSequenceName(clip.Name + activity.SequenceSuffix), activity.Name, events, basePoseSmdPaths);
+                var name = UniqueSequenceName(clip.Name + activity.SequenceSuffix);
+                sequences.Add((clip, name));
+                WriteSequence(writer, model, clip, animationSmdPath, name, activity.Name, events, basePoseSmdPaths);
             }
         }
 
@@ -1211,7 +1250,8 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
     // placement is resolved through the original skeleton and re-expressed in the Source bone.
     private static void WriteAttachments(StreamWriter writer, Model model)
     {
-        if (model.Attachments is not { Count: > 0 } attachments)
+        var attachments = WithEffectAttachments(model);
+        if (attachments.Count == 0)
         {
             return;
         }
@@ -1245,6 +1285,32 @@ internal sealed class MDLExporter : IModelExporter, ICollisionPreview
             writer.WriteLine(FormattableString.Invariant(
                 $"$attachment \"{EscapeQcString(attachment.Name)}\" \"{EscapeQcString(boneName)}\" {Clean(position.X, 4)} {Clean(position.Y, 4)} {Clean(position.Z, 4)} rotate {Clean(angles.Y, 3)} {Clean(angles.Z, 3)} {Clean(angles.X, 3)}"));
         }
+    }
+
+    // Particle events follow an attachment, so a bone they name that no attachment does gets one at its origin.
+    private static List<Attachment> WithEffectAttachments(Model model)
+    {
+        List<Attachment> attachments = [.. model.Attachments ?? []];
+        if (model.Skeleton is not { } skeleton)
+        {
+            return attachments;
+        }
+
+        var bones = model.Animations?
+            .SelectMany(clip => clip.Events ?? [])
+            .Where(animationEvent => animationEvent.Kind == AnimationEventKind.ParticleEffect && !string.IsNullOrWhiteSpace(animationEvent.Bone))
+            .Select(animationEvent => animationEvent.Bone!)
+            .Distinct(StringComparer.OrdinalIgnoreCase) ?? [];
+        foreach (var name in bones)
+        {
+            if (!attachments.Any(attachment => string.Equals(attachment.Name, name, StringComparison.OrdinalIgnoreCase)) &&
+                skeleton.Bones.FirstOrDefault(bone => string.Equals(bone.Name, name, StringComparison.OrdinalIgnoreCase)) is { } bone)
+            {
+                attachments.Add(new Attachment(name, bone.Index, Transform.Identity));
+            }
+        }
+
+        return attachments;
     }
 
     // Game code places an NPC's view at $eyeposition, so it follows the model's eyes attachment

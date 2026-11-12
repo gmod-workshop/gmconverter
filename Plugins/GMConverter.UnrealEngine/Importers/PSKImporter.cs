@@ -13,6 +13,7 @@ using GMConverter.UnrealEngine.Formats.PSK;
 using GMConverter.UnrealEngine.Formats.PSK.Physics;
 using GMConverter.UnrealEngine.Formats.UE2.Exporters;
 using GMConverter.UnrealEngine.Formats.UE3.Exporters;
+using GMConverter.UnrealEngine.Formats.UE3.Materials;
 using GMConverter.UnrealEngine.Materials;
 using SixLabors.ImageSharp;
 
@@ -677,7 +678,7 @@ internal sealed class PSKImporter : IModelImporter
                 RootMotion: playback?.RootMotion ?? false,
                 Loops: playback?.Loops ?? false,
                 Events: playback?.EventsFor(sequence.Name) is { Count: > 0 } events
-                    ? [.. events.Select(clipEvent => new AnimationEvent(clipEvent.Time, clipEvent.Kind, clipEvent.Sound, clipEvent.Bone))]
+                    ? [.. events.Select(clipEvent => new AnimationEvent(clipEvent.Time, clipEvent.Kind, clipEvent.Sound, clipEvent.Bone, clipEvent.Effect))]
                     : null));
         }
 
@@ -1107,7 +1108,22 @@ internal sealed class PSKImporter : IModelImporter
                 alphaCutoff: sidecarSettings.AlphaCutoff,
                 emissiveLayer: emissiveLayer,
                 uvTransform: sidecarSettings.UvTransform,
-                detailLayer: detailLayer);
+                detailLayer: detailLayer,
+                graph: LoadGraph(sidecarSettings.GraphPath));
+        }
+
+        // A translated UE3 material graph, with its textures beside it; null when absent or incomplete.
+        private MaterialGraph? LoadGraph(string? path)
+        {
+            if (path is null || !File.Exists(path))
+            {
+                return null;
+            }
+
+            var directory = Path.GetDirectoryName(path)!;
+            return UE3MaterialGraphFile.Read(path).ToGraph(file => File.Exists(Path.Join(directory, file))
+                ? _textureFactory.FromFile(Path.Join(directory, file), hasAlpha: true, name: Path.GetFileNameWithoutExtension(file))
+                : null);
         }
 
         private MaterialLayer? TryLoadDetailLayer(Dictionary<string, string> references, SidecarMaterialSettings settings)
@@ -1974,7 +1990,8 @@ internal sealed class PSKImporter : IModelImporter
             UnrealMaterialExporter.BlendKey,
             UnrealMaterialExporter.AlphaRefKey,
             UE3MaterialExporter.SpecularPackingKey,
-            UE3MaterialExporter.NormalConventionKey
+            UE3MaterialExporter.NormalConventionKey,
+            UE3MaterialExporter.GraphKey
         };
 
         private static SidecarMaterialSettings ReadSidecarSettings(string materialPath)
@@ -2044,7 +2061,8 @@ internal sealed class PSKImporter : IModelImporter
                 PSKUvTransformParser.ParseBlend(values.GetValueOrDefault(UnrealMaterialExporter.DetailBlendKey)),
                 fade,
                 Enum.TryParse<MaterialSpecularTexturePacking>(values.GetValueOrDefault(UE3MaterialExporter.SpecularPackingKey), out var packing) ? packing : null,
-                Enum.TryParse<MaterialNormalTextureConvention>(values.GetValueOrDefault(UE3MaterialExporter.NormalConventionKey), out var convention) ? convention : null);
+                Enum.TryParse<MaterialNormalTextureConvention>(values.GetValueOrDefault(UE3MaterialExporter.NormalConventionKey), out var convention) ? convention : null,
+                values.GetValueOrDefault(UE3MaterialExporter.GraphKey) is { Length: > 0 } graph ? Path.Join(Path.GetDirectoryName(materialPath), graph) : null);
         }
 
         private sealed record SidecarMaterialSettings(
@@ -2060,7 +2078,8 @@ internal sealed class PSKImporter : IModelImporter
             MaterialLayerBlend? DetailBlend,
             SidecarFade? SelfIlluminationFade,
             MaterialSpecularTexturePacking? SpecularPacking = null,
-            MaterialNormalTextureConvention? NormalConvention = null)
+            MaterialNormalTextureConvention? NormalConvention = null,
+            string? GraphPath = null)
         {
             public static SidecarMaterialSettings Default { get; } = new(null, null, MaterialBlendMode.Unspecified, 0.5f, null, null, [], null, null, null, null);
         }

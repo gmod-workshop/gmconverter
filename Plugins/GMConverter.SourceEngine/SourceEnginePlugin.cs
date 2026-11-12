@@ -25,6 +25,8 @@ public sealed class SourceEnginePlugin : IPlugin
         context.RegisterExporter<MDLExporter>();
         context.RegisterImporter<WAVImporter>();
         context.RegisterExporter<WAVExporter>();
+        context.RegisterExporter<PCFExporter>();
+        context.RegisterExporter<GarrysModEffectExporter>();
         // The first target registered for each exporter is its default.
         foreach (var profile in SourceProfiles.All)
         {
@@ -32,6 +34,11 @@ public sealed class SourceEnginePlugin : IPlugin
         }
 
         foreach (var profile in SourceSoundProfiles.All)
+        {
+            context.RegisterGameProfile(profile);
+        }
+
+        foreach (var profile in SourceParticleProfiles.All)
         {
             context.RegisterGameProfile(profile);
         }

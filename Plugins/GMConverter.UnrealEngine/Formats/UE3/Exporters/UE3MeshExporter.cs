@@ -42,6 +42,17 @@ internal static class UE3MeshExporter
         return new UE3ExportResult(meshPath, animations);
     }
 
+    /// <summary>Writes a StaticMesh as a one-bone PSK with its materials.</summary>
+    public static UE3ExportResult ExportStaticMesh(UE3GameContent content, UE3Package package, UE3PackageExport export, string outputDirectory)
+    {
+        Directory.CreateDirectory(outputDirectory);
+        var mesh = UE3StaticMesh.Read(package, export).ToSkeletalMesh();
+        var slots = UE3MaterialExporter.Export(content, package, mesh.Materials, outputDirectory, _maximumTextureSize);
+        var meshPath = Path.Combine(outputDirectory, mesh.Name + ".psk");
+        UE3PskWriter.Write(meshPath, mesh, [.. slots.Select(slot => slot.Name)], [.. slots.Select(slot => (slot.AddressX, slot.AddressY))]);
+        return new UE3ExportResult(meshPath, []);
+    }
+
     /// <summary>Writes one AnimSet's sequences to a PSA.</summary>
     public static UE3ExportResult ExportAnimSet(UE3GameContent content, UE3Package package, UE3PackageExport export, string outputDirectory)
     {

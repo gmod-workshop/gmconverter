@@ -64,6 +64,13 @@
         <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- The Garry's Mod effect runtime and the particle vertex shaders, written into each exported add-on. -->
+        <EmbeddedResource Include="Particles\Lua\*.lua" />
+        <EmbeddedResource Include="Particles\Shaders\*.hlsl" />
+        <EmbeddedResource Include="Shading\*.hlsl" />
+    </ItemGroup>
+
     <ItemGroup Condition="'$(DownloadCoacdNative)' == 'true' and '$(CoacdNativeLibraryName)' != ''">
         <None Include="$(CoacdExtractedNativeLibraryPath)">
             <Link>$(CoacdNativeLibraryName)</Link>

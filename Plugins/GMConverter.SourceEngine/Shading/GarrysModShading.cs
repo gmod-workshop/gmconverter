@@ -1,0 +1,167 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using GMConverter.SDK.Common;
+using GMConverter.SDK.Geometry;
+using GMConverter.SDK.Materials;
+using GMConverter.SourceEngine.Particles;
+using GMConverter.SourceEngine.Tools;
+
+namespace GMConverter.SourceEngine.Shading;
+
+/// <summary>
+/// Writes what a Garry's Mod model needs to draw its lit materials with their source game's shading:
+/// each material's pixel shader (<see cref="LitMaterialHlsl"/>) and textures, the shared vertex shader
+/// and environment BRDF table, and a client Lua file registering them with the gmfx runtime
+/// (<c>GMConverterFX.RegisterShading</c>), which draws them over the model's VertexLitGeneric
+/// materials. Materials without a lit graph, or whose graph can't be drawn, keep their VMT.
+/// </summary>
+internal static class GarrysModShading
+{
+    private const string _vertexShaderResource = "GMConverter.SourceEngine.Shading.gmc_lit_vs30.hlsl";
+    private const string _runtimeResource = "GMConverter.SourceEngine.Particles.Lua.gmconverter_fx.lua";
+    private const string _brdfPath = "materials/gmconverter/shading/environment_brdf.vtf";
+    private const int _maximumTextureSize = 2048;
+    private static readonly UTF8Encoding _utf8NoBom = new(false);
+
+    /// <summary>The files written; empty when no material is drawn this way.</summary>
+    /// <param name="model">The model, whose materials with a lit graph are drawn this way.</param>
+    /// <param name="modelPath">The model's path under <c>models/</c>, as its QC's <c>$modelname</c>.</param>
+    /// <param name="outputDirectory">The add-on folder.</param>
+    /// <param name="shaderKitPath">The shader kit folder, or null for the downloaded one.</param>
+    /// <param name="warnings">Where materials left to VertexLitGeneric are reported.</param>
+    public static IReadOnlyList<string> Write(Model model, string modelPath, string outputDirectory, string? shaderKitPath, List<string> warnings)
+    {
+        var name = NameHelpers.SanitizeMaterialName(Path.GetFileNameWithoutExtension(modelPath)).ToLowerInvariant();
+        var textureFolder = $"gmconverter/shading/{name}";
+        List<string> files = [];
+        List<(string FileName, string Source)> shaders = [];
+        var vertexShader = Versioned("gmc_lit", Resource(_vertexShaderResource), "vs30", shaders);
+        Dictionary<ulong, string> texturePaths = [];
+        HashSet<string> textureNames = new(StringComparer.OrdinalIgnoreCase);
+        List<(string Material, string Shader, IReadOnlyList<(string Path, bool Linear)> Textures)> lit = [];
+        foreach (var material in model.Materials.Where(material => material.Graph?.Surface is not null).DistinctBy(material => material.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            string hlsl;
+            try
+            {
+                hlsl = LitMaterialHlsl.Write(material.Graph!, $"material {material.Name}");
+            }
+            catch (NotSupportedException ex)
+            {
+                warnings.Add($"{material.Name}: lit by VertexLitGeneric: {ex.Message}");
+                continue;
+            }
+
+            var shader = Versioned("gmc_lit", hlsl, "ps30", shaders);
+            var textures = material.Graph!.Textures
+                .Select(texture => (Path: WriteTexture(texture, outputDirectory, textureFolder, texturePaths, textureNames, files), Linear: !texture.Srgb))
+                .ToArray();
+            lit.Add((material.Name, shader, textures));
+        }
+
+        if (lit.Count == 0)
+        {
+            return files;
+        }
+
+        var brdf = Path.Join(outputDirectory, _brdfPath.Replace('/', Path.DirectorySeparatorChar));
+        EnvironmentBrdf.Write(brdf);
+        files.Add(brdf);
+
+        try
+        {
+            files.AddRange(ShaderCompiler.Resolve(shaderKitPath).Compile(shaders, Path.Join(outputDirectory, "shaders", "fxc")));
+        }
+        catch (GMConverterException ex)
+        {
+            // The HLSL is still written, so the shaders can be built by hand.
+            warnings.Add($"lit material shaders weren't compiled ({ex.Message}); their HLSL is in shaders/src.");
+        }
+
+        foreach (var (fileName, source) in shaders)
+        {
+            files.Add(WriteText(outputDirectory, $"shaders/src/{fileName}", source));
+        }
+
+        files.Add(WriteText(outputDirectory, "lua/autorun/client/gmconverter_fx.lua", Resource(_runtimeResource)));
+        files.Add(WriteText(outputDirectory, $"lua/autorun/client/gmconverter_shading_{name}.lua", Registration(modelPath, vertexShader, lit)));
+        return files;
+    }
+
+    private static string Registration(string modelPath, string vertexShader, IEnumerable<(string Material, string Shader, IReadOnlyList<(string Path, bool Linear)> Textures)> materials)
+    {
+        var model = "models/" + modelPath.Replace('\\', '/').ToLowerInvariant();
+        var text = new StringBuilder("-- Generated by GMConverter: the materials ").Append(model).Append(" draws with its source game's shading.\n\n");
+        text.Append("local function register()\n\tGMConverterFX.RegisterShading(").Append(Quote(model)).Append(", {\n");
+        foreach (var (material, shader, textures) in materials)
+        {
+            var list = string.Join(", ", textures.Select(texture => $"{{ {Quote(texture.Path)}, {(texture.Linear ? "true" : "false")} }}"));
+            text.Append(CultureInfo.InvariantCulture, $"\t\t[{Quote(material.ToLowerInvariant())}] = {{ shader = {Quote(shader)}, vertexShader = {Quote(vertexShader)}, textures = {{ {list} }} }},\n");
+        }
+
+        text.Append("\t})\nend\n\n");
+        // The runtime may load after this file.
+        text.Append("if GMConverterFX then register() else hook.Add(\"Initialize\", ").Append(Quote("GMConverterFX shading " + model)).Append(", register) end\n");
+        return text.ToString();
+    }
+
+    // Shader names carry a hash of their source: Garry's Mod caches shaders by name until restarted.
+    private static string Versioned(string stem, string source, string suffix, List<(string FileName, string Source)> shaders)
+    {
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..10];
+        var name = $"{stem}_{hash}_{suffix}";
+        if (!shaders.Any(shader => shader.FileName.StartsWith(name, StringComparison.Ordinal)))
+        {
+            shaders.Add(($"{name}.hlsl", source));
+        }
+
+        return name;
+    }
+
+    private static string WriteTexture(
+        MaterialGraphTexture graphTexture, string outputDirectory, string folder, Dictionary<ulong, string> written, HashSet<string> names, List<string> files)
+    {
+        var texture = graphTexture.Texture;
+        var key = texture.ContentHash() ^ (graphTexture.ClampU ? 1UL : 0) ^ (graphTexture.ClampV ? 2UL : 0);
+        if (written.TryGetValue(key, out var existing))
+        {
+            return existing;
+        }
+
+        var stem = NameHelpers.SanitizeMaterialName(texture.Name).ToLowerInvariant();
+        var file = stem;
+        for (var suffix = 2; !names.Add(file); suffix++)
+        {
+            file = FormattableString.Invariant($"{stem}_{suffix}");
+        }
+
+        using var sized = texture.Width > _maximumTextureSize || texture.Height > _maximumTextureSize ? texture.Resized(_maximumTextureSize) : null;
+        var source = sized ?? texture;
+        var path = Path.Join(outputDirectory, "materials", folder.Replace('/', Path.DirectorySeparatorChar), file + ".vtf");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        SpriteVtfWriter.Write(path, source.GetRgbaPixels(), source.Width, source.Height, 1, 1, null, graphTexture.ClampU, graphTexture.ClampV);
+        files.Add(path);
+        written[key] = $"{folder}/{file}";
+        return written[key];
+    }
+
+    private static string Quote(string value) =>
+        "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    private static string Resource(string name)
+    {
+        using var stream = typeof(GarrysModShading).Assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"{name} is missing from the plugin.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private static string WriteText(string directory, string relativePath, string contents)
+    {
+        var path = Path.Join(directory, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, contents, _utf8NoBom);
+        return path;
+    }
+}

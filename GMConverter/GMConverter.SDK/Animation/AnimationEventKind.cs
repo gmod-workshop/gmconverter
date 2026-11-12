@@ -11,4 +11,10 @@ public enum AnimationEventKind
 
     /// <summary>The held weapon fires.</summary>
     FireWeapon,
+
+    /// <summary>
+    /// A particle effect starts; <see cref="AnimationEvent.Effect"/> names it and
+    /// <see cref="AnimationEvent.Bone"/> the bone or socket it starts at and follows.
+    /// </summary>
+    ParticleEffect,
 }

@@ -31,6 +31,11 @@ Tools for converting model assets into Source Engine compile inputs for Garry's 
 | Wwise events (`AKEVENT`) | Yes* | No | Exported from Unreal Engine 4/5 archives by the Explorer. |
 | Wwise media (`WEM`) | Yes* | No | Decoded with vgmstream. |
 
+| Particle format | Read | Write | Notes |
+|---|---|---|---|
+| Source particles (`PCF`) | No | Yes* | Writes a particle file, sprite materials and what the target game needs to load it. |
+| Garry's Mod effects (`gmfx`) | No | Yes | Writes an add-on that draws each effect with shaders compiled from its materials. |
+
 ## CLI
 
 ```powershell
@@ -49,8 +54,8 @@ These apply to every input and output format.
 
 | Option | Description | Example | Default |
 | --- | --- | --- | --- |
-| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent`, `wem` or `ue3cue` for sounds. | `--input-format psk` | Required |
-| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds. | `--output-format mdl` | Required |
+| `--input-format <format>` | Input format: `opt`, `mdl`, `psk` or `mow` for models; `wav`, `akevent`, `wem` or `ue3cue` for sounds; `ue3fx` for particle effects. | `--input-format psk` | Required |
+| `--output-format <format>` | Output format: `info`, `obj`, `glb`, `gltf`, `mdl`, or `source` (same as `mdl`) for models; `info` or `wav` for sounds; `pcf` or `gmfx` for particle effects. | `--output-format mdl` | Required |
 | `--input-path <path>` | Input file path. | `--input-path "SkeletalMesh\model.psk"` | Required |
 | `--output-path <path>` | Output directory. Required except for `info`. | `--output-path "out\model"` | Required except `info` |
 | `--name <base-name>` | Override generated file names. | `--name bacta_dispenser` | Input file name |
@@ -123,6 +128,9 @@ These apply when MDL output targets Garry's Mod (the default).
 | Option | Description | Default |
 |---|---|---|
 | `--garrysmod-characterUse <use>` | Which activities animations get: `npc` (`ACT_IDLE`, `ACT_RUN`, …), `player` (`ACT_HL2MP_*` for player models), or `both`, which writes a `<name>_player` copy of each sequence for the player set. | `npc` |
+| `--garrysmod-particleEffects <pcf\|gmfx>` | How the model's animations start their particle effects: Source particle events (`AE_CL_CREATE_PARTICLE_EFFECT`) for effects exported as `pcf`, or a `lua/autorun/client` file that starts effects exported as `gmfx`. Particle events whose effect and attachment names add up to more than studiomdl's 63 characters are left out, with a warning. | `pcf` |
+| `--garrysmod-materials <vmt\|gmfx>` | How the model's materials are lit: by Source's `VertexLitGeneric` (`vmt`), or (`gmfx`) also by shaders that light them the way their source game does, which the gmfx client Lua draws over the `VertexLitGeneric` materials. Clients without the Lua see the `VertexLitGeneric` materials. So far this covers CrossFire HD's GGX materials on first-person view models, lit by the map's lights, ambient light and cubemaps; it needs Garry's Mod 2025.12 or newer, and a restart after the shaders are updated. Set `gmconverter_ggx_limit` on the client to cap the GGX highlight as a CrossFire HD map would. | `vmt` |
+| `--garrysmod-shaderKitPath <path>` | For `gmfx` materials: the folder with `ShaderCompile.exe` and the Garry's Mod shader headers ([meetric1/gmod_shader_guide](https://github.com/meetric1/gmod_shader_guide)). Downloaded into `tools/` when omitted. | |
 | `--garrysmod-eyes <true\|false>` | Add an `eyes` attachment on the head bone, facing the model's front, and set `$eyeposition` from it, so NPCs look and aim from their head. A model's own `eyes` attachment is kept. | `true` |
 | `--garrysmod-handAttachments <true\|false>` | Add `anim_attachment_RH` and `anim_attachment_LH` on the hands, copied from the model's hand sockets (or placed on the hand bones), which Garry's Mod uses to place held items. | `true` |
 
@@ -147,6 +155,27 @@ These use the `--glb-` prefix for both `glb` and `gltf` output. Binary or text o
 | `--wav-soundPath <path>` | Folder for the WAVs under the game's `sound` directory. | `gmconverter/<name>` |
 | `--wav-sampleRate <rate>` | `auto`, `44100`, `22050` or `11025`. `auto` keeps a rate Source plays and otherwise resamples to the nearest one above it, up to 44100 Hz. | `auto` |
 | `--wav-channels <mode>` | `auto`, `mono` or `keep`. `auto` makes sounds heard from a place in the world mono, because Source only positions mono sounds, and keeps the rest as recorded. | `auto` |
+
+</details>
+
+<details>
+<summary>PCF Export Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--pcf-materialPath <path>` | Folder for the effect's materials under the game's `materials` directory. | `particle/gmconverter/<name>` |
+| `--pcf-maxTextureSize <pixels>` | Particle textures larger than this are scaled down. | `512` |
+| `--pcf-viewModel` | Draw the effect with the view model (over it, at its field of view). Use for effects a first-person model's animations start. | `false` |
+
+</details>
+
+<details>
+<summary>Garry's Mod Effect Export Options</summary>
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `--gmfx-shaderKitPath <path>` | Folder with `ShaderCompile.exe` and the Garry's Mod shader headers ([gmod_shader_guide](https://github.com/meetric1/gmod_shader_guide)). | Auto-download |
+| `--gmfx-maxTextureSize <pixels>` | Effect textures larger than this are scaled down. | `1024` |
 
 </details>
 
@@ -267,6 +296,8 @@ Sockets on Unreal meshes and skeletons (named attach points such as a weapon han
 
 Unreal Engine 3 games list their sound cues (`SoundCue`) in the Explorer. Exporting one writes the audio of each wave it plays and a `.ue3cue` file, and converts it with the `ue3cue` importer, decoding the audio with vgmstream. A cue that plays several sounds at once (a mixer) becomes one sound event per layer, named `<cue>`, `<cue>_2` and so on; random choices keep their weights, modulators their pitch and volume ranges, and attenuation how far the sound carries. Animation notifies that play a cue (including CrossFire HD's) become `AE_CL_PLAYSOUND` events for each layer, after the cue's delay; variants that only play underwater are left out.
 
+Static meshes (`StaticMesh`) are listed too and convert like any model, as a single-bone mesh with their materials. Their Cascade particle systems (`ParticleSystem`) are listed as well. Exporting one writes a `.ue3fx` file and each emitter's material baked to one texture (the glow of an additive material, or colour with opacity), and converts it with the `ue3fx` importer: spawn rates and bursts, lifetimes, sizes, colours, locations, velocities, rotation, flipbooks, orbit, camera offsets and spawn-on-death events carry over. Mesh emitters bring their static mesh and mesh material, and a material that slides its texture by the particle's dynamic parameter (a glow travelling along a mesh) keeps that slide over each particle's life. Particle notifies (`AnimNotify_PlayParticleEffect`) become particle events at their socket, so converted view models start their effects. Values a cooked game leaves at the engine's defaults take UE3's defaults, since games often ship the engine package (`Engine.u`) encrypted.
+
 Games that use Wwise for audio list their Wwise events (`AkAudioEvent`) in the Explorer. Exporting one writes its `.wem` media and an `.akevent` file, and converts it with the `akevent` importer. The media is decoded with [vgmstream](https://github.com/vgmstream/vgmstream), which is downloaded into the `tools` folder the first time it is needed. The event keeps its name, so animation sound events that play it find it, and picks between its media at random. Localised voice lines keep their English recording.
 
 This first version reads which media an event can play, but not how Wwise mixes it. Volume, pitch variation and switches (such as the floor surface a footstep is on) are not read yet: an event picks between all of its media, and how far it carries is guessed from its name (`FS_` footsteps, `FLY_` foley, `brk_` and `VO` voice, `WPN_` weapons, and so on).
@@ -276,7 +307,7 @@ This first version reads which media an event can play, but not how Wwise mixes 
 <details>
 <summary>Unreal Engine 3 Packages</summary>
 
-The Explorer can read Unreal Engine 3 games' cooked packages directly, without exporting them with UModel first. Select the game's install folder or its content folder. It lists each package's `SkeletalMesh` and `AnimSet` assets, grouped by package. Tested with CrossFire HD, whose packages are LZ4-compressed and named by hash: the Explorer works out each package's real name from the packages that use it, and shows the file name when nothing does.
+The Explorer can read Unreal Engine 3 games' cooked packages directly, without exporting them with UModel first. Select the game's install folder or its content folder. It lists each package's skeletal meshes (`SkeletalMesh`), static meshes (`StaticMesh`), animation sets (`AnimSet`), sound cues (`SoundCue`) and particle systems (`ParticleSystem`), grouped by package. Tested with CrossFire HD, whose packages are LZ4-compressed and named by hash: the Explorer works out each package's real name from the packages that use it, and shows the file name when nothing does.
 
 Exporting a skeletal mesh brings along:
 
@@ -286,7 +317,7 @@ Exporting a skeletal mesh brings along:
 
 CrossFire HD weapons also get a **Viewmodel** entry: the first-person arms model the weapon's arm animations were made for, with the weapon held on the arms' weapon bone, and one sequence per action in which the arms and the weapon move together. A weapon skin uses the base weapon's animations plus the ones the skin changes, which replace the base versions. Swimming and additive layer animations are left out.
 
-Textures that repeat mirrored, as weapon skins often do so that one painted half covers both sides, are unfolded into the mesh's UVs, since Source can only repeat textures. Animation sets that use Unreal's rotation-only mode keep the mesh's own bone offsets, so first-person arm animations fit the arms model they are added to. Only the most detailed LOD is exported, and static meshes aren't listed yet.
+Textures that repeat mirrored, as weapon skins often do so that one painted half covers both sides, are unfolded into the mesh's UVs, since Source can only repeat textures. Animation sets that use Unreal's rotation-only mode keep the mesh's own bone offsets, so first-person arm animations fit the arms model they are added to. Only the most detailed LOD is exported.
 
 </details>
 
@@ -364,6 +395,34 @@ Source picks each play's sound uniformly at random, so weighted choices are writ
   --input-path "beep.wav" `
   --output-path "out\beep"
 ```
+
+</details>
+
+<details>
+<summary>PCF</summary>
+
+PCF export writes the effect to `particles/<name>.pcf`. Each emitter becomes a particle system of its own, which the effect's system starts as a child, so the effect plays by its source-game name and animation particle events start it. Each emitter's texture becomes a SpriteCard material under `materials/<material path>/`, and flipbooks become sprite sheets in the VTF. To load the file:
+
+- **Garry's Mod** (the default target): `lua/autorun/<name>_particles.lua` adds it with `game.AddParticles` and precaches its systems.
+- **Other Source games** (`--target source`): list `particles/<name>.pcf` in the game's `particles/particles_manifest.txt`.
+
+Source's particle operators are simpler than most engines', so some features are approximated: spawn rates that change become their average, alpha over life becomes a fade in and out, colour over life a fade from its first to its last colour, and velocity-aligned sprites become sprite trails. Emitters that spawn where another emitter's particles die emit on that emitter's schedule instead, one particle lifetime later, from where its particles start; colours brighter than white (common for glows) have their brightness moved into the emitter's texture, since Source's particle colours stop at white. Some features are left out: particles drawn as meshes, velocity over life, orbit rotation, and textures that slide over a particle's life. The converter lists each approximation and omission as a warning.
+
+Models whose animations start particle effects get `AE_CL_CREATE_PARTICLE_EFFECT` events that follow the bone or socket the effect starts at (an attachment is added for a bone that has none).
+
+</details>
+
+<details>
+<summary>Garry's Mod effects</summary>
+
+Garry's Mod effect export (`gmfx`) draws an effect the way its source game does rather than approximating it with Source particles. Each emitter's material is compiled into a pixel shader from the material's own node graph, so animated textures, glows brighter than white and per-particle parameters look as they did, and a client Lua runtime simulates the emitters: spawn rates and bursts, spawning where another emitter's particles die, lifetimes, start values and over-life curves, orbit, camera offsets, flipbooks, camera-facing and velocity-stretched sprites, and particles drawn as meshes. It writes:
+
+- `shaders/fxc/`: the compiled shaders (their HLSL in `shaders/src/`).
+- `materials/gmconverter/fx/<name>/`: the textures the materials sample.
+- `data_static/gmconverter/fx/<name>/`: the models mesh particles draw.
+- `lua/gmconverter_fx/effects/<name>.lua` and `lua/autorun/gmconverter_fx_<name>.lua`: the effect and what loads it, with the shared runtime in `lua/autorun/client/gmconverter_fx.lua`.
+
+Shaders compile with `ShaderCompile.exe`, which is downloaded on first use unless `--gmfx-shaderKitPath` points at a kit; without it the add-on is written with its HLSL only, and a warning. Effects need Garry's Mod 2025.12 or newer (`screenspace_general_8tex`). Lua starts them with `GMConverterFX.Play(name, entity, attachment)`. Materials using a node the converter doesn't translate yet draw their baked texture tinted by the particle, and soft edges where particles meet surfaces aren't drawn.
 
 </details>
 

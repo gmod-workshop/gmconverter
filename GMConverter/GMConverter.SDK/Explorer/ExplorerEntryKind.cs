@@ -11,4 +11,7 @@ public enum ExplorerEntryKind
 
     /// <summary>A sound or sound event that converts into a <see cref="Audio.Sound"/>.</summary>
     Sound,
+
+    /// <summary>A particle system that converts into a <see cref="Particles.ParticleEffect"/>.</summary>
+    Particle,
 }

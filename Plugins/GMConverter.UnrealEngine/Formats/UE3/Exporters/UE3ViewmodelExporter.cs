@@ -1,5 +1,6 @@
 using System.Numerics;
 using GMConverter.SDK.Common;
+using GMConverter.UnrealEngine.Formats.PSA;
 using GMConverter.UnrealEngine.Formats.UE3.Animations;
 using GMConverter.UnrealEngine.Formats.UE3.Meshes;
 using GMConverter.UnrealEngine.Formats.UE3.Packages;
@@ -46,7 +47,7 @@ internal static class UE3ViewmodelExporter
         UE3MeshExporter.WriteModel(assembled, meshPath, firstPerson: true);
 
         var animationPath = Path.Combine(outputDirectory, assembled.Name + ".psa");
-        WriteClips(animationPath, assembled, armsSets, weaponSets);
+        WriteClips(content, animationPath, assembled, armsSets, weaponSets);
         return new UE3ExportResult(meshPath, [animationPath]);
     }
 
@@ -96,7 +97,7 @@ internal static class UE3ViewmodelExporter
             }
         }
 
-        return new LoadedSet(set, sequences);
+        return new LoadedSet(package, set, sequences);
     }
 
     private static (UE3Package Package, UE3PackageExport Export)? FindArms(UE3GameContent content, IReadOnlyList<LoadedSet> armsSets)
@@ -113,8 +114,10 @@ internal static class UE3ViewmodelExporter
         return null;
     }
 
-    private static void WriteClips(string path, UE3SkeletalMesh mesh, List<LoadedSet> armsSets, List<LoadedSet> weaponSets)
+    private static void WriteClips(UE3GameContent content, string path, UE3SkeletalMesh mesh, List<LoadedSet> armsSets, List<LoadedSet> weaponSets)
     {
+        var notifies = new UE3AnimationEvents(content);
+        Dictionary<string, IReadOnlyList<PSAClipEvent>> events = new(StringComparer.OrdinalIgnoreCase);
         var armsClips = LatestClips(armsSets, string.Empty);
         var weaponClips = LatestClips(weaponSets, CrossFireHDViewmodels.WeaponBonePrefix);
         var bones = mesh.Bones.Select(bone => bone.Name).ToArray();
@@ -136,9 +139,16 @@ internal static class UE3ViewmodelExporter
             }
 
             Place(arms);
+            List<PSAClipEvent> clipEvents = [.. notifies.Read(arms.Package, arms.Sequence)];
             if (weaponClips.TryGetValue(name, out var weapon))
             {
                 Place(weapon);
+                clipEvents.AddRange(notifies.Read(weapon.Package, weapon.Sequence));
+            }
+
+            if (clipEvents.Count > 0)
+            {
+                events[name] = [.. clipEvents.OrderBy(clipEvent => clipEvent.Time)];
             }
 
             clips.Add(arms.Sequence with { Tracks = tracks });
@@ -158,7 +168,7 @@ internal static class UE3ViewmodelExporter
             })
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var combined = new UE3AnimSet(mesh.Name, bones, [], RotationOnly: true, [.. bones.Where(translated.Contains)], null);
-        UE3PsaWriter.Write(path, combined, clips);
+        UE3PsaWriter.Write(path, combined, clips, events);
     }
 
     // Each clip name's newest version: skins come after the base, so theirs win. Layers are left out.
@@ -170,7 +180,7 @@ internal static class UE3ViewmodelExporter
             var trackBones = loaded.Set.TrackBones.Select(bone => bonePrefix + bone).ToArray();
             foreach (var sequence in loaded.Sequences.Where(sequence => !sequence.IsAdditive))
             {
-                clips[sequence.Name] = new Clip(sequence, trackBones);
+                clips[sequence.Name] = new Clip(sequence, trackBones, loaded.Package);
             }
         }
 
@@ -193,7 +203,7 @@ internal static class UE3ViewmodelExporter
         return new UE3AnimTrack(positions, null, rotations, null);
     }
 
-    private sealed record LoadedSet(UE3AnimSet Set, List<UE3AnimSequence> Sequences);
+    private sealed record LoadedSet(UE3Package Package, UE3AnimSet Set, List<UE3AnimSequence> Sequences);
 
-    private sealed record Clip(UE3AnimSequence Sequence, IReadOnlyList<string> TrackBones);
+    private sealed record Clip(UE3AnimSequence Sequence, IReadOnlyList<string> TrackBones, UE3Package Package);
 }

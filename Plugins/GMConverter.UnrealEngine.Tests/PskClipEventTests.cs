@@ -33,6 +33,25 @@ public sealed class PskClipEventTests
     }
 
     [Fact]
+    public void SequenceEventsOverrideTheSidecarsSharedEvents()
+    {
+        var (psk, psa) = PskFixtures.WriteFixture();
+        new PSAClipSidecar(false, false,
+            [new PSAClipEvent(0.1f, AnimationEventKind.Sound, "Shared")],
+            SequenceEvents: new Dictionary<string, IReadOnlyList<PSAClipEvent>>
+            {
+                ["MOVE"] = [new PSAClipEvent(0.2f, AnimationEventKind.Sound, "SND_WP_Kukri_Attack")],
+            }).Write(psa);
+
+        var model = new PSKImporter(new DefaultTextureFactory()).Import(new ModelImportContext(psk)
+        {
+            Options = new OptionValues(new Dictionary<string, object?> { [PSKImporterOptions.AnimationPath] = psa }),
+        });
+
+        Assert.Equal([new AnimationEvent(0.2f, AnimationEventKind.Sound, "SND_WP_Kukri_Attack")], Assert.Single(model.Animations!).Events);
+    }
+
+    [Fact]
     public void SidecarsWithOnlyEventsAreWorthWriting()
     {
         Assert.False(new PSAClipSidecar(false, false).HasData);

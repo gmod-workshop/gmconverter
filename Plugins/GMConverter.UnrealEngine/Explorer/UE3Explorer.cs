@@ -15,6 +15,7 @@ namespace GMConverter.UnrealEngine.Explorer;
 /// export with their materials baked and the anim sets of their own package that fit them; anim
 /// sets can be added to any model. Weapons with first-person arm animations also get a
 /// <c>Viewmodel</c> entry that assembles the arms, the weapon and their clips into one model.
+/// Sound cues export as sounds, one sound event per layer of the cue.
 /// </summary>
 public sealed class UE3Explorer : IExplorer
 {
@@ -51,7 +52,7 @@ public sealed class UE3Explorer : IExplorer
             {
                 var export = package.Exports[index - 1];
                 var className = package.GetClassName(export);
-                if (export.SerialSize > 0 && className is "SkeletalMesh" or "AnimSet")
+                if (export.SerialSize > 0 && className is "SkeletalMesh" or "AnimSet" or "SoundCue")
                 {
                     assets.Add((package, index, className));
                 }
@@ -71,13 +72,14 @@ public sealed class UE3Explorer : IExplorer
                 }
             }
 
-            // Packages aren't named in their own files; other packages' imports name them.
+            // Packages aren't named in their own files; other packages' imports name them, by each
+            // object's path below the package (groups such as "Cue" alone are shared by many packages).
             for (var index = 1; index <= package.Imports.Count; index++)
             {
                 var import = package.Imports[index - 1];
-                if (package.GetImport(import.OuterIndex) is { OuterIndex: 0, ClassName: "Package" } outer)
+                if (import.ClassName != "Package" && ImportedFrom(package, import) is { } imported)
                 {
-                    packageVotes.AddOrUpdate((import.ObjectName, import.ClassName, outer.ObjectName), 1, (_, count) => count + 1);
+                    packageVotes.AddOrUpdate((imported.Path, import.ClassName, imported.Package), 1, (_, count) => count + 1);
                 }
             }
         });
@@ -110,6 +112,11 @@ public sealed class UE3Explorer : IExplorer
 
         var export = package.Exports[exportIndex - 1];
         var outputDirectory = GetExportRoot(fileEntry);
+        if (fileEntry.AssetClass.Equals("SoundCue", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ExplorerResolvedEntry(UE3SoundExporter.Export(content, package, export, outputDirectory), outputDirectory);
+        }
+
         if (fileEntry.AssetClass.Equals(_viewmodelClass, StringComparison.OrdinalIgnoreCase))
         {
             var viewmodel = UE3ViewmodelExporter.Export(content, package, export, outputDirectory);
@@ -118,7 +125,7 @@ public sealed class UE3Explorer : IExplorer
 
         if (fileEntry.AssetClass.Equals("AnimSet", StringComparison.OrdinalIgnoreCase))
         {
-            var animation = UE3MeshExporter.ExportAnimSet(package, export, outputDirectory);
+            var animation = UE3MeshExporter.ExportAnimSet(content, package, export, outputDirectory);
             return new ExplorerResolvedEntry(animation.AnimationPaths[0], outputDirectory, ImporterOptions: PSKImporterOptions.WithAnimation(animation.AnimationPaths[0]));
         }
 
@@ -154,10 +161,10 @@ public sealed class UE3Explorer : IExplorer
         foreach (var package in packages)
         {
             var best = package.Exports
-                .Where(export => export.OuterIndex == 0)
+                .Select((export, index) => (Path: package.GetPath(index + 1), Class: package.GetClassName(export)))
                 .SelectMany(export => byObject.TryGetValue(
-                    (export.ObjectName.ToUpperInvariant(), package.GetClassName(export).ToUpperInvariant()),
-                    out var candidates) ? candidates.Select(candidate => (Export: export.ObjectName, candidate.Package, candidate.Value)) : [])
+                    (export.Path.ToUpperInvariant(), export.Class.ToUpperInvariant()),
+                    out var candidates) ? candidates.Select(candidate => (Export: export.Path, candidate.Package, candidate.Value)) : [])
                 .GroupBy(vote => vote.Package, StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(group => group.Select(vote => vote.Export).Distinct(StringComparer.OrdinalIgnoreCase).Count())
                 .ThenByDescending(group => group.Sum(vote => vote.Value))
@@ -168,15 +175,35 @@ public sealed class UE3Explorer : IExplorer
         return names;
     }
 
+    // An import's top-level package and its dotted path below that package, or null when it isn't in one.
+    private static (string Package, string Path)? ImportedFrom(UE3Package package, UE3PackageImport import)
+    {
+        List<string> path = [import.ObjectName];
+        var outer = package.GetImport(import.OuterIndex);
+        for (var depth = 0; outer is not null && depth < 64; depth++)
+        {
+            if (outer.OuterIndex == 0)
+            {
+                return outer.ClassName == "Package" ? (outer.ObjectName, string.Join('.', Enumerable.Reverse(path))) : null;
+            }
+
+            path.Add(outer.ObjectName);
+            outer = package.GetImport(outer.OuterIndex);
+        }
+
+        return null;
+    }
+
     private ExplorerFileEntry CreateEntry(UE3Package package, int exportIndex, string className, string packageName, string root)
     {
         var export = package.Exports[exportIndex - 1];
         var objectPath = package.GetPath(exportIndex);
         var isAnimation = className == "AnimSet";
+        var isSound = className == "SoundCue";
         return new ExplorerFileEntry(
             $"{Sanitize(packageName)}/{className}/{string.Join('/', objectPath.Split('.').Select(Sanitize))}",
             package.FilePath,
-            "psk",
+            isSound ? UE3SoundCueImporter.FormatId : "psk",
             root,
             root,
             package.FilePath,
@@ -184,7 +211,7 @@ public sealed class UE3Explorer : IExplorer
             Id,
             $"Class {className} | Object {objectPath} | Package {packageName} | File {Path.GetFileName(package.FilePath)} | Version {package.Summary.FileVersion}/{package.Summary.LicenseeVersion} | Size {export.SerialSize:N0}",
             AssetClass: className,
-            Kind: isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
+            Kind: isSound ? ExplorerEntryKind.Sound : isAnimation ? ExplorerEntryKind.Animation : ExplorerEntryKind.Model,
             CanAddToModel: isAnimation);
     }
 

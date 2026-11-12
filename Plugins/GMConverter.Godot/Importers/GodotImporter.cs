@@ -14,11 +14,13 @@ namespace GMConverter.Godot.Importers;
 
 /// <summary>
 /// Imports a model from a Godot game through a <c>.godotscene</c> reference written by the Godot
-/// explorer: a scene (an imported model or one of the game's own scenes) with every mesh in it.
+/// explorer: a scene (an imported model or one of the game's own scenes) with every mesh in it
+/// and the animations its animation players play on them.
 /// </summary>
 internal sealed class GodotImporter(ITextureFactory textureFactory, ILoggerFactory? loggerFactory = null) : IModelImporter
 {
     public const string IncludeHidden = "includeHidden";
+    public const string Animations = "animations";
 
     private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<GodotImporter>();
 
@@ -36,6 +38,14 @@ internal sealed class GodotImporter(ITextureFactory textureFactory, ILoggerFacto
             {
                 Description = "Also import meshes the scene hides, such as items shown only while they are used.",
                 DefaultValue = false,
+            },
+        ]),
+        new OptionGroup("animation", "Animation",
+        [
+            new OptionDescriptor(Animations, OptionType.Bool, "Import animations")
+            {
+                Description = "Import the animations the scene's animation players play on the model.",
+                DefaultValue = true,
             },
         ]),
     ]);
@@ -58,7 +68,11 @@ internal sealed class GodotImporter(ITextureFactory textureFactory, ILoggerFacto
 
         var root = GodotScene.Instantiate(loader, scene);
         var builder = new GodotModelBuilder(loader, textureFactory);
-        var model = builder.Build(root, Path.GetFileNameWithoutExtension(reference.Scene), context.Options.GetBool(IncludeHidden));
+        var model = builder.Build(
+            root,
+            Path.GetFileNameWithoutExtension(reference.Scene),
+            context.Options.GetBool(IncludeHidden),
+            context.Options.GetBool(Animations, defaultValue: true));
 
         if (builder.SkippedTextures.Count > 0)
         {

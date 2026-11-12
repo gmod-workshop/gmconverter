@@ -6,17 +6,20 @@ using GMConverter.SDK.Explorer;
 using GMConverter.UnrealEngine.Formats.UE3.Exporters;
 using GMConverter.UnrealEngine.Formats.UE3.Packages;
 using GMConverter.UnrealEngine.Importers;
+using GMConverter.UnrealEngine.Profiles.CrossFireHD;
 
 namespace GMConverter.UnrealEngine.Explorer;
 
 /// <summary>
 /// Browses an Unreal Engine 3 game's cooked packages for skeletal meshes and anim sets. Meshes
 /// export with their materials baked and the anim sets of their own package that fit them; anim
-/// sets can be added to any model.
+/// sets can be added to any model. Weapons with first-person arm animations also get a
+/// <c>Viewmodel</c> entry that assembles the arms, the weapon and their clips into one model.
 /// </summary>
 public sealed class UE3Explorer : IExplorer
 {
     private const int _supportProbeLimit = 4000;
+    private const string _viewmodelClass = "Viewmodel";
 
     private readonly ConcurrentDictionary<string, UE3GameContent> _contents = new(StringComparer.OrdinalIgnoreCase);
 
@@ -54,6 +57,20 @@ public sealed class UE3Explorer : IExplorer
                 }
             }
 
+            // A package holding a weapon and its first-person arm animations can build a view model.
+            if (package.Exports.Any(export => package.GetClassName(export) == "AnimSet" &&
+                    CrossFireHDViewmodels.IsViewmodelSet(export.ObjectName, CrossFireHDViewmodels.ArmsSetPrefix)))
+            {
+                for (var index = 1; index <= package.Exports.Count; index++)
+                {
+                    var export = package.Exports[index - 1];
+                    if (export.SerialSize > 0 && package.GetClassName(export) == "SkeletalMesh" && CrossFireHDViewmodels.IsWeaponMesh(export.ObjectName))
+                    {
+                        assets.Add((package, index, _viewmodelClass));
+                    }
+                }
+            }
+
             // Packages aren't named in their own files; other packages' imports name them.
             for (var index = 1; index <= package.Imports.Count; index++)
             {
@@ -82,8 +99,9 @@ public sealed class UE3Explorer : IExplorer
 
         var content = GetContent(fileEntry.SearchRoot);
         var package = content.GetPackage(fileEntry.ArchivePath);
+        var exportClass = fileEntry.AssetClass.Equals(_viewmodelClass, StringComparison.OrdinalIgnoreCase) ? "SkeletalMesh" : fileEntry.AssetClass;
         var exportIndex = Enumerable.Range(1, package.Exports.Count).FirstOrDefault(index =>
-            package.GetClassName(package.Exports[index - 1]).Equals(fileEntry.AssetClass, StringComparison.OrdinalIgnoreCase) &&
+            package.GetClassName(package.Exports[index - 1]).Equals(exportClass, StringComparison.OrdinalIgnoreCase) &&
             package.GetPath(index).Equals(fileEntry.ArchiveEntryPath, StringComparison.OrdinalIgnoreCase));
         if (exportIndex == 0)
         {
@@ -92,6 +110,12 @@ public sealed class UE3Explorer : IExplorer
 
         var export = package.Exports[exportIndex - 1];
         var outputDirectory = GetExportRoot(fileEntry);
+        if (fileEntry.AssetClass.Equals(_viewmodelClass, StringComparison.OrdinalIgnoreCase))
+        {
+            var viewmodel = UE3ViewmodelExporter.Export(content, package, export, outputDirectory);
+            return new ExplorerResolvedEntry(viewmodel.MeshPath!, outputDirectory, ImporterOptions: PSKImporterOptions.WithAnimation(viewmodel.AnimationPaths[0]));
+        }
+
         if (fileEntry.AssetClass.Equals("AnimSet", StringComparison.OrdinalIgnoreCase))
         {
             var animation = UE3MeshExporter.ExportAnimSet(package, export, outputDirectory);

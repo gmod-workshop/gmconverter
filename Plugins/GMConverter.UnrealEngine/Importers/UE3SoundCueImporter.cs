@@ -1,7 +1,6 @@
 using GMConverter.SDK.Audio;
 using GMConverter.SDK.Importers;
 using GMConverter.SDK.Options;
-using GMConverter.UnrealEngine.Audio;
 using GMConverter.UnrealEngine.Formats.UE3.Audio;
 
 namespace GMConverter.UnrealEngine.Importers;
@@ -13,7 +12,7 @@ namespace GMConverter.UnrealEngine.Importers;
 internal sealed class UE3SoundCueImporter : ISoundImporter
 {
     public const string FormatId = "ue3cue";
-    public const string VgmstreamPathOption = "vgmstreamPath";
+    public const string VgmstreamPathOption = VgmstreamDecoder.PathOption;
 
     public string Format => FormatId;
 
@@ -21,7 +20,7 @@ internal sealed class UE3SoundCueImporter : ISoundImporter
 
     public IReadOnlyList<string> FileExtensions { get; } = [UE3SoundCueSidecar.Extension];
 
-    public OptionSchema OptionSchema { get; } = new([new OptionGroup("tools", "Tools", [WwiseEventImporter.VgmstreamPathDescriptor()])]);
+    public OptionSchema OptionSchema { get; } = new([new OptionGroup("tools", "Tools", [VgmstreamDecoder.PathOptionDescriptor("UE3 sound cues")])]);
 
     public Sound Import(SoundImportContext context)
     {

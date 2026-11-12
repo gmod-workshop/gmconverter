@@ -1,0 +1,51 @@
+namespace GMConverter.SDK.Geometry;
+
+/// <summary>
+/// What a bone is in a human body, so animations can move between skeletons whose bones are named,
+/// sized and oriented differently. Finger joints count out from the hand: 1 is the knuckle.
+/// <c>LeftHeldItem</c>/<c>RightHeldItem</c> are the bones a held weapon or tool hangs from.
+/// </summary>
+public enum HumanoidBone
+{
+    Chest,
+    LeftClavicle,
+    LeftUpperArm,
+    LeftForearm,
+    LeftHand,
+    LeftThumb1,
+    LeftThumb2,
+    LeftThumb3,
+    LeftIndex1,
+    LeftIndex2,
+    LeftIndex3,
+    LeftMiddle1,
+    LeftMiddle2,
+    LeftMiddle3,
+    LeftRing1,
+    LeftRing2,
+    LeftRing3,
+    LeftPinky1,
+    LeftPinky2,
+    LeftPinky3,
+    RightClavicle,
+    RightUpperArm,
+    RightForearm,
+    RightHand,
+    RightThumb1,
+    RightThumb2,
+    RightThumb3,
+    RightIndex1,
+    RightIndex2,
+    RightIndex3,
+    RightMiddle1,
+    RightMiddle2,
+    RightMiddle3,
+    RightRing1,
+    RightRing2,
+    RightRing3,
+    RightPinky1,
+    RightPinky2,
+    RightPinky3,
+    LeftHeldItem,
+    RightHeldItem,
+}

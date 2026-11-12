@@ -78,6 +78,8 @@ internal class GenericUnrealProfile : IUnrealProfile
             string.Equals(registryClass, "AkAudioEvent", StringComparison.OrdinalIgnoreCase);
     }
 
+    public virtual UnrealMaterialConventions MaterialConventions => UnrealMaterialConventions.None;
+
     public string? GetUnavailableEncryptedArchiveMessage(DefaultFileProvider provider)
     {
         if (provider.UnloadedVfs.Count == 0)

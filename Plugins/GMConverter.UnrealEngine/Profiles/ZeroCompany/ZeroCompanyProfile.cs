@@ -1,6 +1,7 @@
 using GMConverter.SDK.Explorer;
 using GMConverter.SDK.Profiles;
 using GMConverter.UnrealEngine.Archives;
+using GMConverter.UnrealEngine.Materials;
 
 namespace GMConverter.UnrealEngine.Profiles.ZeroCompany;
 
@@ -22,6 +23,18 @@ internal sealed class ZeroCompanyProfile : GenericUnrealProfile
     public override string DisplayName => "Star Wars Zero Company";
 
     public override string Engine => "Unreal Engine 5";
+
+    // The character master material layers a clean base (BSC colour, normal, and a mask with
+    // metallic in R and roughness in G) under a damage set blended in by "Damage Amount". The
+    // generic aliases pick the preview slots (PM_*), which point at the damage set, so the base
+    // set is named here. "VT" slots are the virtual-texture copies of the same textures.
+    public override UnrealMaterialConventions MaterialConventions { get; } = new(
+        [
+            ("Diffuse", ["Base BSC", "Base BSC VT"]),
+            ("Normals", ["Base N", "Base N VT"]),
+            ("SpecularMasks", ["Base Mask 1", "Base Mask 1 VT"]),
+        ],
+        UnrealMaskPacking.MetallicRoughness);
 
     /// <summary>
     /// <see cref="GameMatch.Exact"/> when <c>SWZeroCompany.exe</c> sits in the archive folder or a

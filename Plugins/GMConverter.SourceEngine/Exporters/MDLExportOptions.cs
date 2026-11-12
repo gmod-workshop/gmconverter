@@ -9,4 +9,5 @@ internal sealed record MDLExportOptions(
     string? VtfCmdPath,
     bool BuildMaterials,
     PhysicsOptions? Physics,
-    MaterialOptimizationOptions? MaterialOptimization = null);
+    MaterialOptimizationOptions? MaterialOptimization = null,
+    GibOptions? Gibs = null);

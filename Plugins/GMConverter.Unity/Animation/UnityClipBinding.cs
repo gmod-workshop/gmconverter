@@ -10,10 +10,16 @@ namespace GMConverter.Unity.Animation;
 /// </summary>
 internal sealed record UnityClipBinding(uint Path, uint Attribute, int ClassId, int FirstCurve)
 {
+    private const int _gameObjectClass = 1;
     private const int _transformClass = 4;
     private const int _animatorClass = 95;
 
+    private static readonly uint _isActive = UnityPathHash.Compute("m_IsActive");
+
     public bool IsHumanoid => ClassId == _animatorClass && Path == 0;
+
+    /// <summary>Whether the curve turns a game object on (above 0.5) and off.</summary>
+    public bool IsActiveToggle => ClassId == _gameObjectClass && Attribute == _isActive;
 
     public UnityTransformCurve TransformCurve => ClassId == _transformClass
         ? Attribute switch

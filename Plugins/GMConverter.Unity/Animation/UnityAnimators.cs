@@ -79,32 +79,43 @@ internal sealed class UnityAnimators
     }
 
     /// <summary>The nodes the clips move with transform curves; props among them need bones of their own.</summary>
-    public IEnumerable<UnityTransformNode> MovedNodes()
+    public IReadOnlySet<UnityTransformNode> MovedNodes()
     {
-        HashSet<UnityTransformNode> moved = [];
+        return Targets(binding => binding.TransformCurve != UnityTransformCurve.None);
+    }
+
+    /// <summary>The nodes the clips turn on and off; those drawing something need bones of their own.</summary>
+    public IReadOnlySet<UnityTransformNode> ToggledNodes()
+    {
+        return Targets(binding => binding.IsActiveToggle);
+    }
+
+    private HashSet<UnityTransformNode> Targets(Func<UnityClipBinding, bool> predicate)
+    {
+        HashSet<UnityTransformNode> targets = [];
         foreach (var entry in _entries.Where(entry => entry.Clips.Count > 0))
         {
             var nodes = UnityAnimationBuilder.NodesByPathHash(entry.Node);
             foreach (var binding in entry.Clips.SelectMany(clip => UnityClipBinding.Read(clip["m_ClipBindingConstant"])))
             {
-                if (binding.TransformCurve != UnityTransformCurve.None && nodes.TryGetValue(binding.Path, out var node))
+                if (predicate(binding) && nodes.TryGetValue(binding.Path, out var node))
                 {
-                    moved.Add(node);
+                    targets.Add(node);
                 }
             }
         }
 
-        return moved;
+        return targets;
     }
 
-    public List<AnimationClip>? Build(UnitySkeleton skeleton)
+    public List<AnimationClip>? Build(UnitySkeleton skeleton, IReadOnlySet<UnityTransformNode> toggledBones)
     {
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
         HashSet<UnityObjectKey> built = [];
         List<AnimationClip> animations = [];
         foreach (var entry in _entries.Where(entry => entry.Clips.Count > 0))
         {
-            var builder = new UnityAnimationBuilder(skeleton, entry.Node, entry.Avatar);
+            var builder = new UnityAnimationBuilder(skeleton, entry.Node, entry.Avatar, toggledBones);
             foreach (var clip in entry.Clips.Where(clip => built.Add(clip.Key)))
             {
                 if (builder.Build(clip, UniqueName(names, clip.Name)) is { } animation)

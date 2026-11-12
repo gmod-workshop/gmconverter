@@ -9,9 +9,9 @@ namespace GMConverter.SDK.Geometry;
 
 /// <summary>
 /// An engine-neutral model: meshes and materials, and optionally a skeleton, animations, skins,
-/// attachments, physics, blend spaces, IK chains and body groups. Model space is Z-up.
-/// <c>Forward</c> is the direction the model faces in that space (a character's front), when the
-/// importer knows it; exporters for engines with a facing convention turn the model about Z to
+/// attachments, physics, blend spaces, IK chains, body groups and levels of detail. Model space is
+/// Z-up. <c>Forward</c> is the direction the model faces in that space (a character's front), when
+/// the importer knows it; exporters for engines with a facing convention turn the model about Z to
 /// match, and null leaves it as is. <c>FirstPerson</c> marks a view model: the player's own arms
 /// and held weapon, drawn from the camera, which sits at the model's origin looking along
 /// <c>Forward</c>. <c>Meshes</c> holds every mesh, including the alternatives of
@@ -30,7 +30,8 @@ public sealed record Model(
     Vector3? Forward = null,
     bool FirstPerson = false,
     IReadOnlyList<IkChain>? IkChains = null,
-    IReadOnlyList<BodyGroup>? BodyGroups = null)
+    IReadOnlyList<BodyGroup>? BodyGroups = null,
+    IReadOnlyList<ModelLod>? Lods = null)
     : IAsset
 {
     AssetKind IAsset.Kind => AssetKind.Model;

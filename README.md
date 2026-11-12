@@ -133,6 +133,7 @@ Passing an option for a format that isn't selected is an error. The same keys an
 | `--mdl-studioMdlPath <path>` | `--studiomdl-path`, `--studiomdl` | `cestudiomdl.exe` override. | Auto-downloaded to `tools` |
 | `--mdl-vtfCmdPath <path>` | `--vtfcmd-path`, `--vtfcmd` | `VTFCmd.exe` override. | Auto-downloaded to `tools` when materials are built |
 | `--mdl-buildMaterials <true\|false>` | `--no-materials` (sets `false`) | Compile VTFs and VMTs alongside the MDL. | `true` |
+| `--mdl-lods <true\|false>` | | Write the model's simpler levels of detail as `$lod`, for the engine to switch to as the model gets smaller on screen. | `true` |
 | `--mdl-material-maxTextureSize <size>` | `--max-texture-size` | Cap the longest texture edge before VTF compile: `0`, `512`, `1024`, `2048`, or `4096`. `0` disables resizing. | `0` |
 | `--mdl-material-deduplicateTextures [true\|false]` | `--deduplicate-textures` | Reuse one VTF for byte-identical textures. | `false` |
 | `--mdl-physics-enabled [true\|false]` | `--physics` | Generate a collision model. | `false` |
@@ -321,6 +322,8 @@ Animations that use Unreal's root motion (the character travels or turns with it
 Characters built on Unreal's mannequin skeleton (with `foot_l`, `foot_r`, `hand_l` and `hand_r` bones) get Source IK chains for their legs and arms in MDL output. Each animation's foot plants (where a foot stays on the ground) become footstep IK rules, so in game the feet stand on slopes and steps instead of floating or sinking into them. Aim layers don't drag the feet.
 
 Meshes made for the same skeleton, such as Zero Company's Coil battle droid next to the plain one, can share one model as body group options. Load one skeletal mesh, select the others and click **Add as Variant**: MDL output gets a `body` body group with an option per mesh, so Garry's Mod can switch between them, and formats without body groups show the first. The variants' materials come along.
+
+Meshes keep their levels of detail (LODs). MDL output switches to each simpler level at the same distance Unreal does on a 1920-pixel-wide screen. Source switches by pixel size, so on a narrower screen it switches sooner. Turn this off with `--mdl-lods false`.
 
 Sockets on Unreal meshes and skeletons (named attach points such as a weapon hand, a muzzle or an effect point) are exported as MDL `$attachment`s on the same bone, so Garry's Mod can attach weapons, effects and props to them.
 

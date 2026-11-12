@@ -23,5 +23,11 @@ internal interface IUnrealProfile : IImportGameProfile
 
     bool TryGetExplorerAssetClass(string registryClass, out string assetClass);
 
+    /// <summary>
+    /// The game's own material conventions: which material parameters hold its base colour,
+    /// normal and mask textures, and how the mask is packed. Checked before the generic aliases.
+    /// </summary>
+    UnrealMaterialConventions MaterialConventions => UnrealMaterialConventions.None;
+
     string? GetUnavailableEncryptedArchiveMessage(DefaultFileProvider provider);
 }

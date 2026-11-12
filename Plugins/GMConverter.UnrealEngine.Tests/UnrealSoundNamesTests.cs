@@ -57,15 +57,32 @@ public sealed class UnrealSoundNamesTests
         var directory = Path.Join(Path.GetTempPath(), "GMConverter.UnrealEngine.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Join(directory, "FS_B1" + WwiseEventSidecar.Extension);
-        var sidecar = new WwiseEventSidecar("FS_B1", SoundCategory.Footstep, 25f, ["FS_B1_1.wem", "FS_B1_2.wem"]);
+        var sidecar = new WwiseEventSidecar("FS_B1", SoundCategory.Footstep, 52f, [new("FS_B1_1.wem", 2f, -3f), new("FS_B1_2.wem")])
+        {
+            VolumeDb = -18f,
+            PitchMinCents = -25f,
+            PitchMaxCents = 25f,
+            Selection = SoundSelection.RandomNoRepeat,
+        };
 
         sidecar.Write(path);
         var read = WwiseEventSidecar.Read(path);
 
-        Assert.Equal(sidecar.Name, read.Name);
-        Assert.Equal(sidecar.Category, read.Category);
-        Assert.Equal(sidecar.AttenuationMeters, read.AttenuationMeters);
+        Assert.Equal(sidecar with { Media = read.Media }, read);
         Assert.Equal(sidecar.Media, read.Media);
+        Assert.Equal(WwiseEventSidecar.CurrentVersion, WwiseEventSidecar.TryReadVersion(path));
         Assert.Contains("\"Footstep\"", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void SidecarsWithoutAVersionAreTheFirstVersion()
+    {
+        var directory = Path.Join(Path.GetTempPath(), "GMConverter.UnrealEngine.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Join(directory, "Old" + WwiseEventSidecar.Extension);
+        File.WriteAllText(path, """{ "Name": "Old", "Category": "Other", "AttenuationMeters": 40, "Media": ["a.wem"] }""");
+
+        Assert.Equal(1, WwiseEventSidecar.TryReadVersion(path));
+        Assert.Null(WwiseEventSidecar.TryReadVersion(Path.Join(directory, "missing.akevent")));
     }
 }

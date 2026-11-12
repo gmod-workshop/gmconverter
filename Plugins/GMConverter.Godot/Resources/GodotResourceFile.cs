@@ -97,12 +97,8 @@ internal sealed class GodotResourceFile
             {
                 var resourceType = ReadString();
                 var path = ReadString();
-                if ((flags & _uidsFlag) != 0)
-                {
-                    ReadUInt64();
-                }
-
-                _external.Add(new GodotExternalResource(resourceType, path));
+                var uid = (flags & _uidsFlag) != 0 ? (long)ReadUInt64() : -1;
+                _external.Add(new GodotExternalResource(resourceType, path, uid));
             }
 
             var internalCount = ReadUInt32();

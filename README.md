@@ -307,7 +307,7 @@ This first version reads which media an event can play, but not how Wwise mixes 
 <details>
 <summary>Unreal Engine 3 Packages</summary>
 
-The Explorer can read Unreal Engine 3 games' cooked packages directly, without exporting them with UModel first. Select the game's install folder or its content folder. It lists each package's `SkeletalMesh` and `AnimSet` assets, grouped by package. Tested with CrossFire HD, whose packages are LZ4-compressed and named by hash: the Explorer works out each package's real name from the packages that use it, and shows the file name when nothing does.
+The Explorer can read Unreal Engine 3 games' cooked packages directly, without exporting them with UModel first. Select the game's install folder or its content folder. It lists each package's skeletal meshes (`SkeletalMesh`), static meshes (`StaticMesh`), animation sets (`AnimSet`), sound cues (`SoundCue`) and particle systems (`ParticleSystem`), grouped by package. Tested with CrossFire HD, whose packages are LZ4-compressed and named by hash: the Explorer works out each package's real name from the packages that use it, and shows the file name when nothing does.
 
 Exporting a skeletal mesh brings along:
 
@@ -317,7 +317,7 @@ Exporting a skeletal mesh brings along:
 
 CrossFire HD weapons also get a **Viewmodel** entry: the first-person arms model the weapon's arm animations were made for, with the weapon held on the arms' weapon bone, and one sequence per action in which the arms and the weapon move together. A weapon skin uses the base weapon's animations plus the ones the skin changes, which replace the base versions. Swimming and additive layer animations are left out.
 
-Textures that repeat mirrored, as weapon skins often do so that one painted half covers both sides, are unfolded into the mesh's UVs, since Source can only repeat textures. Animation sets that use Unreal's rotation-only mode keep the mesh's own bone offsets, so first-person arm animations fit the arms model they are added to. Only the most detailed LOD is exported, and static meshes aren't listed yet.
+Textures that repeat mirrored, as weapon skins often do so that one painted half covers both sides, are unfolded into the mesh's UVs, since Source can only repeat textures. Animation sets that use Unreal's rotation-only mode keep the mesh's own bone offsets, so first-person arm animations fit the arms model they are added to. Only the most detailed LOD is exported.
 
 </details>
 

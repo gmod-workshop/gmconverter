@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <AssemblyName>GMConverter.Godot</AssemblyName>
+        <PackageId>GMConverter.Godot</PackageId>
+        <RootNamespace>GMConverter.Godot</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Ships as a self-contained plugin: the host copies bin/ verbatim into plugins/<id>/,
+             so NuGet dependencies must sit next to the plugin assembly. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="AssetRipper.TextureDecoder" Version="2.6.3" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+        <PackageReference Include="NVorbis" Version="0.10.4" />
+        <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\GMConverter\GMConverter.SDK\GMConverter.SDK.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="GMConverter.Godot.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+</Project>

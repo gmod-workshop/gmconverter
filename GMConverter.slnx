@@ -7,6 +7,8 @@
     <Project Path="GMConverter/GMConverter.UI.Tests/GMConverter.UI.Tests.csproj" />
   </Folder>
   <Folder Name="/Plugins/">
+    <Project Path="Plugins/GMConverter.Godot/GMConverter.Godot.csproj" />
+    <Project Path="Plugins/GMConverter.Godot.Tests/GMConverter.Godot.Tests.csproj" />
     <Project Path="Plugins/GMConverter.MenOfWar/GMConverter.MenOfWar.csproj" />
     <Project Path="Plugins/GMConverter.MenOfWar.Tests/GMConverter.MenOfWar.Tests.csproj" />
     <Project Path="Plugins/GMConverter.SourceEngine/GMConverter.SourceEngine.csproj" />

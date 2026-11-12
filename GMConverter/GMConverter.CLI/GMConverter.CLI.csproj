@@ -32,6 +32,9 @@
       <BundledPlugin Include="..\..\Plugins\GMConverter.MenOfWar\GMConverter.MenOfWar.csproj">
         <PluginId>menofwar</PluginId>
       </BundledPlugin>
+      <BundledPlugin Include="..\..\Plugins\GMConverter.Godot\GMConverter.Godot.csproj">
+        <PluginId>godot</PluginId>
+      </BundledPlugin>
       <BundledPlugin Include="..\..\Plugins\GMConverter.Unity\GMConverter.Unity.csproj">
         <PluginId>unity</PluginId>
       </BundledPlugin>

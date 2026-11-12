@@ -9,7 +9,8 @@ namespace GMConverter.Unity;
 
 /// <summary>
 /// Plugin entry point for Unity player builds. Registers the explorer that browses a build's
-/// serialized files, the importer for the models it picks, and the Unity games it recognises.
+/// serialized files, the importers for the models and sounds it picks, and the Unity games it
+/// recognises.
 /// </summary>
 public sealed class UnityPlugin : IPlugin
 {
@@ -20,6 +21,7 @@ public sealed class UnityPlugin : IPlugin
     public void OnLoad(IPluginContext context)
     {
         context.RegisterImporter<UnityImporter>();
+        context.RegisterImporter<FsbImporter>();
         context.RegisterExplorer<UnityExplorer>();
         context.RegisterGameProfile(new LiarsBarProfile());
     }

@@ -73,8 +73,8 @@ public sealed class UE3SoundCueTests
             "SND_Test", "SoundNodeMixer_0", "SoundNodeAttenuation_0", "SoundNodeRandom_0", "SoundNodeDelay_0", "SoundNodeModulator_0", "WAV_A", "WAV_B", "WAV_C", .. _classes];
         int Name(string name) => names.IndexOf(name);
 
-        var body = new MemoryStream();
-        var writer = new BinaryWriter(body);
+        using var body = new MemoryStream();
+        using var writer = new BinaryWriter(body);
         void WriteName(string name)
         {
             writer.Write(Name(name));
@@ -236,8 +236,8 @@ public sealed class UE3SoundCueTests
         var bodyBytes = body.ToArray();
         var firstSerial = serials[0].Offset;
 
-        var file = new MemoryStream();
-        var summary = new BinaryWriter(file);
+        using var file = new MemoryStream();
+        using var summary = new BinaryWriter(file);
         summary.Write(UE3Compression.PackageTag);
         summary.Write((ushort)872);
         summary.Write((ushort)5);
